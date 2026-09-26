@@ -267,7 +267,9 @@
     border-radius: var(--radius-sm); padding: 6px 10px; font-size: var(--text-caption-size); font-weight: var(--w-medium); outline: none; }
   .sl-sp-select option { background: #fff; color: rgba(0, 0, 0, .92); }
   .sl-sp-slider { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; }
-  .sl-sp-slider-track-wrap { position: relative; height: 20px; display: flex; align-items: center; }
+  .sl-sp-slider-track-wrap { position: relative; height: 28px; display: flex; align-items: center; touch-action: pan-y; }
+  .sl-sp-slider-input { pointer-events: none; } /* driven by the gesture handler in settings.js */
+  .sl-sp-slider.dragging .sl-sp-slider-input::-webkit-slider-thumb { transform: scale(1.25); }
   .sl-sp-slider-track, .sl-sp-slider-fill { position: absolute; top: 50%; height: 4px; transform: translateY(-50%); border-radius: var(--radius-pill); pointer-events: none; }
   .sl-sp-slider-track { left: 0; right: 0; background: rgba(255, 255, 255, .18); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
   .sl-sp-slider-fill { background: var(--accent); }

@@ -100,7 +100,33 @@ const Settings = (() => {
       val.textContent = fmt(x, v);
       reset.style.visibility = +v === x.def ? 'hidden' : 'visible';
     };
-    input.oninput = () => { paint(+input.value); set(x.k, +input.value, false); };
+    // Touch-safe: the native range input grabs any touch that lands on it, which hijacks scrolling the sheet.
+    // It is visual only here; a drag must go sideways (>8px, more horizontal than vertical) before it moves the
+    // value, a vertical swipe scrolls as normal (touch-action: pan-y), and a plain tap changes nothing.
+    input.tabIndex = -1;
+    const valueAt = cx => {
+      const r = tw.getBoundingClientRect(), f = Math.min(1, Math.max(0, (cx - r.left) / r.width));
+      const v = x.min + Math.round(f * (x.max - x.min) / x.step) * x.step;
+      return +v.toFixed(4);
+    };
+    let g = null;
+    tw.addEventListener('pointerdown', e => { g = { x: e.clientX, y: e.clientY, id: e.pointerId, on: false }; });
+    tw.addEventListener('pointermove', e => {
+      if (!g || e.pointerId !== g.id) return;
+      const dx = e.clientX - g.x, dy = e.clientY - g.y;
+      if (!g.on) {
+        if (Math.abs(dy) > 8 && Math.abs(dy) >= Math.abs(dx)) { g = null; return; } // a scroll, not a slide
+        if (Math.abs(dx) < 8) return;
+        g.on = true;
+        tw.setPointerCapture(e.pointerId);
+        wrap.classList.add('dragging');
+      }
+      const v = valueAt(e.clientX);
+      if (v !== +input.value) { input.value = v; paint(v); set(x.k, v, false); }
+    });
+    const end = () => { g = null; wrap.classList.remove('dragging'); };
+    tw.addEventListener('pointerup', end);
+    tw.addEventListener('pointercancel', end);
     reset.onclick = () => { input.value = x.def; paint(x.def); set(x.k, x.def, false); };
     tw.append(track, fill);
     if (bipolar) { const ctr = el('div', 'sl-sp-slider-center'); ctr.style.left = (0 - x.min) / (x.max - x.min) * 100 + '%'; tw.append(ctr); }
