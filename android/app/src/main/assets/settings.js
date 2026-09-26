@@ -223,8 +223,15 @@ const Settings = (() => {
     save(); notify('*'); render();
   }
 
+  // Serializable copy of the schema for the desktop panel (functions dropped; actions/info/presets are phone-only).
+  const schema = () => SCHEMA.filter(x => x.group || (x.k && x.type !== 'info'))
+    .map(({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder }) =>
+      ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder }));
+  // A change from the desktop panel: only known keys, and only values of the default's type.
+  const setRemote = (k, v) => { if (k in defaults && typeof v === typeof defaults[k] && (x => !x.opts || x.opts.some(o => o[0] === v))(SCHEMA.find(x => x.k === k))) set(k, v); };
+
   return {
-    S, set, open, close, reset, load, fresh, render,
+    S, set, setRemote, schema, open, close, reset, load, fresh, render,
     onChange: f => listeners.push(f),
     setPresets: p => { presets = p && typeof p === 'object' ? p : {}; render(); },
     onPreset: f => { presetHook = f; },

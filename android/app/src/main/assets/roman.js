@@ -17,7 +17,9 @@ const Roman = (() => {
 
   const hasDeva = s => /[ऀ-ॿ]/.test(s);
   const hasGuru = s => /[਀-੿]/.test(s);
-  const isIndic = s => hasDeva(s) || hasGuru(s);
+  const ARABIC = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
+  const hasArabic = s => ARABIC.test(s); // Urdu / Shahmukhi Punjabi
+  const isIndic = s => hasDeva(s) || hasGuru(s) || hasArabic(s); // everything we can romanize
 
   const offset = ch => {
     const c = ch.codePointAt(0);
@@ -84,13 +86,72 @@ const Roman = (() => {
     return s;
   }
 
+  // ---- Urdu / Shahmukhi (Perso-Arabic). Short vowels are normally unwritten, so pure letter rules can't
+  // know "dil" from "dal": common lyric words come from a dictionary, the rest from rules.
+  // ponytail: dictionary + heuristics, readable not scholarly; grow WORDS as songs need it.
+  const WORDS = {
+    'دل': 'dil', 'میں': 'main', 'میرا': 'mera', 'میری': 'meri', 'میرے': 'mere', 'تیرا': 'tera', 'تیری': 'teri', 'تیرے': 'tere',
+    'تو': 'tu', 'تم': 'tum', 'ہے': 'hai', 'ہیں': 'hain', 'ہو': 'ho', 'کی': 'ki', 'کا': 'ka', 'کے': 'ke', 'کو': 'ko', 'نہ': 'na',
+    'نہیں': 'nahin', 'ساتھ': 'saath', 'پیار': 'pyaar', 'عشق': 'ishq', 'یار': 'yaar', 'جان': 'jaan', 'رب': 'rab', 'سجن': 'sajan',
+    'محبت': 'mohabbat', 'زندگی': 'zindagi', 'آج': 'aaj', 'کل': 'kal', 'اب': 'ab', 'جب': 'jab', 'تب': 'tab', 'سب': 'sab',
+    'کچھ': 'kuch', 'کیا': 'kya', 'کیوں': 'kyun', 'کہاں': 'kahan', 'یہ': 'ye', 'وہ': 'woh', 'اور': 'aur', 'بھی': 'bhi', 'ہی': 'hi',
+    'دے': 'de', 'دا': 'da', 'دی': 'di', 'نوں': 'nu', 'وچ': 'vich', 'نال': 'naal', 'تے': 'te', 'سی': 'si', 'ماہی': 'mahi',
+    'ڈھولا': 'dhola', 'ہیر': 'heer', 'اکھاں': 'akhan', 'یاد': 'yaad', 'دنیا': 'duniya', 'خدا': 'khuda', 'مولا': 'maula',
+    'اللہ': 'Allah', 'نی': 'ni', 'وے': 've', 'کر': 'kar', 'سوہنا': 'sohna', 'سوہنی': 'sohni', 'دیاں': 'diyan', 'جد': 'jad',
+    'تینوں': 'tainu', 'مینوں': 'mainu', 'اسی': 'asi', 'تسی': 'tusi', 'ہن': 'hun', 'کدی': 'kadi', 'غم': 'gham', 'رات': 'raat',
+    'دن': 'din', 'آنکھیں': 'aankhen', 'چاند': 'chaand', 'دل دا': 'dil da', 'سنو': 'suno', 'ہم': 'hum', 'مجھے': 'mujhe',
+    'تجھے': 'tujhe', 'مجھ': 'mujh', 'تجھ': 'tujh', 'پر': 'par', 'سے': 'se', 'بن': 'bin', 'جا': 'ja', 'آ': 'aa', 'گیا': 'gaya',
+    'گئی': 'gayi', 'رہا': 'raha', 'رہی': 'rahi', 'تھا': 'tha', 'تھی': 'thi', 'چن': 'chann', 'ویکھ': 'vekh', 'کڑی': 'kudi',
+    'منڈا': 'munda', 'لوکاں': 'lokan', 'اکھیاں': 'akhiyan', 'ایہہ': 'eh', 'اوہ': 'oh', 'جنہاں': 'jinhan', 'سانوں': 'saanu',
+  };
+  const UCONS = {
+    'ب': 'b', 'پ': 'p', 'ت': 't', 'ٹ': 't', 'ث': 's', 'ج': 'j', 'چ': 'ch', 'ح': 'h', 'خ': 'kh', 'د': 'd', 'ڈ': 'd', 'ذ': 'z',
+    'ر': 'r', 'ڑ': 'r', 'ز': 'z', 'ژ': 'zh', 'س': 's', 'ش': 'sh', 'ص': 's', 'ض': 'z', 'ط': 't', 'ظ': 'z', 'غ': 'gh', 'ف': 'f',
+    'ق': 'q', 'ک': 'k', 'ك': 'k', 'گ': 'g', 'ل': 'l', 'م': 'm', 'ن': 'n', 'ہ': 'h', 'ه': 'h', 'ۂ': 'h', 'ة': 'h',
+  };
+  function urduWord(w) {
+    if (WORDS[w]) return WORDS[w];
+    const ch = [...w];
+    let s = '';
+    for (let i = 0; i < ch.length; i++) {
+      const c = ch[i], prev = ch[i - 1], next = ch[i + 1], first = i === 0, last = i === ch.length - 1;
+      if (c === 'آ') s += 'aa';
+      else if (c === 'ا') s += first || last ? 'a' : 'aa'; // final alif: tera, lagda
+      else if (c === 'ع') s += first ? 'a' : '';
+      else if (c === 'و') s += first ? 'v' : (prev === 'ا' || prev === 'آ') ? 'o' : next && !'اوی'.includes(next) ? 'o' : 'u';
+      else if (c === 'ی' || c === 'ي' || c === 'ى') s += first ? 'y' : last ? 'i' : 'ee';
+      else if (c === 'ے' || c === 'ۓ') s += 'e';
+      else if (c === 'ئ') s += 'i';
+      else if (c === 'ں') s += 'n';
+      else if (c === 'ھ') s += 'h'; // do-chashmi he: aspiration (bh, ph, kh...)
+      else if (c === 'ّ') s += s.slice(-1); // shadda doubles
+      else if (c === 'َ') s += 'a';
+      else if (c === 'ِ') s += 'i';
+      else if (c === 'ُ') s += 'u';
+      else if (c === 'ء' || c === 'ٔ' || /[ً-ٰٟ]/.test(c)) s += '';
+      else if (UCONS[c]) {
+        s += (c === 'ہ' || c === 'ه') && last && i > 0 ? 'a' : UCONS[c]; // word-final he is usually a vowel
+        // The word's first consonant (with its aspiration ھ) followed straight by another consonant hides a
+        // short vowel: kar, sajnaan, lagda, bhala. Later clusters usually don't (lag-da, not la-ga-da).
+        const n = next === 'ھ' ? ch[i + 2] : next, lead = ch.slice(0, i).every(x => /[ً-ٟ]/.test(x));
+        if (lead && UCONS[n] && next !== 'ّ') { if (next === 'ھ') { s += 'h'; i++; } s += 'a'; }
+      }
+      else s += c;
+    }
+    return s;
+  }
+  // Right-to-left words keep their order in the string; Latin output simply reads left to right.
+  const urdu = text => text.replace(/[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]+/g, urduWord)
+    .replace(/[۔]/g, '.').replace(/[،]/g, ',').replace(/[؟]/g, '?');
+
   // cap=false for mid-line fragments (single syllables of word-synced lyrics).
   function translit(text, cap = true) {
     if (!isIndic(text)) return text;
-    const out = text.replace(/[ऀ-ॿ਀-੿]+/g, word);
+    let out = text.replace(/[ऀ-ॿ਀-੿]+/g, word);
+    if (hasArabic(out)) out = urdu(out);
     return cap ? out.charAt(0).toUpperCase() + out.slice(1) : out;
   }
 
-  return { translit, hasDeva, hasGuru, isIndic };
+  return { translit, hasDeva, hasGuru, hasArabic, isIndic };
 })();
 if (typeof module !== 'undefined') module.exports = Roman;

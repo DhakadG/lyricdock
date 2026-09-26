@@ -59,7 +59,11 @@
       s.onmessage = e => { lastRx = Date.now(); onMessage(e.data); };
       lastRx = Date.now();
       console.log('[dock] linked');
+      // `apply`: settings were changed in the desktop panel while the phone was away - push them now.
+      const dirty = LS.get(DIRTY_KEY) === '1';
       send({ type: 'hello', last: readJson(SETTINGS_KEY, null), presets: readJson(PRESETS_KEY, {}) });
+      if (dirty) { send({ type: 'load', S: readJson(SETTINGS_KEY, {}) }); LS.set(DIRTY_KEY, '0'); }
+      renderPanel();
       if (track) send(track);
       if (preload) send(preload);
       beat();
@@ -76,19 +80,25 @@
   }
 
   // ---- phone settings + presets live here too, so a new phone (or a reinstall) starts configured.
-  const SETTINGS_KEY = 'lyricdock:settings', PRESETS_KEY = 'lyricdock:presets';
+  const SETTINGS_KEY = 'lyricdock:settings', PRESETS_KEY = 'lyricdock:presets', SCHEMA_KEY = 'lyricdock:schema', DIRTY_KEY = 'lyricdock:dirty';
   const okSettings = s => s && typeof s === 'object' && !Array.isArray(s) && JSON.stringify(s).length < 20000;
 
   function onMessage(data) {
     const m = safe(() => JSON.parse(data), null);
     if (!m || typeof m !== 'object') return;
-    if (m.type === 'settings' && okSettings(m.S)) LS.set(SETTINGS_KEY, JSON.stringify(m.S));
+    if (m.type === 'settings' && okSettings(m.S)) { LS.set(SETTINGS_KEY, JSON.stringify(m.S)); renderPanel(); }
+    else if (m.type === 'schema' && Array.isArray(m.schema) && JSON.stringify(m.schema).length < 60000) {
+      LS.set(SCHEMA_KEY, JSON.stringify(m.schema));
+      if (okSettings(m.S)) LS.set(SETTINGS_KEY, JSON.stringify(m.S));
+      renderPanel();
+    }
     else if (m.type === 'preset' && typeof m.name === 'string' && m.name.length <= 40) {
       const presets = readJson(PRESETS_KEY, {});
       if (m.action === 'save' && okSettings(m.S)) { const { apiKey, ...rest } = m.S; presets[m.name] = rest; } // keys stay out of presets
       else if (m.action === 'delete') delete presets[m.name];
       LS.set(PRESETS_KEY, JSON.stringify(presets));
       send({ type: 'presets', presets });
+      renderPanel();
     }
     else if (m.type === 'cmd') {
       if (m.cmd === 'toggle') P.togglePlay();
@@ -232,6 +242,88 @@
     preload = { type: 'preload', ...base, lyrics: await fromSpicyCache(base.id) };
     send(preload);
   }
+
+  // ---- Spotify top bar: LyricDock button -> settings panel. The phone sends its settings schema, so the panel
+  // always matches the app. Connected: changes apply instantly. Offline: saved, pushed when the phone connects.
+  const ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M4.5 4h15A2.5 2.5 0 0 1 22 6.5v8a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 14.5v-8A2.5 2.5 0 0 1 4.5 4z"/>'
+    + '<path d="M6 9h9" stroke-width="2.4"/><path d="M6 12.8h6" stroke-width="2.4" opacity=".5"/><path d="M12 17v2.6M8.6 20.6h6.8"/></svg>';
+  const CSS = `.ld-panel{--hair:rgba(255,255,255,.08);display:flex;flex-direction:column;gap:2px;font-size:14px}
+    .ld-panel h3{font-size:15px;font-weight:600;margin:12px 2px 2px;padding-top:12px;border-top:1px solid var(--hair)}
+    .ld-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 12px;border-radius:12px}
+    .ld-row:hover{background:rgba(255,255,255,.06)} .ld-desc{font-size:12px;opacity:.6;margin-top:2px}
+    .ld-panel select,.ld-panel input[type=text],.ld-panel button{background:rgba(255,255,255,.06);color:inherit;border:0;
+      box-shadow:inset 0 0 0 1px var(--hair);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px}
+    .ld-panel button{cursor:pointer} .ld-panel button:hover{background:rgba(255,255,255,.14)} .ld-panel option{color:#000}
+    .ld-panel input[type=range]{width:200px;accent-color:#fff} .ld-panel input[type=text]{width:240px}
+    .ld-val{min-width:64px;text-align:right;font-variant-numeric:tabular-nums;opacity:.8}
+    .ld-status{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.06);font-size:13px}
+    .ld-status i{width:8px;height:8px;border-radius:50%;background:#e5534b} .ld-status.on i{background:#3ddc97}
+    .ld-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}`;
+  safe(() => { const st = document.createElement('style'); st.textContent = CSS; document.head.append(st); });
+
+  let panel = null;
+  const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+
+  function change(k, v) {
+    const S = readJson(SETTINGS_KEY, {});
+    S[k] = v;
+    LS.set(SETTINGS_KEY, JSON.stringify(S));
+    if (ws?.readyState === 1) send({ type: 'set', k, v }); else LS.set(DIRTY_KEY, '1');
+  }
+
+  function control(x, S) {
+    const v = S[x.k] ?? x.def;
+    if (x.type === 'toggle') { const c = h('input', { type: 'checkbox', checked: !!v }); c.onchange = () => change(x.k, c.checked); return c; }
+    if (x.type === 'choice') {
+      const s = h('select', {}, ...x.opts.map(([val, name]) => h('option', { value: val, selected: val === v }, name)));
+      s.onchange = () => change(x.k, s.value);
+      return s;
+    }
+    if (x.type === 'range') {
+      const out = h('span', { className: 'ld-val' }, `${v}${x.unit ?? ''}`);
+      const r = h('input', { type: 'range', min: x.min, max: x.max, step: x.step, value: v });
+      r.oninput = () => { out.textContent = `${r.value}${x.unit ?? ''}`; };
+      r.onchange = () => change(x.k, +r.value);
+      return h('div', { className: 'ld-presets' }, r, out);
+    }
+    const t = h('input', { type: 'text', value: v ?? '', placeholder: x.placeholder ?? '', spellcheck: false });
+    t.onchange = () => change(x.k, t.value.trim());
+    return t;
+  }
+
+  function renderPanel() {
+    if (!panel?.isConnected) return;
+    const schema = readJson(SCHEMA_KEY, []), S = readJson(SETTINGS_KEY, {}), presets = readJson(PRESETS_KEY, {});
+    const on = ws?.readyState === 1;
+    const kids = [h('div', { className: 'ld-status' + (on ? ' on' : '') }, h('i'),
+      on ? 'Phone connected - changes apply instantly' : 'Phone not connected - changes are saved and applied when it connects')];
+    // presets
+    const names = Object.keys(presets).sort(), sel = h('select', {}, ...names.map(n => h('option', { value: n }, n)));
+    const name = h('input', { type: 'text', placeholder: 'New preset name' });
+    const savePresets = p => { LS.set(PRESETS_KEY, JSON.stringify(p)); send({ type: 'presets', presets: p }); renderPanel(); };
+    kids.push(h('h3', {}, 'Presets'), h('div', { className: 'ld-row' }, h('div', { className: 'ld-presets' },
+      sel,
+      h('button', { onclick: () => { const p = presets[sel.value]; if (!p) return; LS.set(SETTINGS_KEY, JSON.stringify({ ...S, ...p }));
+        if (on) send({ type: 'load', S: p }); else LS.set(DIRTY_KEY, '1'); renderPanel(); } }, 'Apply'),
+      h('button', { onclick: () => { if (!sel.value) return; const p = { ...presets }; delete p[sel.value]; savePresets(p); } }, 'Delete'),
+      name,
+      h('button', { onclick: () => { const n = name.value.trim().slice(0, 40); if (!n) return; const { apiKey, ...rest } = S; savePresets({ ...presets, [n]: rest }); } }, 'Save current'))));
+    if (!schema.length) kids.push(h('div', { className: 'ld-desc' }, 'Connect the phone once so its settings can load here.'));
+    for (const x of schema) {
+      if (x.group) { kids.push(h('h3', {}, x.group)); continue; }
+      kids.push(h('div', { className: 'ld-row' },
+        h('div', {}, h('div', {}, x.label), ...(x.desc ? [h('div', { className: 'ld-desc' }, x.desc)] : [])), control(x, S)));
+    }
+    panel.replaceChildren(...kids);
+  }
+
+  function openPanel() {
+    panel = h('div', { className: 'ld-panel' });
+    Spicetify.PopupModal.display({ title: 'LyricDock', content: panel, isLarge: true });
+    renderPanel();
+  }
+  safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel));
 
   // ---- sync: events + 500ms heartbeat + 100ms drift check (catches seeks instantly) + 1s link check.
   P.addEventListener('songchange', sendTrack);

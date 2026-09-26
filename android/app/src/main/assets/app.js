@@ -234,7 +234,10 @@ function handle(m) {
     if (Settings.fresh && !P.gotHello && m.last) Settings.load(m.last);
     Settings.setPresets(m.presets);
     P.gotHello = true;
+    send({ type: 'schema', schema: Settings.schema(), S }); // lets Spotify's LyricDock panel render these settings
   }
+  else if (m.type === 'set') Settings.setRemote(m.k, m.v); // changed from the desktop panel
+  else if (m.type === 'load' && m.S && typeof m.S === 'object') Settings.load(m.S);
   else if (m.type === 'presets') Settings.setPresets(m.presets);
   else if (m.type === 'diag') window.lastDiag = m; // inspected over CDP while developing
   else if (m.type === 'auth') Web.onAuth(m);
