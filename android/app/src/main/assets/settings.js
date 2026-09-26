@@ -1,0 +1,136 @@
+// Settings: one schema drives defaults, persistence (localStorage) and the in-app panel.
+// The panel reuses Spicy Lyrics' settings-panel markup/classes (sl-sp-*), styled in index.html.
+const Settings = (() => {
+  const SCHEMA = [
+    { group: 'Layout' },
+    { k: 'layout', label: 'Layout', type: 'choice', def: 'split', opts: [
+      ['split', 'Default'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar']] },
+    { k: 'progress', label: 'Progress bar', type: 'choice', def: 'bottom', opts: [['bottom', 'Bottom'], ['top', 'Top'], ['off', 'Off']] },
+    { k: 'times', label: 'Show times', desc: 'Elapsed and total time next to the progress bar', type: 'toggle', def: false },
+    { k: 'hideAfter', label: 'Hide controls after', type: 'range', min: 2, max: 10, step: 1, def: 4, unit: 's' },
+
+    { group: 'Background' },
+    { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
+      ['dynamic', 'Dynamic'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']] },
+    { k: 'bgSpeed', label: 'Motion speed', type: 'range', min: 0, max: 1.5, step: 0.05, def: 0.35, when: s => s.bg === 'dynamic' },
+    { k: 'bgWarp', label: 'Warp', type: 'range', min: 0, max: 1, step: 0.05, def: 1, when: s => s.bg === 'dynamic' },
+    { k: 'bgDim', label: 'Dim', type: 'range', min: 0, max: 0.8, step: 0.05, def: 0.2, when: s => s.bg !== 'black' },
+
+    { group: 'Lyrics' },
+    { k: 'roman', label: 'Romanization', desc: 'Smart keeps Hindi (Devanagari) as is and romanizes everything else',
+      type: 'choice', def: 'smart', opts: [['smart', 'Smart (keep Hindi)'], ['always', 'Always'], ['off', 'Original script']] },
+    { k: 'size', label: 'Text size', type: 'range', min: 0.6, max: 1.6, step: 0.05, def: 1, unit: '×' },
+    { k: 'align', label: 'Alignment', type: 'choice', def: 'left', opts: [['left', 'Left'], ['center', 'Centre']] },
+    { k: 'anchor', label: 'Active line position', desc: 'How far down the screen the current line sits', type: 'range', min: 0.2, max: 0.6, step: 0.05, def: 0.35 },
+    { k: 'blurLines', label: 'Blur distant lines', type: 'toggle', def: true },
+    { k: 'glow', label: 'Glow on sung words', type: 'toggle', def: true },
+    { k: 'lift', label: 'Lift sung words', type: 'toggle', def: true },
+    { k: 'credits', label: 'Show credits', desc: 'Written by / Provided by under the lyrics', type: 'toggle', def: true },
+    { k: 'tapSeek', label: 'Tap a line to jump to it', type: 'toggle', def: true },
+    { k: 'offset', label: 'Sync offset', desc: 'Positive shows lyrics later, negative earlier', type: 'range', min: -1000, max: 1000, step: 10, def: 0, unit: 'ms' },
+
+    { group: 'Animations' },
+    { k: 'trackAnim', label: 'Next / previous', type: 'choice', def: 'slide', opts: [
+      ['slide', 'Slide'], ['fade', 'Fade'], ['zoom', 'Zoom'], ['flip', 'Flip'], ['blur', 'Blur'], ['stack', 'Card stack'], ['none', 'None']] },
+    { k: 'ppAnim', label: 'Play / pause', type: 'choice', def: 'both', opts: [
+      ['both', 'Pulse + shrink'], ['pulse', 'Pulse'], ['shrink', 'Shrink art'], ['ripple', 'Ripple'], ['none', 'None']] },
+    { k: 'scroll', label: 'Lyrics scroll', type: 'choice', def: 'smooth', opts: [['smooth', 'Smooth'], ['spring', 'Springy'], ['snappy', 'Snappy']] },
+    { k: 'animSpeed', label: 'Animation speed', type: 'range', min: 0.5, max: 2, step: 0.1, def: 1, unit: '×' },
+  ];
+
+  const KEY = 'dock:settings';
+  const defaults = Object.fromEntries(SCHEMA.filter(x => x.k).map(x => [x.k, x.def]));
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+  const S = { ...defaults, ...saved };
+  const listeners = [];
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+  const notify = (k, v) => listeners.forEach(f => f(k, v));
+
+  // Every change is saved immediately - sliders included (not only on release).
+  function set(k, v, rerender = true) {
+    S[k] = v;
+    save();
+    notify(k, v);
+    if (rerender) render();
+  }
+
+  // ---- panel (Spicy Lyrics sl-sp-* structure)
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const fmt = (x, v) => {
+    v = +v;
+    if (x.unit === 'ms') return `${v > 0 ? '+' : ''}${v} ms`;
+    if (x.unit === 's') return `${v} s`;
+    if (x.unit) return `${+v.toFixed(2)}${x.unit}`;
+    return v.toFixed(2);
+  };
+
+  function slider(x) {
+    const wrap = el('div', 'sl-sp-slider');
+    const tw = el('div', 'sl-sp-slider-track-wrap');
+    const track = el('div', 'sl-sp-slider-track'), fill = el('div', 'sl-sp-slider-fill');
+    const input = el('input', 'sl-sp-slider-input');
+    Object.assign(input, { type: 'range', min: x.min, max: x.max, step: x.step, value: S[x.k] });
+    const bipolar = x.min < 0 && x.max > 0;
+    const meta = el('div', 'sl-sp-slider-meta');
+    const val = el('span', 'sl-sp-slider-value'), reset = el('button', 'sl-sp-slider-reset', 'Reset');
+    const paint = v => {
+      const f = (v - x.min) / (x.max - x.min), c = bipolar ? (0 - x.min) / (x.max - x.min) : 0;
+      fill.style.left = Math.min(f, c) * 100 + '%';
+      fill.style.width = Math.abs(f - c) * 100 + '%';
+      val.textContent = fmt(x, v);
+      reset.style.visibility = +v === x.def ? 'hidden' : 'visible';
+    };
+    input.oninput = () => { paint(+input.value); set(x.k, +input.value, false); };
+    reset.onclick = () => { input.value = x.def; paint(x.def); set(x.k, x.def, false); };
+    tw.append(track, fill);
+    if (bipolar) { const ctr = el('div', 'sl-sp-slider-center'); ctr.style.left = (0 - x.min) / (x.max - x.min) * 100 + '%'; tw.append(ctr); }
+    tw.append(input);
+    meta.append(val, reset);
+    wrap.append(tw, meta);
+    paint(S[x.k]);
+    return wrap;
+  }
+
+  function control(x) {
+    if (x.type === 'toggle') {
+      const l = el('label', 'sl-sp-toggle'), i = el('input');
+      i.type = 'checkbox';
+      i.checked = !!S[x.k];
+      i.onchange = () => set(x.k, i.checked);
+      l.append(i, el('span', 'sl-sp-toggle-track'));
+      return l;
+    }
+    if (x.type === 'choice') {
+      const s = el('select', 'sl-sp-select');
+      for (const [v, name] of x.opts) { const o = el('option', null, name); o.value = v; o.selected = S[x.k] === v; s.append(o); }
+      s.onchange = () => set(x.k, s.value);
+      return s;
+    }
+    return slider(x);
+  }
+
+  function render() {
+    const body = document.querySelector('#settings .sl-modal-main-section');
+    if (!body) return;
+    const top = body.scrollTop;
+    body.replaceChildren(...SCHEMA.filter(x => !x.when || x.when(S)).map(x => {
+      if (x.group) return el('div', 'sl-sp-section-title', x.group);
+      const row = el('div', 'sl-sp-row' + (x.type === 'range' ? ' sl-sp-row--stacked' : ''));
+      const lw = el('div', 'sl-sp-label-wrap');
+      lw.append(el('div', 'sl-sp-label', x.label));
+      if (x.desc) lw.append(el('div', 'sl-sp-description', x.desc));
+      const c = el('div', 'sl-sp-control');
+      c.append(control(x));
+      row.append(lw, c);
+      return row;
+    }));
+    body.scrollTop = top;
+  }
+
+  const open = () => { render(); document.body.classList.add('settings-open'); };
+  const close = () => document.body.classList.remove('settings-open');
+  const reset = () => { Object.assign(S, defaults); save(); notify('*'); render(); };
+
+  return { S, set, open, close, reset, onChange: f => listeners.push(f) };
+})();
