@@ -168,6 +168,9 @@
   #ctl button:active { transform: scale(.82); background: #ffffff2a; }
   #ctl svg { width: 6.5vmin; height: 6.5vmin; fill: currentColor; }
   #ctl #pp svg { width: 8.5vmin; height: 8.5vmin; }
+  #ctl { flex-wrap: wrap; justify-content: center; }
+  #vol { display: none; flex-basis: 100%; margin: .4vmin 2vmin 1vmin; height: 4vmin; accent-color: #fff; }
+  #ctl.has-vol #vol { display: block; }
   #gear { position: fixed; top: calc(var(--sa-t) + var(--bar-ty) + 4vmin); right: calc(var(--sa-r) + var(--bar-tx) + 4vmin);
     width: 9vmin; height: 9vmin; border-radius: 50%; border: 1px solid #ffffff24; z-index: 6;
     background: #0000005c; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: grid; place-items: center;
@@ -311,6 +314,7 @@
           <button id="prev"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
           <button id="pp"><svg viewBox="0 0 24 24"><path id="ppIcon"/></svg></button>
           <button id="next"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+          <input id="vol" type="range" min="0" max="100" step="1" aria-label="Volume">
         </div>
       </div>
     </div>
@@ -338,6 +342,7 @@
 <script src="roman.js"></script>
 <script src="settings.js"></script>
 <script src="api.js"></script>
+<script src="spotify.js"></script>
 <script src="anim.js"></script>
 <script src="lyrics.js"></script>
 <script src="app.js"></script>

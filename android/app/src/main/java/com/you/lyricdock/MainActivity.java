@@ -15,6 +15,7 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 
 import org.json.JSONObject;
 
@@ -28,6 +29,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 // (no inner/anonymous classes - see DockServer).
 public class MainActivity extends Activity implements Runnable, View.OnApplyWindowInsetsListener {
     WebView web;
+    FrameLayout root;
     DockServer server;
     final ConcurrentLinkedQueue<String> inbox = new ConcurrentLinkedQueue<>();
 
@@ -54,7 +56,9 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         web.setBackgroundColor(0xFF000000);
         web.addJavascriptInterface(this, "Dock"); // page -> PC (prev/play/next/seek); only @JavascriptInterface methods are exposed
         web.setOnApplyWindowInsetsListener(this);
-        setContentView(web);
+        root = new FrameLayout(this); // hosts the dock page, and the Spotify login overlay when open
+        root.addView(web);
+        setContentView(root);
         web.loadUrl("file:///android_asset/index.html");
         kiosk();
         server = new DockServer(this);
@@ -70,6 +74,13 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     public void fetchLyrics(String id, String key) {
         if (id == null || key == null || !id.matches("[A-Za-z0-9]{22}") || !key.matches("sl_pk_[A-Za-z0-9_-]{8,200}")) return;
         new Thread(new LyricsFetch(this, id, key)).start();
+    }
+
+    // Spotify login overlay (LoginClient). Only Spotify's own authorize page may be opened.
+    @JavascriptInterface
+    public void login(String url) {
+        if (url == null || !url.startsWith("https://accounts.spotify.com/authorize?")) return;
+        runOnUiThread(new LoginClient(this, url));
     }
 
     // Settings -> "Orientation": auto (all four), landscape (both), portrait (both).

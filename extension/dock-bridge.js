@@ -33,7 +33,8 @@
   function beat() {
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     last = { pos, at: Date.now(), playing };
-    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality() });
+    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality(),
+      volume: safe(() => Math.round(P.getVolume() * 100), undefined) });
   }
 
   // ---- link. The phone sends {type:'alive'} every second; an adb-forwarded socket can look open after the
@@ -95,6 +96,7 @@
       else if (m.cmd === 'prev') P.back();
       else if (m.cmd === 'heart') P.toggleHeart();
       else if (m.cmd === 'seek' && Number.isFinite(m.ms)) P.seek(Math.max(0, m.ms));
+      else if (m.cmd === 'volume' && Number.isFinite(m.v)) P.setVolume(Math.max(0, Math.min(1, m.v / 100)));
       setTimeout(beat, 80);
     }
   }

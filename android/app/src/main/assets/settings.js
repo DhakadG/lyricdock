@@ -48,6 +48,15 @@ const Settings = (() => {
     { k: 'scroll', label: 'Lyrics scroll', type: 'choice', def: 'smooth', opts: [['smooth', 'Smooth'], ['spring', 'Springy'], ['snappy', 'Snappy']] },
     { k: 'animSpeed', label: 'Animation speed', type: 'range', min: 0.5, max: 2, step: 0.1, def: 1, unit: '×' },
 
+    { group: 'Playback source' },
+    { k: 'source', label: 'Source', type: 'choice', def: 'auto',
+      desc: 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
+      opts: [['auto', 'Auto'], ['bridge', 'Desktop (Spicetify)'], ['web', 'Spotify account']] },
+    { k: 'spClientId', label: 'Spotify Client ID', type: 'text', def: '', placeholder: '32 hex characters',
+      desc: 'From developer.spotify.com - redirect URI http://127.0.0.1:8976/callback. No client secret needed.' },
+    { label: 'Spotify account', type: 'action', text: () => (window.Web?.loggedIn() ? 'Sign out' : 'Sign in'),
+      run: () => (Web.loggedIn() ? Web.logout() : Web.login()), info: () => window.Web?.status() ?? '' },
+
     { group: 'Presets', desc: 'Saved on the desktop, so another phone can reuse them' },
     { label: 'Presets', type: 'presets' },
 
@@ -139,6 +148,12 @@ const Settings = (() => {
 
   function control(x) {
     if (x.type === 'info') return el('span', 'sl-sp-description', x.value());
+    if (x.type === 'action') {
+      const box = el('div', 'sl-presets'), b = el('button', 'sl-text-btn', x.text());
+      b.onclick = () => x.run();
+      box.append(b, el('span', 'sl-sp-description', x.info()));
+      return box;
+    }
     if (x.type === 'text') {
       const i = el('input', 'sl-input');
       Object.assign(i, { value: S[x.k] || '', placeholder: x.placeholder || '', spellcheck: false, autocomplete: 'off' });
@@ -186,7 +201,7 @@ const Settings = (() => {
     body.replaceChildren(cols);
     cols.append(...SCHEMA.filter(x => !x.when || x.when(S)).map(x => {
       if (x.group) return el('div', 'sl-sp-section-title', x.group);
-      const row = el('div', 'sl-sp-row' + (['range', 'text', 'presets'].includes(x.type) ? ' sl-sp-row--stacked' : ''));
+      const row = el('div', 'sl-sp-row' + (['range', 'text', 'presets', 'action'].includes(x.type) ? ' sl-sp-row--stacked' : ''));
       const lw = el('div', 'sl-sp-label-wrap');
       lw.append(el('div', 'sl-sp-label', x.label));
       if (x.desc) lw.append(el('div', 'sl-sp-description', x.desc));
@@ -209,7 +224,7 @@ const Settings = (() => {
   }
 
   return {
-    S, set, open, close, reset, load, fresh,
+    S, set, open, close, reset, load, fresh, render,
     onChange: f => listeners.push(f),
     setPresets: p => { presets = p && typeof p === 'object' ? p : {}; render(); },
     onPreset: f => { presetHook = f; },

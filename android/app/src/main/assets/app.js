@@ -153,6 +153,8 @@ function onPreload(m) {
 
 // ---- liked + audio quality (sent with every heartbeat)
 function onMeta(m) {
+  if (Number.isFinite(m.volume) && !(performance.now() < P.volLock)) $('vol').value = m.volume;
+  $('ctl').classList.toggle('has-vol', Number.isFinite(m.volume));
   if (typeof m.liked === 'boolean' && performance.now() > P.heartLock) {
     P.liked = m.liked;
     $('heart').classList.toggle('on', m.liked);
@@ -192,7 +194,38 @@ function onPos(m) {
   if (performance.now() > P.lockUntil) setPlaying(!!m.playing, had && !!m.playing !== P.playing);
 }
 
-function dock(m) {
+// ---- sources. The bridge (native -> dock()) and the Web API (spotify.js) both produce track/pos/preload; each
+// keeps its latest state and only the active one reaches the screen. Auto: whichever is actually playing, the
+// desktop bridge winning ties; switching replays the new source's state so the screen catches up instantly.
+const SRC = { bridge: { at: 0, playing: false }, web: { at: 0, playing: false } };
+P.source = 'bridge';
+function dock(m) { route('bridge', m); }
+Web.onMessage(m => route('web', m));
+
+function route(src, m) {
+  const s = SRC[src];
+  if (m.type === 'track') s.track = m;
+  else if (m.type === 'preload') s.preload = m;
+  else if (m.type === 'pos') { s.pos = m; s.at = performance.now(); s.playing = !!m.playing; }
+  else return handle(m); // api / hello / presets / auth / diag: source-independent
+  if (src === P.source) handle(m);
+  if (m.type === 'pos') decideSource();
+}
+
+function decideSource() {
+  const b = SRC.bridge, w = SRC.web, t = performance.now();
+  const bLive = t - b.at < 2500, wLive = t - w.at < 7000;
+  const want = S.source !== 'auto' ? S.source
+    : bLive && b.playing ? 'bridge' : wLive && w.playing ? 'web' : bLive ? 'bridge' : wLive ? 'web' : P.source;
+  Web.setWanted(S.source === 'web' || (S.source === 'auto' && !(bLive && b.playing)));
+  if (want === P.source) return;
+  P.source = want;
+  const s = SRC[want];
+  for (const m of [s.track && { ...s.track, dir: 1 }, s.preload, s.pos]) if (m) handle(m);
+}
+setInterval(decideSource, 1000);
+
+function handle(m) {
   if (m.type === 'track') onTrack(m);
   else if (m.type === 'preload') onPreload(m);
   else if (m.type === 'pos') onPos(m);
@@ -204,6 +237,7 @@ function dock(m) {
   }
   else if (m.type === 'presets') Settings.setPresets(m.presets);
   else if (m.type === 'diag') window.lastDiag = m; // inspected over CDP while developing
+  else if (m.type === 'auth') Web.onAuth(m);
 }
 
 // ---- controls
@@ -214,7 +248,9 @@ document.addEventListener('pointerdown', e => {
   clearTimeout(hideT);
   hideT = setTimeout(() => document.body.classList.remove('ui'), S.hideAfter * 1000);
 }, true);
-const cmd = (c, dir) => { send({ type: 'cmd', cmd: c }); if (dir) { P.dir = dir; P.dirAt = performance.now(); } };
+// Commands go to whichever source is on screen.
+const control = (c, arg) => P.source === 'web' ? Web.control(c, arg) : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
+const cmd = (c, dir) => { control(c); if (dir) { P.dir = dir; P.dirAt = performance.now(); } };
 $('prev').onclick = () => cmd('prev', -1);
 $('next').onclick = () => cmd('next', 1);
 $('pp').onclick = () => { P.pos = now() - S.offset; P.at = performance.now(); P.lockUntil = P.at + 400; setPlaying(!P.playing, true); cmd('toggle'); };
@@ -223,13 +259,15 @@ $('heart').onclick = () => {
   P.heartLock = performance.now() + 1500; // don't let an in-flight beat flip it back
   $('heart').classList.toggle('on', P.liked);
   $('heart').animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: ms(350), easing: EASE });
-  send({ type: 'cmd', cmd: 'heart' });
+  control('heart');
 };
+// Volume (both sources report 0-100). Ignore reports for a moment after dragging so it doesn't jump back.
+$('vol').addEventListener('input', () => { P.volLock = performance.now() + 2000; control('volume', +$('vol').value); });
 $('gear').onclick = () => Settings.open();
 $('sclose').onclick = () => Settings.close();
 $('settings').addEventListener('click', e => { if (e.target.id === 'settings') Settings.close(); }); // tap outside the sheet
 $('sreset').onclick = () => Settings.reset();
-const seek = t => { send({ type: 'cmd', cmd: 'seek', ms: t }); P.pos = t; P.at = performance.now(); };
+const seek = t => { control('seek', t); P.pos = t; P.at = performance.now(); };
 Lyrics.onSeek(seek);
 $('bar').addEventListener('pointerdown', e => {
   if (!document.body.classList.contains('ui') || !P.dur) return;
@@ -239,7 +277,8 @@ $('bar').addEventListener('pointerdown', e => {
 // Keep-alive for the bridge: an adb-forwarded socket can stay "open" on the PC after the phone end dies,
 // so the bridge reconnects when these stop arriving.
 window.dockStatus = () => {
-  const link = document.body.classList.contains('stale') ? 'Not connected' : 'Connected';
+  const link = document.body.classList.contains('stale') ? 'Not connected'
+    : P.source === 'web' ? `Spotify account${SRC.web.pos?.device ? ` · ${SRC.web.pos.device}` : ''}` : 'Desktop bridge';
   const api = Api.enabled() ? ` · API key set${Api.lastStatus ? ` (last ${Api.lastStatus})` : ''}` : '';
   return `${link} · phone IP ${myIp || 'none'}${api}`;
 };
@@ -316,7 +355,8 @@ const linkLog = window.linkLog = [];
 (function tick(t) {
   const dt = Math.min(0.1, (t - lastT) / 1000) || 0.016;
   lastT = t;
-  const stale = !(P.at && performance.now() - P.at < 1500); // beats arrive every 500ms
+  // Bridge beats every 500ms; the Web API is polled every 1s (3s while paused).
+  const stale = !(P.at && performance.now() - P.at < (P.source === 'web' ? 7000 : 1500));
   if (stale !== document.body.classList.contains('stale')) {
     document.body.classList.toggle('stale', stale);
     linkLog.push({ at: new Date().toLocaleTimeString(), stale }); // read over CDP when testing failover
