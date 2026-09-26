@@ -38,15 +38,21 @@ adb shell dpm set-device-owner com.you.lyricdock/.AdminReceiver
 # 3. Install the Spicetify bridge
 ./scripts/install-extension.ps1
 
-# 4. USB only: keep the adb tunnel up (leave running). Skip for Wi-Fi-only use.
+# 4. Keep the link up (leave running): USB when plugged in, wireless adb when not, back to USB when it returns
 ./scripts/link.ps1
 ```
 
 Play something in Spotify — the phone picks it up within a second.
 
-**Wi-Fi:** the phone reports its Wi-Fi IP over any USB session and the bridge remembers it. Wi-Fi-only? The phone
-shows its IP while waiting — enter it once in Spotify under *profile menu → LyricDock*. The bridge prefers USB,
-fails over to Wi-Fi within ~2.5 s when the cable drops, and switches back to USB within ~1 s when it returns.
+**How Wi-Fi works:** Spotify's UI is an https page, and Chromium refuses `ws://` connections from it to a LAN
+address (`SecurityError: An insecure WebSocket connection may not be initiated from a page loaded over HTTPS`) —
+only localhost is allowed. So the bridge always talks to `localhost:8975`, and `link.ps1` points that at the phone
+over USB or, when the cable is out, over wireless adb (it enables `adb tcpip 5555` once per phone boot while on USB).
+
+**Optional — Spicy Lyrics developer API:** the phone can fill gaps the desktop cache misses using *your own*
+publishable key. In the [developer dashboard](https://developers.spicylyrics.org) open your application →
+*Client access (no backend)* → create a publishable key (`sl_pk_…`) and allow **No origin header** (the phone app
+calls the API natively). Paste it in the app's settings → Lyrics. Never use a secret key (`sl_sk_…`) here.
 
 **Leaving kiosk mode:** `adb shell dpm remove-active-admin com.you.lyricdock/.AdminReceiver`, then
 `adb uninstall com.you.lyricdock` if you want the app gone.

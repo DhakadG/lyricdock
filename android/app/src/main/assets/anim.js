@@ -84,6 +84,53 @@ const Anim = (() => {
     put('--tso', opts.glow ? Math.min(g * 35, 100).toFixed(0) + '%' : '0%');
   }
 
+  // ---- interlude dots (Spicy's DotAnimations / DotGroupAnimations). Each dot owns a third of the gap and
+  // fills as its share passes; the group grows in, breathes, pops just before the next line and vanishes.
+  const DotScale = spline([[0, 0.75], [0.7, 1.05], [1, 1]]);
+  const DotY = spline([[0, 0], [0.9, -0.12], [1, 0]]);
+  const DotGlow = spline([[0, 0], [0.6, 1], [1, 1]]);
+  const DotOpacity = spline([[0, 0.35], [0.6, 1], [1, 1]]);
+  const put = (w, prop, val) => { if (w[prop] !== val) { w[prop] = val; w.el.style.setProperty(prop, val); } };
+
+  function dot(d, p, dt) {
+    const k = d.e > d.t ? Math.min(1, Math.max(0, (p - d.t) / (d.e - d.t))) : p >= d.t ? 1 : 0;
+    if (!d.sp) d.sp = { s: new Spring(DotScale(0), 0.7, 0.6), y: new Spring(DotY(0), 1.25, 0.4),
+      g: new Spring(DotGlow(0), 1, 0.5), o: new Spring(DotOpacity(0), 1, 0.5) };
+    d.sp.s.set(DotScale(k)); d.sp.y.set(DotY(k)); d.sp.g.set(DotGlow(k)); d.sp.o.set(DotOpacity(k));
+    const s = d.sp.s.step(dt), y = d.sp.y.step(dt), g = d.sp.g.step(dt), o = d.sp.o.step(dt);
+    put(d, 'scale', s.toFixed(4));
+    put(d, 'transform', `translate3d(0, ${y.toFixed(4)}em, 0)`);
+    put(d, 'opacity', o.toFixed(3));
+    put(d, '--tsr', (4 + 6 * g).toFixed(1) + 'px');
+    put(d, '--tso', Math.min(g * 35, 100).toFixed(0) + '%');
+  }
+
+  // Piecewise-linear through [seconds, value] points; the springs smooth it.
+  const lerpAt = (pts, x) => {
+    if (x <= pts[0][0]) return pts[0][1];
+    for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+      return y0 + (y1 - y0) * (x - x0) / (x1 - x0 || 1);
+    }
+    return pts[pts.length - 1][1];
+  };
+
+  function dotGroup(g, p, dt) {
+    const T = Math.max(0.3, (g.e - g.t) / 1000), x = (p - g.t) / 1000;
+    if (!g.scalePts) { // grow in by 0.2s, pulse 0.95/1.05 every 2.25s, pop to 1.15 then collapse over the last 75ms
+      const pts = [[0, 0], [0.2, 1.05]];
+      for (let t = 0.2 + 2.25, i = 1; t < T - 0.3; t += 2.25, i++) pts.push([t, i % 2 ? 0.95 : 1.05]);
+      pts.push([T - 0.075, 1.15], [T, 0]);
+      g.scalePts = pts;
+      g.opPts = [[0, 0], [Math.min(0.5, T / 3), 1], [T - 0.075, 1], [T, 0]];
+      g.sp = { s: new Spring(0, 5, 0.7), o: new Spring(0, 1.25, 0.4) };
+    }
+    g.sp.s.set(lerpAt(g.scalePts, x));
+    g.sp.o.set(lerpAt(g.opPts, x));
+    put(g, 'scale', Math.max(0, g.sp.s.step(dt)).toFixed(4));
+    put(g, 'opacity', Math.min(1, Math.max(0, g.sp.o.step(dt))).toFixed(3));
+  }
+
   // Line left the active window: snap springs to rest so the next pass starts clean.
   function rest(words, sung) {
     for (const w of words) {
@@ -94,5 +141,12 @@ const Anim = (() => {
     }
   }
 
-  return { Spring, spline, word, rest };
+  function restDots(line) {
+    for (const d of [line.grp, ...line.dd]) {
+      d.sp = null; d.scalePts = null;
+      for (const prop of ['scale', 'transform', 'opacity', '--tsr', '--tso']) { d.el.style.removeProperty(prop); d[prop] = undefined; }
+    }
+  }
+
+  return { Spring, spline, word, rest, dot, dotGroup, restDots };
 })();

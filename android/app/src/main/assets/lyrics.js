@@ -35,12 +35,45 @@ const Lyrics = (() => {
 
   const div = (cls, text) => { const d = document.createElement('div'); d.className = cls; if (text) d.textContent = text; return d; };
 
+  // Interlude: three dots, each owning a third of the gap (Spicy's musical-line / dotGroup).
   function dots(t, e) {
-    const el = div('ln dots');
-    el.append(div('dot'), div('dot'), div('dot'));
-    lines.push({ el, t, e, dots: true });
+    const el = div('ln dots'), group = div('dotGroup');
+    const third = (e - t) / 3;
+    const dd = [0, 1, 2].map(i => ({ el: div('dt'), t: t + third * i, e: t + third * (i + 1) }));
+    group.append(...dd.map(d => d.el));
+    el.append(group);
+    lines.push({ el, t, e, dots: true, grp: { el: group, t, e }, dd });
     return el;
   }
+
+  // ---- normalization shared by the desktop cache (via the bridge) and the Spicy Lyrics API (api.js).
+  const PROVIDERS = [['spicy_lyrics', 'Spicy Lyrics'], ['apple_music', 'Apple Music'], ['spotify', 'Spotify'],
+    ['spl', 'Spicy Lyrics'], ['aml', 'Apple Music'], ['spt', 'Spotify'], ['ldb', 'Local DB']];
+  const provider = src => typeof src === 'string'
+    ? PROVIDERS.find(([k]) => src.toLowerCase().includes(k))?.[1] ?? 'Unknown source' : 'Unknown source';
+  // Community syncs credit their uploader and maker (required by the API terms); other sources have none.
+  const contributors = a => [['Synced by', a?.Maker], ['Uploaded by', a?.Uploader]]
+    .filter(([, p]) => p?.username).map(([role, p]) => ({ role, name: p.username, url: p.url }));
+
+  function fromSpicy(L) {
+    const syl = s => ({ s: s.Text, r: s.TransliteratedText, t: s.StartTime * 1000, e: s.EndTime * 1000, p: !!s.IsPartOfWord });
+    const vocal = (L?.Content ?? []).filter(v => v.Type === 'Vocal');
+    let kind, lines;
+    if (L?.Type === 'Syllable') {
+      kind = 'word';
+      lines = vocal.map(v => ({ t: v.Lead.StartTime * 1000, e: v.Lead.EndTime * 1000, opp: !!v.OppositeAligned,
+        w: v.Lead.Syllables.map(syl), bg: (v.Background ?? []).flatMap(b => b.Syllables.map(syl)) }));
+    } else if (L?.Type === 'Line') {
+      kind = 'line';
+      lines = vocal.map(v => ({ t: v.StartTime * 1000, e: v.EndTime * 1000, opp: !!v.OppositeAligned, s: v.Text, r: v.TransliteratedText }));
+    } else if (L?.Type === 'Static') {
+      kind = 'static';
+      lines = (L.Lines ?? []).map(l => ({ s: l.Text, r: l.TransliteratedText }));
+    } else return null;
+    return lines.length ? { kind, lines, writers: L.SongWriters ?? [], source: provider(L.source),
+      contributors: contributors(L.UploadAttribution) } : null;
+  }
+  const rank = l => ({ word: 3, line: 2, static: 1 })[l?.kind] ?? 0;
 
   function build(lyr) {
     data = lyr;
@@ -83,10 +116,19 @@ const Lyrics = (() => {
       const next = lyr.lines[i + 1];
       if (synced && next && next.t - ln.e > 4000) frag.push(dots(ln.e, next.t));
     });
-    if (Settings.S.credits && (lyr.writers?.length || lyr.source)) {
+    // Provider is always shown when known (API terms: attribution goes wherever the lyrics are).
+    if (lyr.writers?.length || lyr.source) {
       const c = div('credits');
-      if (lyr.writers?.length) c.append(div('writers', `Written by: ${lyr.writers.join(', ')}`));
+      if (Settings.S.credits && lyr.writers?.length) c.append(div('writers', `Written by: ${lyr.writers.join(', ')}`));
       if (lyr.source) c.append(div('provider', `Provided by: ${lyr.source}`));
+      for (const p of lyr.contributors ?? []) {
+        const row = div('provider'), a = document.createElement('a');
+        a.textContent = p.name;
+        if (/^https:\/\//.test(p.url || '')) a.href = p.url;
+        a.onclick = e => e.preventDefault(); // kiosk: no browser to open, the link is for credit
+        row.append(`${p.role} `, a);
+        c.append(row);
+      }
       frag.push(c);
     }
     list.replaceChildren(...frag);
@@ -107,6 +149,7 @@ const Lyrics = (() => {
       if (x.t <= p) a = i;
       if (state !== x.state) {
         if (x.state === 'on' && x.syl) { Anim.rest(x.syl, state === 'sung'); if (x.bg) Anim.rest(x.bg, state === 'sung'); }
+        if (x.state === 'on' && x.dots) Anim.restDots(x);
         x.state = state;
         x.el.classList.toggle('on', state === 'on');
         x.el.classList.toggle('sung', state === 'sung');
@@ -115,7 +158,10 @@ const Lyrics = (() => {
       if (x.syl) {
         for (const w of x.syl) Anim.word(w, p, dt, opts);
         if (x.bg) for (const w of x.bg) Anim.word(w, p, dt, opts);
-      } else if (x.dots) x.el.style.setProperty('--p', ((p - x.t) / (x.e - x.t)).toFixed(3));
+      } else if (x.dots) {
+        Anim.dotGroup(x.grp, p, dt);
+        for (const d of x.dd) Anim.dot(d, p, dt);
+      }
     }
     if (a !== anchor) scrollTo(a);
   }
@@ -141,6 +187,8 @@ const Lyrics = (() => {
   return {
     build,
     update,
+    fromSpicy,
+    rank,
     rebuild: () => build(data),
     refresh: () => synced && scrollTo(anchor, true),
     onSeek: f => { onSeek = f; },

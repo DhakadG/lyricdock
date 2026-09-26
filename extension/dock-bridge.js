@@ -1,62 +1,67 @@
-// Spicetify extension: pushes track, word-synced lyrics and playback position to the LyricDock phone,
-// preloads the next track, and takes playback commands back from it.
+// LyricDock bridge (Spicetify extension). Pushes the playing track, lyrics, position, liked state and audio
+// quality to the LyricDock phone app, preloads the next track, stores the phone's settings/presets, and takes
+// playback commands back.
+//
+// Transport: always ws://127.0.0.1:8975. Chromium refuses ws:// from Spotify's https page to a LAN address, so
+// the phone is reached through adb's port forward - over USB, or wireless adb when the cable is out
+// (scripts/link.ps1 switches between them).
 (function dockBridge() {
-  if (!Spicetify?.Player?.addEventListener || !Spicetify.CosmosAsync || !Spicetify.Platform) return setTimeout(dockBridge, 300);
+  if (!Spicetify?.Player?.addEventListener || !Spicetify.CosmosAsync || !Spicetify.Platform || !Spicetify.LocalStorage)
+    return setTimeout(dockBridge, 300);
 
-  // Wired first (adb forward over USB), then direct Wi-Fi to the phone.
-  // The phone's Wi-Fi IP is never hardcoded: the phone reports it with every keep-alive (so one wired session
-  // is enough), or set it from Spotify's profile menu -> "LyricDock". Stored in Spicetify's LocalStorage.
-  const USB = 'ws://127.0.0.1:8975', IP_KEY = 'lyricdock:phoneIp';
-  const isIp = s => /^\d{1,3}(\.\d{1,3}){3}$/.test(s || '');
-  let phoneIp = Spicetify.LocalStorage.get(IP_KEY) || '';
-  const setPhoneIp = ip => { if (isIp(ip) && ip !== phoneIp) { phoneIp = ip; Spicetify.LocalStorage.set(IP_KEY, ip); } };
-  const urls = () => [USB, ...(isIp(phoneIp) ? [`ws://${phoneIp}:8975`] : [])];
-  const P = Spicetify.Player;
-  let ws = null, track = null, preload = null, busy = false;
+  const URL_ = 'ws://127.0.0.1:8975';
+  const P = Spicetify.Player, LS = Spicetify.LocalStorage;
+  let ws = null, track = null, preload = null, busy = false, lastRx = 0;
   let last = { pos: 0, at: 0, playing: false };
 
   const send = o => ws?.readyState === 1 && ws.send(JSON.stringify(o));
   const safe = (f, d) => { try { return f(); } catch { return d; } }; // getProgress throws before anything loads
+  const sleep = t => new Promise(r => setTimeout(r, t));
+  const readJson = (k, d) => safe(() => JSON.parse(LS.get(k)) ?? d, d);
+
+  // ---- audio quality, best effort across Spotify client versions
+  const QUALITY = { lossless: 'Lossless', hifi: 'Lossless', very_high: 'Very high', veryhigh: 'Very high', high: 'High', normal: 'Normal', low: 'Low' };
+  function quality() {
+    const st = safe(() => Spicetify.Platform.PlayerAPI._state, null);
+    for (const q of [P.data?.playbackQuality, st?.playbackQuality, P.data?.playback_quality]) {
+      const v = typeof q === 'string' ? q : q?.bitrateLevel ?? q?.level ?? q?.hifiStatus;
+      if (v != null && v !== '') return QUALITY[String(v).toLowerCase()] ?? String(v).replace(/_/g, ' ').toLowerCase();
+    }
+    return '';
+  }
 
   function beat() {
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     last = { pos, at: Date.now(), playing };
-    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), via: ws?.url.startsWith(USB) ? 'usb' : 'wifi' });
+    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality() });
   }
 
-  // ---- link. Every second: on USB -> nothing to do; otherwise try USB, then Wi-Fi.
-  const tryOpen = (u, ms) => new Promise(res => {
-    const s = new WebSocket(u);
+  // ---- link. The phone sends {type:'alive'} every second; an adb-forwarded socket can look open after the
+  // phone end died (cable pulled, app restarted), so 2.5s of silence means dead: drop it and reconnect.
+  const tryOpen = ms => new Promise(res => {
+    const s = new WebSocket(URL_);
     const t = setTimeout(() => { s.onopen = null; s.close(); res(null); }, ms);
     s.onopen = () => { clearTimeout(t); res(s); };
     s.onerror = () => { clearTimeout(t); res(null); };
   });
 
-  // The phone sends {type:'alive', ip} every second. An adb-forwarded socket can look open after the phone end
-  // died (cable pulled, app restarted), so 2.5s of silence means dead: drop it and fail over.
-  let lastRx = 0;
   function drop() { const dead = ws; ws = null; if (dead) { dead.onclose = null; dead.close(); } }
   async function ensureLink() {
     if (ws?.readyState === 1 && Date.now() - lastRx > 2500) drop();
-    if (busy || (ws?.readyState === 1 && ws.url.startsWith(USB))) return;
+    if (busy || ws?.readyState === 1) return;
     busy = true;
     try {
-      for (const u of urls()) {
-        if (ws?.readyState === 1 && ws.url.startsWith(u)) break; // already on this one, nothing better found
-        const s = await tryOpen(u, u === USB ? 800 : 2000);
-        if (!s) continue;
-        const old = ws;
-        ws = s;
-        s.onclose = () => { if (ws === s) { ws = null; ensureLink(); } }; // fail over immediately
-        s.onmessage = e => { lastRx = Date.now(); command(e.data); };
-        lastRx = Date.now();
-        if (old) { old.onclose = null; old.close(); }
-        console.log('[dock] linked via', u);
-        if (track) send(track);
-        if (preload) send(preload);
-        beat();
-        break;
-      }
+      const s = await tryOpen(1500);
+      if (!s) return;
+      ws = s;
+      s.onclose = () => { if (ws === s) { ws = null; ensureLink(); } };
+      s.onmessage = e => { lastRx = Date.now(); onMessage(e.data); };
+      lastRx = Date.now();
+      console.log('[dock] linked');
+      send({ type: 'hello', last: readJson(SETTINGS_KEY, null), presets: readJson(PRESETS_KEY, {}) });
+      if (track) send(track);
+      if (preload) send(preload);
+      beat();
     } finally { busy = false; }
   }
 
@@ -69,34 +74,40 @@
     } catch { setInterval(fn, 100); }
   }
 
-  // Profile menu -> "LyricDock": set the phone's Wi-Fi IP by hand (Wi-Fi-only setups; the phone shows it).
-  safe(() => new Spicetify.Menu.Item('LyricDock', false, () => {
-    const box = document.createElement('div');
-    box.innerHTML = '<p style="margin:0 0 8px">Phone Wi-Fi IP (shown on the phone while it waits):</p>'
-      + '<input style="width:100%;padding:8px;font-size:15px;border-radius:6px;border:0" placeholder="192.168.1.50">'
-      + `<p style="margin:10px 0 0;opacity:.7">Now: ${ws ? (ws.url.startsWith(USB) ? 'connected over USB' : 'connected over Wi-Fi') : 'not connected'}</p>`;
-    const input = box.querySelector('input');
-    input.value = phoneIp;
-    input.onchange = () => { if (isIp(input.value.trim())) { setPhoneIp(input.value.trim()); ensureLink(); } };
-    Spicetify.PopupModal.display({ title: 'LyricDock', content: box });
-  }).register());
+  // ---- phone settings + presets live here too, so a new phone (or a reinstall) starts configured.
+  const SETTINGS_KEY = 'lyricdock:settings', PRESETS_KEY = 'lyricdock:presets';
+  const okSettings = s => s && typeof s === 'object' && !Array.isArray(s) && JSON.stringify(s).length < 20000;
 
-  function command(data) {
+  function onMessage(data) {
     const m = safe(() => JSON.parse(data), null);
-    if (m?.type === 'alive') return setPhoneIp(m.ip);
-    if (m?.type !== 'cmd') return;
-    if (m.cmd === 'toggle') P.togglePlay();
-    else if (m.cmd === 'next') P.next();
-    else if (m.cmd === 'prev') P.back();
-    else if (m.cmd === 'seek' && Number.isFinite(m.ms)) P.seek(Math.max(0, m.ms));
-    setTimeout(beat, 60);
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'settings' && okSettings(m.S)) LS.set(SETTINGS_KEY, JSON.stringify(m.S));
+    else if (m.type === 'preset' && typeof m.name === 'string' && m.name.length <= 40) {
+      const presets = readJson(PRESETS_KEY, {});
+      if (m.action === 'save' && okSettings(m.S)) { const { apiKey, ...rest } = m.S; presets[m.name] = rest; } // keys stay out of presets
+      else if (m.action === 'delete') delete presets[m.name];
+      LS.set(PRESETS_KEY, JSON.stringify(presets));
+      send({ type: 'presets', presets });
+    }
+    else if (m.type === 'cmd') {
+      if (m.cmd === 'toggle') P.togglePlay();
+      else if (m.cmd === 'next') P.next();
+      else if (m.cmd === 'prev') P.back();
+      else if (m.cmd === 'heart') P.toggleHeart();
+      else if (m.cmd === 'seek' && Number.isFinite(m.ms)) P.seek(Math.max(0, m.ms));
+      setTimeout(beat, 80);
+    }
   }
 
-  // ---- lyrics sources, best first: what Spicy Lyrics has already fetched (its local cache) -> Spotify -> LRCLIB.
-  // Never call api.spicylyrics.org ourselves: it's Spicy's internal client API (returns 418 to other callers),
-  // and extra requests on the same account trip Spicy's rate limit / circuit breaker on the desktop.
-  const PROVIDERS = { spt: 'Spotify', aml: 'Apple Music', spl: 'Spicy Lyrics', ldb: 'Local DB' };
-  const sleep = t => new Promise(r => setTimeout(r, t));
+  // ---- lyrics, fastest local source first, never blocking on the network:
+  //   1. Spicy Lyrics' own cache (already on this PC)        -> sent raw ({spicy}), the phone normalizes it
+  //   2. Spotify's lyrics (the client's own endpoint)         -> immediately, while Spicy may still be fetching
+  //   3. LRCLIB                                               -> only if Spotify has none
+  // then: Spicy's cache is watched for a minute and its (word-synced) lyrics replace the fallback when they land.
+  // The phone can additionally use the Spicy Lyrics developer API with the user's own key (api.js).
+  // Never call api.spicylyrics.org's internal client API: it is Spicy's own (418 to others) and extra requests
+  // on the same account trip Spicy's rate limit on the desktop.
+  const NONE = { kind: 'none', lines: [], writers: [], source: null };
 
   async function token() {
     try {
@@ -113,37 +124,6 @@
       const c = r && (await r.json())?.Content;
       return !c ? null : c.Value === 'NO_LYRICS' ? 'none' : c;
     } catch { return null; }
-  }
-
-  // Spicy fetches the playing track itself; wait for it to land in its cache.
-  async function spicyWait(id, ms) {
-    for (const end = Date.now() + ms; ;) {
-      const c = await spicyCache(id);
-      if (c || Date.now() > end || item()?.uri?.split(':')[2] !== id) return c;
-      await sleep(400);
-    }
-  }
-
-  // Normalized shape sent to the phone:
-  // { kind: 'word'|'line'|'static', lines: [{ t, e, opp, s, r, w: [{ s, r, t, e, p }], bg: [...] }], writers, source }
-  function fromSpicy(L) {
-    const source = typeof L.source === 'string'
-      ? Object.entries(PROVIDERS).find(([k]) => L.source.toLowerCase().includes(k))?.[1] ?? null : null;
-    const syl = s => ({ s: s.Text, r: s.TransliteratedText, t: s.StartTime * 1000, e: s.EndTime * 1000, p: !!s.IsPartOfWord });
-    const vocal = (L.Content ?? []).filter(v => v.Type === 'Vocal');
-    let kind, lines;
-    if (L.Type === 'Syllable') {
-      kind = 'word';
-      lines = vocal.map(v => ({ t: v.Lead.StartTime * 1000, e: v.Lead.EndTime * 1000, opp: !!v.OppositeAligned,
-        w: v.Lead.Syllables.map(syl), bg: (v.Background ?? []).flatMap(b => b.Syllables.map(syl)) }));
-    } else if (L.Type === 'Line') {
-      kind = 'line';
-      lines = vocal.map(v => ({ t: v.StartTime * 1000, e: v.EndTime * 1000, opp: !!v.OppositeAligned, s: v.Text, r: v.TransliteratedText }));
-    } else if (L.Type === 'Static') {
-      kind = 'static';
-      lines = (L.Lines ?? []).map(l => ({ s: l.Text, r: l.TransliteratedText }));
-    } else return null;
-    return lines.length ? { kind, lines, writers: L.SongWriters ?? [], source } : null;
   }
 
   const withEnds = lines => lines.map((l, i) => ({ ...l, e: l.e ?? lines[i + 1]?.t ?? l.t + 5000 }));
@@ -180,70 +160,74 @@
     return null;
   }
 
-  // Only Spicy-sourced lyrics are kept (fallbacks may get upgraded once Spicy's own fetch lands).
+  // Spicy-sourced lyrics per track id (fallbacks aren't kept: they may be upgraded).
   const ready = new Map();
   const remember = (id, L) => { ready.set(id, L); if (ready.size > 40) ready.delete(ready.keys().next().value); };
-
-  async function currentLyrics(id, meta) {
-    if (ready.has(id)) return ready.get(id);
-    const c = await spicyWait(id, 6000);
-    const L = c && c !== 'none' ? fromSpicy(c) : null;
-    if (L) { remember(id, L); return L; }
-    return (await spotifyLyrics(id)) ?? (await lrclib(meta)) ?? { kind: 'none', lines: [], writers: [], source: null };
-  }
-
-  // Preload: whatever Spicy already has cached for the next track (replays, recently played) - no network.
-  async function preloadLyrics(id) {
+  async function fromSpicyCache(id) {
     if (ready.has(id)) return ready.get(id);
     const c = await spicyCache(id);
-    const L = c && c !== 'none' ? fromSpicy(c) : null;
-    if (L) remember(id, L);
+    if (!c || c === 'none') return null;
+    const L = { spicy: c };
+    remember(id, L);
     return L;
   }
 
+  // ---- track info
   const img = u => (u || '').replace('spotify:image:', 'https://i.scdn.co/image/');
   const item = () => P.data?.item ?? P.data?.track;
-  const info = (uri, m) => ({ id: uri.split(':')[2], uri, title: m.title, artist: m.artist_name, album: m.album_title,
+  const artists = (it, m) => {
+    const names = (it?.artists ?? []).map(a => a?.name).filter(Boolean);
+    if (names.length) return names.join(', ');
+    return Object.keys(m).filter(k => /^artist_name(:\d+)?$/.test(k))
+      .sort((a, b) => (+a.split(':')[1] || 0) - (+b.split(':')[1] || 0)).map(k => m[k]).join(', ');
+  };
+  const info = (it, m) => ({ id: it.uri.split(':')[2], uri: it.uri, title: m.title, artist: artists(it, m), album: m.album_title,
     art: img(m.image_xlarge_url || m.image_large_url || m.image_url), dur: +m.duration || 0 });
+
+  // Next vs previous: going back to the track before this one = previous (the phone slides the other way).
+  let hist = [];
+  function direction(id) {
+    if (hist.length > 1 && hist[hist.length - 2] === id) { hist.pop(); return -1; }
+    if (hist[hist.length - 1] !== id) hist = [...hist, id].slice(-50);
+    return 1;
+  }
 
   async function sendTrack() {
     const it = item();
     if (!it?.uri) return;
-    const base = info(it.uri, it.metadata || {});
-    track = { type: 'track', ...base, lyrics: ready.get(base.id) ?? null }; // instant if preloaded
+    const base = info(it, it.metadata || {});
+    const dir = direction(base.id);
+    track = { type: 'track', ...base, dir, lyrics: await fromSpicyCache(base.id) }; // cache read: a few ms
     send(track);
     beat();
-    preloadNext(); // cover art warms on the phone while this track's lyrics load
-    if (!track.lyrics) {
-      const lyrics = await currentLyrics(base.id, it.metadata || {});
-      if (item()?.uri !== it.uri) return; // skipped while lyrics were loading
-      track = { type: 'track', ...base, lyrics };
-      console.log('[dock] track', base.title, '-', lyrics.kind, lyrics.lines.length, 'lines via', lyrics.source);
-      send(track);
-      if (!ready.has(base.id)) upgradeLater(it.uri, base);
-    }
+    send({ type: 'diag', quality: quality(), pd: Object.keys(P.data || {}),
+      pq: safe(() => JSON.stringify([P.data?.playbackQuality, Spicetify.Platform.PlayerAPI._state?.playbackQuality]).slice(0, 400), '') });
+    preloadNext();
+    if (track.lyrics) return;
+    const lyrics = (await spotifyLyrics(base.id)) ?? (await lrclib(it.metadata || {})) ?? NONE;
+    if (item()?.uri !== it.uri) return; // skipped meanwhile
+    if (!track.lyrics) { track = { ...track, lyrics }; send(track); }
+    upgradeFromSpicy(it.uri, base, dir);
   }
 
-  // A fallback was sent; if Spicy's own (word-synced) lyrics show up later (e.g. its queue retry), swap them in.
-  async function upgradeLater(uri, base) {
-    for (let i = 0; i < 30 && item()?.uri === uri; i++) {
-      await sleep(2000);
-      const c = await spicyCache(base.id);
-      if (!c || c === 'none') continue;
-      const L = fromSpicy(c);
-      if (!L || item()?.uri !== uri) return;
-      remember(base.id, L);
-      track = { type: 'track', ...base, lyrics: L, upgrade: true };
+  // Spicy fetches the playing track itself; its word-synced lyrics replace the fallback as soon as they land.
+  async function upgradeFromSpicy(uri, base, dir) {
+    for (let i = 0; i < 60 && item()?.uri === uri; i++) {
+      await sleep(1000);
+      const L = await fromSpicyCache(base.id);
+      if (!L || item()?.uri !== uri) continue;
+      track = { type: 'track', ...base, dir, lyrics: L };
       send(track);
       return;
     }
   }
 
+  // Preload: cover + whatever Spicy already has for the next track (no network).
   async function preloadNext() {
     const n = (Spicetify.Queue?.nextTracks ?? []).map(t => t?.contextTrack).find(t => t?.uri?.startsWith('spotify:track:'));
     if (!n) return;
-    const base = info(n.uri, n.metadata || {});
-    preload = { type: 'preload', ...base, lyrics: await preloadLyrics(base.id) };
+    const base = info(n, n.metadata || {});
+    preload = { type: 'preload', ...base, lyrics: await fromSpicyCache(base.id) };
     send(preload);
   }
 

@@ -8,6 +8,15 @@ const Settings = (() => {
     { k: 'progress', label: 'Progress bar', type: 'choice', def: 'bottom', opts: [['bottom', 'Bottom'], ['top', 'Top'], ['off', 'Off']] },
     { k: 'times', label: 'Show times', desc: 'Elapsed and total time next to the progress bar', type: 'toggle', def: false },
     { k: 'hideAfter', label: 'Hide controls after', type: 'range', min: 2, max: 10, step: 1, def: 4, unit: 's' },
+    { k: 'orientation', label: 'Orientation', type: 'choice', def: 'auto', opts: [['auto', 'Auto-rotate (all 4)'], ['landscape', 'Landscape'], ['portrait', 'Portrait']] },
+    { k: 'edgeMode', label: 'Notch & edge spacing', desc: 'Auto reads the camera cutout and rounded corners from the phone',
+      type: 'choice', def: 'auto', opts: [['auto', 'Auto'], ['manual', 'Manual']] },
+    { k: 'edgePad', label: 'Side padding', type: 'range', min: 0, max: 80, step: 2, def: 24, unit: 'px', when: s => s.edgeMode === 'manual' },
+    { k: 'cornerPad', label: 'Progress bar corner inset', type: 'range', min: 0, max: 80, step: 2, def: 20, unit: 'px', when: s => s.edgeMode === 'manual' },
+
+    { group: 'Now playing' },
+    { k: 'showLiked', label: 'Show liked (heart)', desc: 'Tap the heart to like / unlike', type: 'toggle', def: true },
+    { k: 'showQuality', label: 'Show audio quality', type: 'toggle', def: true },
 
     { group: 'Background' },
     { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
@@ -28,6 +37,8 @@ const Settings = (() => {
     { k: 'credits', label: 'Show credits', desc: 'Written by / Provided by under the lyrics', type: 'toggle', def: true },
     { k: 'tapSeek', label: 'Tap a line to jump to it', type: 'toggle', def: true },
     { k: 'offset', label: 'Sync offset', desc: 'Positive shows lyrics later, negative earlier', type: 'range', min: -1000, max: 1000, step: 10, def: 0, unit: 'ms' },
+    { k: 'apiKey', label: 'Spicy Lyrics API key (optional)', type: 'text', def: '', placeholder: 'sl_pk_…',
+      desc: 'Your own publishable key with "No origin header" allowed. Fills gaps the desktop cache misses.' },
 
     { group: 'Animations' },
     { k: 'trackAnim', label: 'Next / previous', type: 'choice', def: 'slide', opts: [
@@ -37,16 +48,21 @@ const Settings = (() => {
     { k: 'scroll', label: 'Lyrics scroll', type: 'choice', def: 'smooth', opts: [['smooth', 'Smooth'], ['spring', 'Springy'], ['snappy', 'Snappy']] },
     { k: 'animSpeed', label: 'Animation speed', type: 'range', min: 0.5, max: 2, step: 0.1, def: 1, unit: '×' },
 
+    { group: 'Presets', desc: 'Saved on the desktop, so another phone can reuse them' },
+    { label: 'Presets', type: 'presets' },
+
     { group: 'Connection' },
     { label: 'Link', type: 'info', value: () => window.dockStatus?.() ?? '' },
   ];
 
   const KEY = 'dock:settings';
   const defaults = Object.fromEntries(SCHEMA.filter(x => x.k).map(x => [x.k, x.def]));
-  let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+  const fresh = !saved; // first run on this phone: take the desktop's last settings when the bridge sends them
   const S = { ...defaults, ...saved };
   const listeners = [];
+  let presets = {}, presetHook = () => {};
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
   const notify = (k, v) => listeners.forEach(f => f(k, v));
 
@@ -97,6 +113,26 @@ const Settings = (() => {
 
   function control(x) {
     if (x.type === 'info') return el('span', 'sl-sp-description', x.value());
+    if (x.type === 'text') {
+      const i = el('input', 'sl-input');
+      Object.assign(i, { value: S[x.k] || '', placeholder: x.placeholder || '', spellcheck: false, autocomplete: 'off' });
+      i.onchange = () => set(x.k, i.value.trim());
+      return i;
+    }
+    if (x.type === 'presets') {
+      const box = el('div', 'sl-presets');
+      const names = Object.keys(presets).sort();
+      const sel = el('select', 'sl-sp-select');
+      for (const n of names) { const o = el('option', null, n); o.value = n; sel.append(o); }
+      if (!names.length) sel.append(el('option', null, 'No presets yet'));
+      const btn = (label, fn) => { const b = el('button', 'sl-text-btn', label); b.onclick = fn; return b; };
+      const name = el('input', 'sl-input');
+      name.placeholder = 'New preset name';
+      box.append(sel, btn('Apply', () => presets[sel.value] && load(presets[sel.value])),
+        btn('Delete', () => names.length && presetHook('delete', sel.value)),
+        name, btn('Save current', () => name.value.trim() && presetHook('save', name.value.trim().slice(0, 40))));
+      return box;
+    }
     if (x.type === 'toggle') {
       const l = el('label', 'sl-sp-toggle'), i = el('input');
       i.type = 'checkbox';
@@ -124,7 +160,7 @@ const Settings = (() => {
     body.replaceChildren(cols);
     cols.append(...SCHEMA.filter(x => !x.when || x.when(S)).map(x => {
       if (x.group) return el('div', 'sl-sp-section-title', x.group);
-      const row = el('div', 'sl-sp-row' + (x.type === 'range' ? ' sl-sp-row--stacked' : ''));
+      const row = el('div', 'sl-sp-row' + (['range', 'text', 'presets'].includes(x.type) ? ' sl-sp-row--stacked' : ''));
       const lw = el('div', 'sl-sp-label-wrap');
       lw.append(el('div', 'sl-sp-label', x.label));
       if (x.desc) lw.append(el('div', 'sl-sp-description', x.desc));
@@ -138,7 +174,18 @@ const Settings = (() => {
 
   const open = () => { render(); document.body.classList.add('settings-open'); };
   const close = () => document.body.classList.remove('settings-open');
-  const reset = () => { Object.assign(S, defaults); save(); notify('*'); render(); };
+  const reset = () => { Object.assign(S, defaults, { apiKey: S.apiKey }); save(); notify('*'); render(); };
+  // Apply a whole settings object (preset or the desktop's last settings). Unknown keys are ignored.
+  function load(obj) {
+    for (const k of Object.keys(defaults)) if (obj && k in obj && k !== 'apiKey') S[k] = obj[k];
+    if (obj?.apiKey && !S.apiKey) S.apiKey = obj.apiKey;
+    save(); notify('*'); render();
+  }
 
-  return { S, set, open, close, reset, onChange: f => listeners.push(f) };
+  return {
+    S, set, open, close, reset, load, fresh,
+    onChange: f => listeners.push(f),
+    setPresets: p => { presets = p && typeof p === 'object' ? p : {}; render(); },
+    onPreset: f => { presetHook = f; },
+  };
 })();
