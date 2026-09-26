@@ -1,6 +1,6 @@
 # Build the app (Gradle-free) and push it to the phone. Keeps device-owner; the app restarts on the new build.
 $root = Split-Path $PSScriptRoot
-$adb = if ($env:ADB) { $env:ADB } else { 'adb' }
+$adb = & "$PSScriptRoot\find-adb.ps1"
 & "$PSScriptRoot\build-apk.ps1"
 if (-not $?) { exit 1 }
 & $adb install -r -t "$root\android\build\lite\lyricdock.apk"

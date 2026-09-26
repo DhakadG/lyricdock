@@ -159,7 +159,8 @@ function onMeta(m) {
   }
   if (m.quality !== undefined && m.quality !== P.quality) {
     P.quality = m.quality;
-    $('quality').textContent = m.quality || '';
+    // Spotify's playbackQuality.bitrateLevel: 1 Low, 2 Normal, 3 High, 4 Very high, 5 Lossless.
+    $('quality').textContent = ({ 1: 'Low', 2: 'Normal', 3: 'High', 4: 'Very high', 5: 'Lossless' })[m.quality] ?? m.quality ?? '';
   }
 }
 
@@ -311,10 +312,16 @@ addEventListener('resize', () => { pullInsets(); Lyrics.refresh(); sizeBg(); });
 // ---- frame loop
 const clock = t => { t = Math.max(0, t) / 1000 | 0; return `${t / 60 | 0}:${String(t % 60).padStart(2, '0')}`; };
 let lastT = performance.now(), lastSec = -1;
+const linkLog = window.linkLog = [];
 (function tick(t) {
   const dt = Math.min(0.1, (t - lastT) / 1000) || 0.016;
   lastT = t;
-  document.body.classList.toggle('stale', !(P.at && performance.now() - P.at < 1500)); // beats arrive every 500ms
+  const stale = !(P.at && performance.now() - P.at < 1500); // beats arrive every 500ms
+  if (stale !== document.body.classList.contains('stale')) {
+    document.body.classList.toggle('stale', stale);
+    linkLog.push({ at: new Date().toLocaleTimeString(), stale }); // read over CDP when testing failover
+    if (linkLog.length > 50) linkLog.shift();
+  }
   const p = now();
   $('fill').style.transform = `scaleX(${P.dur ? Math.min(1, p / P.dur) : 0})`;
   if (S.times && (p / 1000 | 0) !== lastSec) {

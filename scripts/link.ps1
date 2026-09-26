@@ -1,12 +1,13 @@
 # Keeps localhost:8975 on this PC pointed at the phone: over USB when the cable is in, over wireless adb when it
 # isn't, and back to USB the moment it returns. Spotify's bridge only ever talks to localhost (Chromium blocks
 # ws:// to LAN addresses from Spotify's https page), so this is what makes Wi-Fi work.
-# Leave it running. Uses `adb` from PATH, or set $env:ADB to its full path.
+# Leave it running. adb is located by find-adb.ps1 ($env:ADB, PATH, or the SDK's platform-tools).
 #
 # Wireless adb: while on USB the phone is switched to `adb tcpip 5555` once per boot, and its Wi-Fi IP is learned.
 # Anyone on your network with an adb key the phone has authorised could then connect - same as Android's own
 # wireless debugging. Run `adb usb` to turn it off.
-$adb = if ($env:ADB) { $env:ADB } else { 'adb' }
+$adb = & "$PSScriptRoot\find-adb.ps1"
+Write-Host "using $adb"
 $port = 8975; $tcp = 5555
 $ip = $null; $mode = $null
 
