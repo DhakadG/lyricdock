@@ -1,10 +1,7 @@
-# Install the LyricDock bridge into Spicetify.
-#   ./scripts/install-extension.ps1 -PhoneIp 192.168.1.50   # USB + Wi-Fi fallback
-#   ./scripts/install-extension.ps1                          # USB only
-param([string]$PhoneIp = '')
-if ($PhoneIp -and $PhoneIp -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { throw "PhoneIp must look like 192.168.1.50" }
+# Install the LyricDock bridge into Spicetify. The phone's Wi-Fi IP is learned automatically (or set it from
+# Spotify's profile menu -> LyricDock), so there is nothing to configure here.
 $src = Join-Path (Split-Path $PSScriptRoot) 'extension\dock-bridge.js'
-$dst = Join-Path (Split-Path (spicetify -c)) 'Extensions\dock-bridge.js'
-(Get-Content $src -Raw).Replace('__PHONE_IP__', $PhoneIp) | Set-Content $dst -NoNewline
+$dst = Join-Path (Split-Path (spicetify -c)) 'Extensions'
+Copy-Item $src $dst -Force
 spicetify config extensions dock-bridge.js
 spicetify apply

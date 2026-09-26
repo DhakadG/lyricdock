@@ -4,9 +4,13 @@
   if (!Spicetify?.Player?.addEventListener || !Spicetify.CosmosAsync || !Spicetify.Platform) return setTimeout(dockBridge, 300);
 
   // Wired first (adb forward over USB), then direct Wi-Fi to the phone.
-  // __PHONE_IP__ is filled in by scripts/install-extension.ps1 -PhoneIp <ip>; left as-is, only USB is used.
-  const PHONE_IP = '__PHONE_IP__';
-  const URLS = ['ws://127.0.0.1:8975', ...(/^\d+\.\d+\.\d+\.\d+$/.test(PHONE_IP) ? [`ws://${PHONE_IP}:8975`] : [])];
+  // The phone's Wi-Fi IP is never hardcoded: the phone reports it with every keep-alive (so one wired session
+  // is enough), or set it from Spotify's profile menu -> "LyricDock". Stored in Spicetify's LocalStorage.
+  const USB = 'ws://127.0.0.1:8975', IP_KEY = 'lyricdock:phoneIp';
+  const isIp = s => /^\d{1,3}(\.\d{1,3}){3}$/.test(s || '');
+  let phoneIp = Spicetify.LocalStorage.get(IP_KEY) || '';
+  const setPhoneIp = ip => { if (isIp(ip) && ip !== phoneIp) { phoneIp = ip; Spicetify.LocalStorage.set(IP_KEY, ip); } };
+  const urls = () => [USB, ...(isIp(phoneIp) ? [`ws://${phoneIp}:8975`] : [])];
   const P = Spicetify.Player;
   let ws = null, track = null, preload = null, busy = false;
   let last = { pos: 0, at: 0, playing: false };
@@ -17,33 +21,33 @@
   function beat() {
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     last = { pos, at: Date.now(), playing };
-    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0) });
+    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), via: ws?.url.startsWith(USB) ? 'usb' : 'wifi' });
   }
 
-  // ---- link: one loop, every second. On USB -> nothing to do. Otherwise try USB, then Wi-Fi.
-  const tryOpen = u => new Promise(res => {
+  // ---- link. Every second: on USB -> nothing to do; otherwise try USB, then Wi-Fi.
+  const tryOpen = (u, ms) => new Promise(res => {
     const s = new WebSocket(u);
-    const t = setTimeout(() => { s.close(); res(null); }, 1500);
+    const t = setTimeout(() => { s.onopen = null; s.close(); res(null); }, ms);
     s.onopen = () => { clearTimeout(t); res(s); };
     s.onerror = () => { clearTimeout(t); res(null); };
   });
 
-  // The phone sends {type:'alive'} every second. An adb-forwarded socket can look open on the PC after the
-  // phone side died (app restart/reinstall), so silence for 3.5s means dead: drop it and reconnect.
+  // The phone sends {type:'alive', ip} every second. An adb-forwarded socket can look open after the phone end
+  // died (cable pulled, app restarted), so 2.5s of silence means dead: drop it and fail over.
   let lastRx = 0;
+  function drop() { const dead = ws; ws = null; if (dead) { dead.onclose = null; dead.close(); } }
   async function ensureLink() {
-    if (ws?.readyState === 1 && Date.now() - lastRx > 3500) { const dead = ws; ws = null; dead.onclose = null; dead.close(); }
-    if (busy || (ws?.readyState === 1 && ws.url.startsWith(URLS[0]))) return;
+    if (ws?.readyState === 1 && Date.now() - lastRx > 2500) drop();
+    if (busy || (ws?.readyState === 1 && ws.url.startsWith(USB))) return;
     busy = true;
     try {
-      for (const u of URLS) {
+      for (const u of urls()) {
         if (ws?.readyState === 1 && ws.url.startsWith(u)) break; // already on this one, nothing better found
-        const s = await tryOpen(u);
+        const s = await tryOpen(u, u === USB ? 800 : 2000);
         if (!s) continue;
         const old = ws;
         ws = s;
-        // Reconnect straight from the close event: setInterval gets throttled to ~1/min while Spotify is minimized.
-        s.onclose = () => { if (ws === s) { ws = null; setTimeout(ensureLink, 300); } };
+        s.onclose = () => { if (ws === s) { ws = null; ensureLink(); } }; // fail over immediately
         s.onmessage = e => { lastRx = Date.now(); command(e.data); };
         lastRx = Date.now();
         if (old) { old.onclose = null; old.close(); }
@@ -55,11 +59,31 @@
       }
     } finally { busy = false; }
   }
-  setInterval(ensureLink, 1000);
-  ensureLink();
+
+  // Spotify's page timers get throttled to ~1/min while minimized; a Worker's timers don't, and its messages
+  // wake the page. Falls back to setInterval if the client's CSP refuses blob workers.
+  function every100ms(fn) {
+    try {
+      const w = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 100)'], { type: 'text/javascript' })));
+      w.onmessage = fn;
+    } catch { setInterval(fn, 100); }
+  }
+
+  // Profile menu -> "LyricDock": set the phone's Wi-Fi IP by hand (Wi-Fi-only setups; the phone shows it).
+  safe(() => new Spicetify.Menu.Item('LyricDock', false, () => {
+    const box = document.createElement('div');
+    box.innerHTML = '<p style="margin:0 0 8px">Phone Wi-Fi IP (shown on the phone while it waits):</p>'
+      + '<input style="width:100%;padding:8px;font-size:15px;border-radius:6px;border:0" placeholder="192.168.1.50">'
+      + `<p style="margin:10px 0 0;opacity:.7">Now: ${ws ? (ws.url.startsWith(USB) ? 'connected over USB' : 'connected over Wi-Fi') : 'not connected'}</p>`;
+    const input = box.querySelector('input');
+    input.value = phoneIp;
+    input.onchange = () => { if (isIp(input.value.trim())) { setPhoneIp(input.value.trim()); ensureLink(); } };
+    Spicetify.PopupModal.display({ title: 'LyricDock', content: box });
+  }).register());
 
   function command(data) {
     const m = safe(() => JSON.parse(data), null);
+    if (m?.type === 'alive') return setPhoneIp(m.ip);
     if (m?.type !== 'cmd') return;
     if (m.cmd === 'toggle') P.togglePlay();
     else if (m.cmd === 'next') P.next();
@@ -223,14 +247,17 @@
     send(preload);
   }
 
-  // ---- sync: events + 500ms heartbeat + 100ms drift check (catches seeks instantly).
+  // ---- sync: events + 500ms heartbeat + 100ms drift check (catches seeks instantly) + 1s link check.
   P.addEventListener('songchange', sendTrack);
   P.addEventListener('onplaypause', beat);
-  setInterval(beat, 500);
-  setInterval(() => {
+  let tick = 0;
+  every100ms(() => {
+    tick++;
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     const expected = last.pos + (last.playing ? Date.now() - last.at : 0);
-    if (playing !== last.playing || Math.abs(pos - expected) > 250) beat();
-  }, 100);
+    if (tick % 5 === 0 || playing !== last.playing || Math.abs(pos - expected) > 250) beat();
+    if (tick % 10 === 0) ensureLink();
+  });
+  ensureLink();
   sendTrack();
 })();

@@ -150,6 +150,7 @@ function onPos(m) {
   P.pos = +m.pos || 0;
   P.at = performance.now();
   if (m.dur) P.dur = +m.dur;
+  if (m.via) P.via = m.via;
   // After a tap, ignore play state from beats already in flight, so the button doesn't flicker back.
   if (performance.now() > P.lockUntil) setPlaying(!!m.playing, had && !!m.playing !== P.playing);
 }
@@ -185,7 +186,19 @@ $('bar').addEventListener('pointerdown', e => {
 
 // Keep-alive for the bridge: an adb-forwarded socket can stay "open" on the PC after the phone end dies,
 // so the bridge reconnects when these stop arriving.
-setInterval(() => send({ type: 'alive' }), 1000);
+window.dockStatus = () => {
+  const link = document.body.classList.contains('stale') ? 'Not connected' : P.via === 'usb' ? 'USB' : P.via === 'wifi' ? 'Wi-Fi' : 'Connected';
+  return `${link} · phone IP ${myIp || 'none'}`;
+};
+// It also carries the phone's Wi-Fi IP, which the bridge remembers for the Wi-Fi fallback.
+let myIp = '';
+const refreshIp = () => { try { myIp = Dock.ip(); } catch (e) {} };
+refreshIp();
+setInterval(refreshIp, 10000);
+setInterval(() => {
+  send({ type: 'alive', ip: myIp });
+  if (!P.id) $('artist').textContent = myIp ? `Phone IP ${myIp} · Spotify → profile menu → LyricDock` : 'Connect this phone to Wi-Fi or USB';
+}, 1000);
 
 // ---- settings -> page
 function apply(k) {

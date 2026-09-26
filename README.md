@@ -35,14 +35,18 @@ word-by-word synced lyrics — the Spicy Lyrics experience, mirrored from your d
 #    Needs a phone with NO accounts signed in (factory-reset works best).
 adb shell dpm set-device-owner com.you.lyricdock/.AdminReceiver
 
-# 3. Install the Spicetify bridge (phone IP enables the Wi-Fi fallback; omit for USB only)
-./scripts/install-extension.ps1 -PhoneIp 192.168.1.50
+# 3. Install the Spicetify bridge
+./scripts/install-extension.ps1
 
-# 4. Keep the USB link up (leave running)
+# 4. USB only: keep the adb tunnel up (leave running). Skip for Wi-Fi-only use.
 ./scripts/link.ps1
 ```
 
 Play something in Spotify — the phone picks it up within a second.
+
+**Wi-Fi:** the phone reports its Wi-Fi IP over any USB session and the bridge remembers it. Wi-Fi-only? The phone
+shows its IP while waiting — enter it once in Spotify under *profile menu → LyricDock*. The bridge prefers USB,
+fails over to Wi-Fi within ~2.5 s when the cable drops, and switches back to USB within ~1 s when it returns.
 
 **Leaving kiosk mode:** `adb shell dpm remove-active-admin com.you.lyricdock/.AdminReceiver`, then
 `adb uninstall com.you.lyricdock` if you want the app gone.

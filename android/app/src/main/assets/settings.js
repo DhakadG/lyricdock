@@ -36,6 +36,9 @@ const Settings = (() => {
       ['both', 'Pulse + shrink'], ['pulse', 'Pulse'], ['shrink', 'Shrink art'], ['ripple', 'Ripple'], ['none', 'None']] },
     { k: 'scroll', label: 'Lyrics scroll', type: 'choice', def: 'smooth', opts: [['smooth', 'Smooth'], ['spring', 'Springy'], ['snappy', 'Snappy']] },
     { k: 'animSpeed', label: 'Animation speed', type: 'range', min: 0.5, max: 2, step: 0.1, def: 1, unit: '×' },
+
+    { group: 'Connection' },
+    { label: 'Link', type: 'info', value: () => window.dockStatus?.() ?? '' },
   ];
 
   const KEY = 'dock:settings';
@@ -93,6 +96,7 @@ const Settings = (() => {
   }
 
   function control(x) {
+    if (x.type === 'info') return el('span', 'sl-sp-description', x.value());
     if (x.type === 'toggle') {
       const l = el('label', 'sl-sp-toggle'), i = el('input');
       i.type = 'checkbox';
@@ -114,7 +118,11 @@ const Settings = (() => {
     const body = document.querySelector('#settings .sl-modal-main-section');
     if (!body) return;
     const top = body.scrollTop;
-    body.replaceChildren(...SCHEMA.filter(x => !x.when || x.when(S)).map(x => {
+    // Rows live in an inner, auto-height wrapper: multi-column on the fixed-height scroller itself would
+    // overflow into extra columns off to the side (settings "missing") instead of scrolling.
+    const cols = el('div', 'sl-cols');
+    body.replaceChildren(cols);
+    cols.append(...SCHEMA.filter(x => !x.when || x.when(S)).map(x => {
       if (x.group) return el('div', 'sl-sp-section-title', x.group);
       const row = el('div', 'sl-sp-row' + (x.type === 'range' ? ' sl-sp-row--stacked' : ''));
       const lw = el('div', 'sl-sp-label-wrap');

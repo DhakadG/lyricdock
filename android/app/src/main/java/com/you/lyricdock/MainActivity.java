@@ -13,6 +13,10 @@ import android.webkit.WebViewClient;
 
 import org.json.JSONObject;
 
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 // Also the UI-thread Runnable that hands queued bridge messages to the page (no inner classes - see DockServer).
@@ -52,6 +56,19 @@ public class MainActivity extends Activity implements Runnable {
 
     @JavascriptInterface
     public void send(String json) { if (server != null) server.broadcast(json); }
+
+    // Phone's LAN IPv4, so the bridge can learn it (and the waiting screen can show it). "" if none.
+    @JavascriptInterface
+    public String ip() {
+        try {
+            for (NetworkInterface n : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!n.isUp() || n.isLoopback()) continue;
+                for (InetAddress a : Collections.list(n.getInetAddresses()))
+                    if (a instanceof Inet4Address && a.isSiteLocalAddress()) return a.getHostAddress();
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
 
     @Override
     protected void onResume() {
