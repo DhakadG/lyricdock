@@ -299,7 +299,8 @@
     const kids = [h('div', { className: 'ld-status' + (on ? ' on' : '') }, h('i'),
       on ? 'Phone connected - changes apply instantly' : 'Phone not connected - changes are saved and applied when it connects')];
     // presets
-    const names = Object.keys(presets).sort(), sel = h('select', {}, ...names.map(n => h('option', { value: n }, n)));
+    const names = Object.keys(presets).sort();
+    const sel = h('select', {}, ...(names.length ? names.map(n => h('option', { value: n }, n)) : [h('option', { value: '' }, 'No presets yet - save one')]));
     const name = h('input', { type: 'text', placeholder: 'New preset name' });
     const savePresets = p => { LS.set(PRESETS_KEY, JSON.stringify(p)); send({ type: 'presets', presets: p }); renderPanel(); };
     kids.push(h('h3', {}, 'Presets'), h('div', { className: 'ld-row' }, h('div', { className: 'ld-presets' },
@@ -323,7 +324,9 @@
     Spicetify.PopupModal.display({ title: 'LyricDock', content: panel, isLarge: true });
     renderPanel();
   }
-  safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel));
+  // isRight: Spicetify gives right-side buttons the class of Spotify's own round action buttons (left ones sit
+  // small among the back/forward arrows), so this matches the native top-bar buttons.
+  safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel, false, true));
 
   // ---- sync: events + 500ms heartbeat + 100ms drift check (catches seeks instantly) + 1s link check.
   P.addEventListener('songchange', sendTrack);

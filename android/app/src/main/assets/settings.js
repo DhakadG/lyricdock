@@ -225,6 +225,7 @@ const Settings = (() => {
 
   // Serializable copy of the schema for the desktop panel (functions dropped; actions/info/presets are phone-only).
   const schema = () => SCHEMA.filter(x => x.group || (x.k && x.type !== 'info'))
+    .filter((x, i, a) => !x.group || (a[i + 1] && !a[i + 1].group)) // drop sections with nothing editable (Presets, Connection)
     .map(({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder }) =>
       ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder }));
   // A change from the desktop panel: only known keys, and only values of the default's type.
