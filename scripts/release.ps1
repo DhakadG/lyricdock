@@ -9,7 +9,8 @@ $root = Split-Path $PSScriptRoot
 Set-Location $root
 if (git status --porcelain) { throw 'Commit or stash your changes first.' }
 $current = (Get-Content extension\version.json -Raw | ConvertFrom-Json).version
-if ([version]$Version -le [version]$current) { throw "Version must be newer than $current." }
+if (git tag -l "v$Version") { throw "v$Version is already released." }
+if ([version]$Version -lt [version]$current) { throw "Version must not be older than $current." }
 
 Set-Content extension\version.json "{ `"version`": `"$Version`" }`n" -NoNewline
 & "$PSScriptRoot\build-apk.ps1"
@@ -18,7 +19,7 @@ Copy-Item "$root\android\build\lite\lyricdock.apk" $apk -Force
 
 if (-not $Notes) { $Notes = (git log --pretty='- %s' "v$current..HEAD" 2>$null) -join "`n"; if (-not $Notes) { $Notes = "LyricDock $Version" } }
 git add extension/version.json
-git commit -q -m "Release v$Version"
+git diff --cached --quiet; if ($LASTEXITCODE) { git commit -q -m "Release v$Version" } # first release: version.json already matches
 git tag "v$Version"
 git push -q --atomic origin main "v$Version"
 gh release create "v$Version" $apk --title "LyricDock v$Version" --notes $Notes

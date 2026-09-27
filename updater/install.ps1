@@ -1,13 +1,15 @@
 # LyricDock installer / updater for Windows. Safe to run any time: it installs or repairs, never loses settings.
 #   iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex
 # Puts the auto-updating LyricDock loader into Spicetify, re-applies Spicetify (needed after Spotify updates
-# itself and wipes it), and updates the phone app if one is plugged in with adb.
+# itself and wipes it), registers lyricdock-updater:// (the Update button in Spotify opens it), and updates the
+# phone app if one is plugged in with adb.
 # Works on Windows PowerShell 5.1 (no ?? / ternaries).
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue' # Invoke-WebRequest's own progress bar is slow and draws over our output
 $Repo = 'DhakadG/lyricdock'
 $Raw = "https://raw.githubusercontent.com/$Repo/main"
-$Steps = 6
+$Self = "$Raw/updater/install.ps1"
+$Steps = 7
 
 function Banner {
     Write-Host ''
@@ -78,7 +80,16 @@ Remove-Item $tmp -ErrorAction SilentlyContinue
 Ok "Loader installed (loads LyricDock v$latest and keeps it updated)"
 
 Section 'CONFIGURING'
-Step 6 'Applying Spicetify configuration...'
+Step 6 'Registering updater protocol...'
+# lyricdock-updater:// -> this script, so "Update" inside Spotify can start it. It only runs this file from the repo.
+$key = 'HKCU:\Software\Classes\lyricdock-updater'
+New-Item -Force "$key\shell\open\command" | Out-Null
+Set-ItemProperty $key '(default)' 'URL:LyricDock Updater'
+Set-ItemProperty $key 'URL Protocol' ''
+Set-ItemProperty "$key\shell\open\command" '(default)' "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"iwr -useb $Self | iex`""
+Ok 'Updater protocol registered'
+
+Step 7 'Applying Spicetify configuration...'
 & $spicetify config extensions 'dock-bridge.js-' 2>&1 | Out-Null # a development copy must not run alongside
 & $spicetify config extensions lyricdock.js 2>&1 | Out-Null
 Info 'Extension enabled'

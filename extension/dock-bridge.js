@@ -535,8 +535,10 @@
       h('div', { className: 'ld-row' }, h('div', {}, h('div', {}, h('b', {}, `v${VERSION}`), '  →  ', h('b', { style: 'color:#3ddc97' }, `v${to}`)),
         h('div', { className: 'ld-desc' }, 'Already downloaded. Update reloads Spotify\'s window (about a second) to switch to it; otherwise it loads next time Spotify starts.'))),
       h('div', { className: 'ld-row' }, h('div', {}, h('div', {}, 'Something broken after a Spotify update?'),
-        h('div', { className: 'ld-desc' }, 'Run this in PowerShell to repair / reinstall:'), h('code', { style: 'font-size:11px;opacity:.8;user-select:all' }, cmd)),
-        h('button', { onclick: () => { Spicetify.Platform?.ClipboardAPI?.copy(cmd); Spicetify.showNotification('Copied'); } }, 'Copy')),
+        h('div', { className: 'ld-desc' }, 'Run updater (needs the installer run once), or paste this into PowerShell:'), h('code', { style: 'font-size:11px;opacity:.8;user-select:all' }, cmd)),
+        h('div', { className: 'ld-presets' },
+          h('button', { onclick: () => window.open('lyricdock-updater://update') }, 'Run updater'),
+          h('button', { onclick: () => { Spicetify.Platform?.ClipboardAPI?.copy(cmd); Spicetify.showNotification('Copied'); } }, 'Copy'))),
       h('div', { className: 'ld-presets', style: 'justify-content:space-between;margin-top:8px' },
         h('a', { href: `https://github.com/DhakadG/lyricdock/releases/tag/v${to}`, target: '_blank' }, 'Release notes'),
         h('button', { style: 'background:#1ed760;color:#000;font-weight:700;border-radius:999px;padding:8px 22px', onclick: () => location.reload() }, 'Update')));
