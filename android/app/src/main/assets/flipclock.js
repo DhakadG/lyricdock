@@ -134,12 +134,14 @@ const Flip = (() => {
     const W = root.clientWidth || innerWidth, H = root.clientHeight || innerHeight, R = 440 / 300;
     const n = groups.length || 2, cards = groups.reduce((t, g) => t + g.cells.filter(c => !c.el.classList.contains('gone')).length, 0) || n * 2;
     const stacked = S().clockLayout === 'stacked' || (S().clockLayout === 'auto' && H > W);
-    const inner = 0.04, sep = 0.16; // gaps between a group's cards / between groups, in card widths
+    const inner = S().clockDigitGap, sep = S().clockGroupGap; // gaps between a group's cards / between groups, in card widths
     const perRow = Math.max(...(groups.length ? groups.map(g => g.cells.filter(c => !c.el.classList.contains('gone')).length) : [2]));
     const cw = stacked
-      ? Math.min(W * 0.9 / (perRow + (perRow - 1) * inner), H * 0.94 / (n * R + (n - 1) * sep))
-      : Math.min(W * 0.97 / (cards + (cards - n) * inner + (n - 1) * sep), H * 0.9 / R);
-    const st = root.style, k = root.id === 'clockScreen' ? S().clockScale : 1;
+      ? Math.min(W * 0.88 / (perRow + (perRow - 1) * inner), H * 0.84 / (n * R + (n - 1) * sep))
+      : Math.min(W * 0.95 / (cards + (cards - n) * inner + (n - 1) * sep), H * 0.8 / R); // leaves room for the caption and burn-in shift
+    const st = root.style, k = S().clockScale;
+    st.setProperty('--fc-gap', `${cw * k * inner}px`);
+    st.setProperty('--fc-sep', `${cw * k * sep}px`);
     st.setProperty('--cw', `${cw * k}px`);
     st.setProperty('--ch', `${cw * R * k}px`);
     st.setProperty('--fc-dim', 1 - S().clockDim);

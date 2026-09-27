@@ -398,7 +398,7 @@ body.settings-open .sl-modal-container > * { opacity: 1; }
 /* Marquee: only text that doesn't fit scrolls, pausing at each end; edges fade instead of cutting. */
 .mq { overflow: hidden; white-space: nowrap; }
 .mq-in { display: inline-block; }
-.mq.mq-on { text-overflow: clip; -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+.mq.mq-on { text-align: left; text-overflow: clip; -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
 .mq.mq-on .mq-in { animation: mq var(--mqd, 8s) ease-in-out infinite alternate; padding: 0 6%; }
 @keyframes mq { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--mq)); } }
 #album { opacity: .5; font-size: 2.9vmin; font-weight: 500; margin-top: .5vmin; }
@@ -589,14 +589,14 @@ body.clock .fc-wrap { animation: fcIn .6s var(--ease) both; } @keyframes fcIn { 
 #clockScreen > div { transform: translate(var(--cx, 0), var(--cy, 0)); transition: transform 3s ease; }
 #clkTime { font-size: 26vmin; font-weight: 200; letter-spacing: -.04em; font-variant-numeric: tabular-nums; line-height: 1; }
 #clkDate { font-size: 4.2vmin; font-weight: 500; opacity: .55; margin-top: 2vmin; }
-#clkNext { font-size: 3vmin; opacity: .4; margin-top: 4vmin; }
+#clkNext { font-size: 3vmin; opacity: .4; margin-top: 4vmin; max-width: 88vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* ---- flip clock (flipclock.js): dark cards split in two, only the flaps move */
 #clockScreen.flip { background: #000; }
 #clockScreen.flip #clkTime, #clockScreen.flip #clkDate { display: none; }
 #clockScreen:not(.flip) .fc-wrap { display: none; }
-.fc-wrap { display: flex; gap: calc(var(--cw) * .3); align-items: center; justify-content: center; opacity: var(--fc-dim, 1); transition: opacity .6s; }
-#clockScreen.stacked .fc-wrap { flex-direction: column; gap: calc(var(--cw) * .15); }
-.fc-group { display: flex; gap: calc(var(--cw) * .05); }
+.fc-wrap { display: flex; gap: var(--fc-sep); align-items: center; justify-content: center; opacity: var(--fc-dim, 1); transition: opacity .6s; }
+#clockScreen.stacked .fc-wrap, #clockPane.stacked .fc-wrap { flex-direction: column; gap: var(--fc-sep); }
+.fc-group { display: flex; gap: var(--fc-gap); }
 /* One card per digit (Figma "Flip digit", 300 x 440). Each layer holds the whole card SVG and shows one half of it. */
 .fc-cell { position: relative; width: var(--cw); height: var(--ch); perspective: calc(var(--ch) * 3.5); }
 /* Every layer is the whole card, clipped to its half at exactly the centre line: all four line up to the pixel. */
@@ -717,3 +717,10 @@ body.art-dragging #left { position: relative; z-index: 3; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .fc-cell.gone { display: none; }
+
+/* ---- portrait fixes: the Cinema badge and the Now Bar pill clear the song times and the progress bar */
+@media (orientation: portrait) {
+  body.times.layout-cinema #left, body.times.layout-nowbar #left { bottom: calc(var(--sa-b) + var(--bar-by) + 8vmin); }
+  body.layout-cinema #lyrics, body.layout-nowbar #lyrics { margin-bottom: 16vmin; }
+  #clockScreen.flip #clkNext { font-size: 3.4vmin; }
+}

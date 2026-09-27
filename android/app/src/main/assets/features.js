@@ -143,6 +143,24 @@
   $('artbox').addEventListener('touchend', endSwipe, { passive: true });
   $('artbox').addEventListener('touchcancel', endSwipe, { passive: true });
 
+  // ---- three-finger swipe switches layouts (with a notice naming it): up / down in landscape (next / previous),
+  // left / right in portrait. Single-finger gestures ignore multi-touch, so this never also skips or scrolls.
+  let tri = null;
+  const mid = ts => [...ts].reduce((a, t) => ({ x: a.x + t.clientX / ts.length, y: a.y + t.clientY / ts.length }), { x: 0, y: 0 });
+  addEventListener('touchstart', e => { if (e.touches.length === 3) { const m = mid(e.touches); tri = { x: m.x, y: m.y, dx: 0, dy: 0, t: performance.now() }; } }, { capture: true, passive: true });
+  addEventListener('touchmove', e => { if (tri && e.touches.length === 3) { const m = mid(e.touches); tri.dx = m.x - tri.x; tri.dy = m.y - tri.y; } }, { capture: true, passive: true });
+  addEventListener('touchend', e => {
+    if (!tri || e.touches.length) return;
+    const s = tri; tri = null;
+    const land = innerWidth > innerHeight, main = land ? s.dy : s.dx, cross = land ? s.dx : s.dy;
+    if (Math.abs(main) < 50 || Math.abs(main) < Math.abs(cross) * 1.2 || performance.now() - s.t > 1200) return;
+    const opts = Settings.schema().find(x => x.k === 'layout')?.opts || [];
+    const i = opts.findIndex(([v]) => v === S.layout), next = opts[(i + (main < 0 ? 1 : -1) + opts.length) % opts.length];
+    if (!next) return;
+    Settings.set('layout', next[0]);
+    window.notice?.(`Layout: ${next[1]}`, 1400);
+  }, { capture: true, passive: true });
+
   // A quick nudge of the cover in the swipe direction, so the gesture feels answered before the song changes.
   function swipeFx(dir) {
     $('artbox')?.animate([{ transform: 'none' }, { transform: `translateX(${dir * 4}vmin) rotate(${dir * 1.5}deg)`, opacity: .7 }, { transform: 'none' }],
@@ -459,7 +477,7 @@
     if (!k || k === '*' || ['marquee', 'layout', 'size'].includes(k)) setTimeout(remarquee, 50);
     if (k === 'albumLine') albumLine();
     if (k === 'hideExplicit') Lyrics.rebuild();
-    if (k === 'clockScale' || k === 'clockDim') Flip.layout(); // size / dim: CSS variables only, no rebuild while dragging
+    if (['clockScale', 'clockDim', 'clockDigitGap', 'clockGroupGap'].includes(k)) Flip.layout(); // size / dim: CSS variables only, no rebuild while dragging
     else if (k && /^clock/.test(k)) { Flip.rebuild(); Flip.layout(); }
     // Cover + clock: the flip clock (HH:MM) lives where the lyrics would be.
     if (!k || k === '*' || k === 'layout') {

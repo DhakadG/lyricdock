@@ -315,7 +315,7 @@ phone screen). Nothing needs it day to day.
 - **Presets:** built-in **Default** (the shipped config, see [`config/default-settings.json`](config/default-settings.json)),
   **Smooth (slow phones)** and **Full Spicy**; save your own from either panel (stored in Spotify on the PC, so a new
   phone picks them up). **Reset all** returns to Default.
-- **Gestures:** swipe left/right to skip, double-tap to like, long-press the progress bar to scrub.
+- **Gestures:** swipe left/right to skip (on the cover it follows your finger), double-tap to like, long-press the progress bar to scrub, three-finger swipe to change layout (up/down in landscape, left/right in portrait).
 - **Lists:** the controls have buttons for the **queue**, **recently played**, **search**, your **library** (playlists,
   Liked Songs, albums, artists) and **friends' listening activity** (desktop mode). Tap a playlist, album or artist to
   **browse** it (Play / Shuffle at the top, Back to return); tap a song to play it in that list. Every song row has
@@ -488,7 +488,9 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 | Time format | 12-hour (AM / PM) | 12-hour shows AM or PM in the corner of the hours card. Options: 12-hour (AM / PM) / 24-hour. |
 | Arrangement | Follow the screen | Follow the screen: cards side by side in landscape, stacked in portrait. Options: Follow the screen / Side by side / Stacked. |
 | Show the cards | On | Off: only the numerals on black (the flip still moves them). |
-| Size | 1 × | Smaller cards leave more black around them. Range 0.5–1 ×. |
+| Size | 0.96 × | How much of the screen the cards fill (1 = edge to edge). Also sizes the clock in the Cover + clock layout. Range 0.5–1 ×. |
+| Gap between digits | 0.03 | Space between the two cards of the hours, the minutes and the seconds (as a share of a card's width). Range 0–0.2. |
+| Gap between hours and minutes | 0.14 | Space between the hours, minutes and seconds groups (as a share of a card's width). Range 0–0.6. |
 | Dim | 0 | Darkens the clock (for a bedroom at night). Range 0–0.85. |
 | Flip sound | Off | A small sound made on the phone (no audio files) timed to the flap: the whoosh as it falls, the click as it lands. Silent during night mode. Options: Off / Mechanical (whoosh + click) / Click / Whoosh / Soft tap. |
 | Sound volume | 0.4 | Loudness of the flip sound (relative to the phone's media volume). Range 0.05–1. |
