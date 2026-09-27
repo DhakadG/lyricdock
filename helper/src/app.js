@@ -60,7 +60,13 @@ $('set-dev').onchange = e => { localStorage.setItem('dev', e.target.checked ? '1
 $('btn-link').onclick = async () => { const run = await invoke('link', { start: !st?.link_running }).catch(e => toast(String(e), true)); st.link_running = run; refresh(); };
 $('btn-restart').onclick = () => invoke('phone', { action: 'restart' }).then(() => toast('App restarted on the phone')).catch(e => toast(String(e), true));
 let liveT = null;
+let shooting = false;
 async function shot() {
+  if (shooting) return; // previous capture still running: skip this tick
+  shooting = true;
+  try { await shot1(); } finally { shooting = false; }
+}
+async function shot1() {
   try { const b = await invoke('phone', { action: 'screen' }); $('shot').style.backgroundImage = `url(data:image/png;base64,${b})`; } catch (e) { /* no phone */ }
   try { $('dev-devices').textContent = (await invoke('phone', { action: 'devices' })).split('\n').slice(1).join(' · ') || 'No phone on adb'; } catch (e) { $('dev-devices').textContent = 'adb not found'; }
 }

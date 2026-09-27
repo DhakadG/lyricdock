@@ -198,8 +198,48 @@ const Lyrics = (() => {
     if (a !== anchor || jumped) scrollTo(a, jumped);
   }
 
+  // ---- free scroll (Spicy Lyrics): drag the lyrics up/down to read ahead or back, with a flick; all lines show
+  // clearly while free, and the view glides back to the sung line S.scrollBack seconds after the finger lifts.
+  let curY = 0, free = false, backT = 0, drag = null, fling = 0;
+  const box = () => $('lyrics'), list = () => $('lines');
+  const clampY = y => { const h = box().clientHeight, total = list().offsetHeight; return Math.min(h * 0.5, Math.max(h * 0.5 - total, y)); };
+  const setY = (y, ease) => { curY = clampY(y); list().style.transition = ease ? '' : 'none'; list().style.transform = `translate3d(0, ${curY}px, 0)`; };
+  function release() {
+    clearTimeout(backT);
+    backT = setTimeout(() => { free = false; box().classList.remove('free'); if (synced) scrollTo(anchor, false); }, Settings.S.scrollBack * 1000);
+  }
+  box().addEventListener('touchstart', e => {
+    if (!synced || e.touches.length !== 1) return;
+    cancelAnimationFrame(fling);
+    drag = { x: e.touches[0].clientX, y: e.touches[0].clientY, y0: curY, on: false, t: performance.now(), v: 0, ly: e.touches[0].clientY };
+  }, { passive: true });
+  box().addEventListener('touchmove', e => {
+    if (!drag) return;
+    const t = e.touches[0], dx = t.clientX - drag.x, dy = t.clientY - drag.y;
+    if (!drag.on) {
+      if (Math.abs(dx) > Math.abs(dy) || Math.abs(dy) < 10) return; // horizontal = swipe to skip (features.js)
+      drag.on = true; free = true; clearTimeout(backT); box().classList.add('free');
+    }
+    const now = performance.now();
+    drag.v = (t.clientY - drag.ly) / Math.max(1, now - drag.t); drag.t = now; drag.ly = t.clientY;
+    setY(drag.y0 + dy, false);
+  }, { passive: true });
+  box().addEventListener('touchend', () => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (!d.on) return;
+    let v = d.v * 16; // px per frame
+    const step = () => { if (Math.abs(v) < 0.4) return release(); setY(curY + v, false); v *= 0.94; fling = requestAnimationFrame(step); };
+    step();
+  }, { passive: true });
+  const isFree = () => free;
+
   function scrollTo(a, instant) {
     anchor = a;
+    if (free) { // keep the line states, leave the scroll where the finger put it
+      lines.forEach((x, k) => x.el.classList.toggle('past', k < a));
+      return;
+    }
     const i = Math.max(a, 0);
     lines.forEach((x, k) => {
       const d = Math.min(3, Math.abs(k - i));
@@ -211,10 +251,11 @@ const Lyrics = (() => {
     if (!el) return;
     const frac = document.body.classList.contains('layout-cinema') ? 0.5 : Settings.S.anchor;
     const y = $('lyrics').clientHeight * frac - el.offsetTop - el.offsetHeight / 2;
-    const list = $('lines');
-    if (instant) list.style.transition = 'none';
-    list.style.transform = `translate3d(0, ${y}px, 0)`;
-    if (instant) { list.offsetHeight; list.style.transition = ''; }
+    const ls = $('lines');
+    curY = y;
+    if (instant) ls.style.transition = 'none'; else ls.style.transition = '';
+    ls.style.transform = `translate3d(0, ${y}px, 0)`;
+    if (instant) { ls.offsetHeight; ls.style.transition = ''; }
   }
 
   // How busy the vocals are around p, 0..1 (null without synced lyrics): drives 'Move with the music' now that
@@ -239,6 +280,7 @@ const Lyrics = (() => {
     rank,
     rebuild: () => build(data),
     refresh: () => synced && scrollTo(anchor, true),
+    isFree,
     onSeek: f => { onSeek = f; },
   };
 })();

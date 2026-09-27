@@ -5,7 +5,7 @@ const Settings = (() => {
   // (tap on the phone, hover in Spotify's panel). Defaults here ARE the shipped default config ("Reset all").
   const dyn = s => s.bg === 'dynamic' || s.bg === 'artist';
   const SCHEMA = [
-    { group: 'Layout' },
+    { group: 'Layout', icon: 'layout', cat: 'View', desc: 'Where the cover, title, controls and lyrics sit, and which gestures work.' },
     { k: 'layout', label: 'Layout', type: 'choice', def: 'split', opts: [
       ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar']],
       help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player.' },
@@ -35,7 +35,7 @@ const Settings = (() => {
     { k: 'cornerPad', label: 'Progress bar corner inset', type: 'range', min: 0, max: 80, step: 2, def: 20, unit: 'px', when: s => s.edgeMode === 'manual',
       help: 'How rounded the screen corners are: the progress bar is lifted and shortened to stay inside them.' },
 
-    { group: 'Now playing' },
+    { group: 'Now playing', icon: 'note', cat: 'View', desc: 'The song details around the lyrics: like button, album, quality, accent colour.' },
     { k: 'showLiked', label: 'Show liked (heart)', desc: 'Tap the heart to like / unlike', type: 'toggle', def: true,
       help: 'Green heart = in your Liked Songs. Tapping it saves or removes the song in Spotify.' },
     { k: 'heartPos', label: 'Like button position', type: 'choice', def: 'art', opts: [['art', 'Badge on the cover'], ['title', 'Next to the title']], when: s => s.showLiked, help: 'Where the heart sits: a small badge in the corner of the album art, or beside the song title.' },
@@ -48,7 +48,7 @@ const Settings = (() => {
     { k: 'notices', label: 'Status notices', desc: 'Short messages: offline, rate limits, source changes, updates', type: 'toggle', def: true,
       help: 'Small toasts at the bottom for things worth knowing: network lost/back, Spicy API limits, switching between computer and account, pairing, updates.' },
 
-    { group: 'Background' },
+    { group: 'Background', icon: 'image', cat: 'View', desc: 'What moves behind the lyrics: the warped cover, artist photo, Canvas, music video or plain black.' },
     { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
       ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['canvas', 'Spotify Canvas (looping video)'], ['video', 'Music video (YouTube)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']],
       help: 'Dynamic: the cover slowly warped and blurred (Spicy Lyrics\' look, uses the GPU). Artist image: the same effect with the artist\'s photo. Spotify Canvas: the short looping video some songs have in Spotify (desktop mode) - great in portrait; songs without one show the blurred cover. Blurred art: a blurred cover. Colour gradient: slow gradient from the cover\'s colours. Black: nothing (OLED, lowest power).' },
@@ -66,14 +66,14 @@ const Settings = (() => {
     { k: 'videoSync', label: 'Keep the video in sync', type: 'toggle', def: true, when: s => s.bg === 'video', help: 'Seeks the video to the song position when they drift more than 2 seconds apart, and pauses it with the music.' },
     { k: 'bgDim', label: 'Dim', type: 'range', min: 0, max: 0.8, step: 0.05, def: 0.2, when: s => s.bg !== 'black', help: 'Darkens the background so white lyrics stay readable on bright covers or artist photos.' },
 
-    { group: 'Lyrics' },
+    { group: 'Lyrics', icon: 'text', cat: 'View', desc: 'Font, size, spacing, colours and the Spicy-style word effects.' },
     { k: 'roman', label: 'Romanization', desc: 'Smart keeps Hindi (Devanagari) as is and romanizes everything else',
       type: 'choice', def: 'smart', opts: [['smart', 'Smart (keep Hindi)'], ['always', 'Always'], ['off', 'Original script']],
       help: 'Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization.' },
     { k: 'size', label: 'Text size', type: 'range', min: 0.6, max: 1.6, step: 0.05, def: 1, unit: '×', help: 'Lyrics size. Layouts scale from this (TV and Cinema are bigger).' },
-    { k: 'font', label: 'Font', type: 'choice', def: 'system', opts: [['system', 'System (Roboto)'], ['Inter', 'Inter'], ['Outfit', 'Outfit'], ['Manrope', 'Manrope'], ['DM Sans', 'DM Sans'], ['Plus Jakarta Sans', 'Plus Jakarta Sans'], ['Space Grotesk', 'Space Grotesk'], ['Sora', 'Sora'], ['Lexend', 'Lexend'], ['Poppins', 'Poppins'], ['Playfair Display', 'Playfair Display (serif)'], ['Lora', 'Lora (serif)'], ['JetBrains Mono', 'JetBrains Mono']],
-      help: 'Typeface for lyrics and titles. Anything but System downloads once from Google Fonts and is then cached; scripts a font lacks (Devanagari, Gurmukhi…) fall back to the system font.' },
-    { k: 'weight', label: 'Text weight', type: 'choice', def: '700', opts: [['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extra bold'], ['900', 'Black']],
+    { k: 'font', label: 'Font', type: 'choice', def: 'Inter', opts: [['Inter', 'Inter (Apple-style, default)'], ['system', 'System (Roboto)'], ['Outfit', 'Outfit'], ['Manrope', 'Manrope'], ['DM Sans', 'DM Sans'], ['Plus Jakarta Sans', 'Plus Jakarta Sans'], ['Space Grotesk', 'Space Grotesk'], ['Sora', 'Sora'], ['Lexend', 'Lexend'], ['Poppins', 'Poppins'], ['Playfair Display', 'Playfair Display (serif)'], ['Lora', 'Lora (serif)'], ['JetBrains Mono', 'JetBrains Mono']],
+      help: 'Typeface for lyrics and titles. Inter is the closest free match to Apple\'s San Francisco (Apple Music\'s lyrics font, which Apple only licenses for its own devices). Anything but System downloads once from Google Fonts and is then cached; scripts a font lacks (Devanagari, Gurmukhi…) fall back to the system font.' },
+    { k: 'weight', label: 'Text weight', type: 'choice', def: '800', opts: [['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extra bold'], ['900', 'Black']],
       help: 'Thickness of the lyrics font.' },
     { k: 'align', label: 'Alignment', type: 'choice', def: 'left', opts: [['left', 'Left'], ['center', 'Centre']], help: 'Duet lines sung by the second singer still go to the other side.' },
     { k: 'anchor', label: 'Active line position', desc: 'How far down the screen the current line sits', type: 'range', min: 0.2, max: 0.6, step: 0.05, def: 0.35,
@@ -98,6 +98,7 @@ const Settings = (() => {
     { k: 'dots', label: 'Interlude dots', type: 'toggle', def: true, help: 'Three breathing dots fill instrumental gaps and pop just before singing resumes.' },
     { k: 'dotsGap', label: 'Dots after a gap of', type: 'range', min: 2, max: 12, step: 0.5, def: 4, unit: ' s', when: s => s.dots, help: 'Minimum silence between lines before the dots appear.' },
     { k: 'scrollLead', label: 'Scroll ahead', type: 'range', min: 0, max: 800, step: 50, def: 250, unit: ' ms', help: 'The list starts moving to the next line this long before it is sung, so your eyes are already there.' },
+    { k: 'scrollBack', label: 'Return to the sung line after', type: 'range', min: 1, max: 10, step: 0.5, def: 3, unit: ' s', help: 'Drag the lyrics up or down to read ahead or look back (flick to scroll fast). This long after you let go, they glide back to the line being sung.' },
     { k: 'credits', label: 'Show credits', desc: 'Written by / Provided by under the lyrics', type: 'toggle', def: true,
       help: 'Songwriters are optional; the lyrics provider (and community sync credits) are always shown, as the providers require.' },
     { k: 'tapSeek', label: 'Tap a line to jump to it', type: 'toggle', def: true, help: 'Tap any synced line to seek Spotify to it.' },
@@ -107,7 +108,7 @@ const Settings = (() => {
       desc: 'Your own publishable key with "No origin header" allowed. Fills gaps the desktop cache misses.',
       help: 'Get one at developers.spicylyrics.org → your application → Client access (no backend) → publishable key (sl_pk_…), with "No origin header" allowed. Never paste a secret key (sl_sk_…). Needed for word-synced lyrics in Spotify-account mode.' },
 
-    { group: 'Animations' },
+    { group: 'Animations', icon: 'spark', cat: 'View', desc: 'How songs change, how play / pause feels and how the lyrics glide.' },
     { k: 'trackAnim', label: 'Next / previous', type: 'choice', def: 'slide', opts: [
       ['slide', 'Slide'], ['fade', 'Fade'], ['zoom', 'Zoom'], ['flip', 'Flip'], ['blur', 'Blur'], ['stack', 'Card stack'], ['none', 'None']],
       help: 'How the screen changes to the next song. Next moves left, previous moves right.' },
@@ -118,13 +119,10 @@ const Settings = (() => {
       help: 'How the lyrics glide to the next line. Springy overshoots a little.' },
     { k: 'animSpeed', label: 'Animation speed', type: 'range', min: 0.5, max: 2, step: 0.1, def: 1, unit: '×', help: 'Speeds up or slows down every UI animation.' },
 
-    { group: 'Screen' },
+    { group: 'Screen', icon: 'phone', cat: 'Device', desc: 'Keep-awake, brightness, night mode, burn-in protection and the phone\'s buttons.' },
     { k: 'awake', label: 'Keep the screen on', type: 'choice', def: 'always', opts: [['always', 'Always'], ['playing', 'Only while playing'], ['system', 'Follow Android']],
       help: 'Always: never sleeps (the kiosk default). Only while playing: the screen turns off after music has been paused for the time below. Follow Android: the normal screen timeout.' },
     { k: 'sleepAfter', label: 'Turn off after pausing for', type: 'range', min: 1, max: 60, step: 1, def: 10, unit: ' min', when: s => s.awake === 'playing', help: 'How long the screen stays on after music stops.' },
-    { k: 'clock', label: 'Clock screen', type: 'choice', def: 'paused', opts: [['off', 'Off'], ['paused', 'When paused'], ['idle', 'When nothing is playing']],
-      help: 'A calm full-screen clock with the date and the next song, shown after a while without music. Tap it to go back.' },
-    { k: 'clockAfter', label: 'Show the clock after', type: 'range', min: 1, max: 30, step: 1, def: 3, unit: ' min', when: s => s.clock !== 'off', help: 'Minutes without music before the clock appears.' },
     { k: 'night', label: 'Night mode', type: 'toggle', def: false, help: 'Between the hours below: dims everything, switches to a black background and warms the colours.' },
     { k: 'nightFrom', label: 'Night starts at', type: 'range', min: 0, max: 23, step: 1, def: 22, unit: ':00', when: s => s.night, help: 'Hour (24-hour clock) night mode starts.' },
     { k: 'nightTo', label: 'Night ends at', type: 'range', min: 0, max: 23, step: 1, def: 7, unit: ':00', when: s => s.night, help: 'Hour (24-hour clock) night mode ends.' },
@@ -139,7 +137,31 @@ const Settings = (() => {
     { k: 'mediaNotif', label: 'Media notification', type: 'toggle', def: true, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
     { k: 'battery', label: 'Battery indicator', type: 'toggle', def: false, help: 'Shows the phone\'s battery level and whether it is charging, in a corner (handy for a kiosk dock).' },
 
-    { group: 'Performance' },
+    { group: 'Clock', icon: 'clock', cat: 'Device', desc: 'The flip clock that takes over when the music stops.' },
+    { k: 'clock', label: 'Clock screen', type: 'choice', def: 'paused', opts: [['off', 'Off'], ['paused', 'When paused'], ['idle', 'When nothing is playing']],
+      help: 'A full-screen clock after a while without music. It goes away by itself when music plays; double-tap to go back sooner.' },
+    { k: 'clockAfter', label: 'Show the clock after', type: 'range', min: 1, max: 30, step: 1, def: 3, unit: ' min', when: s => s.clock !== 'off', help: 'Minutes without music before the clock appears.' },
+    { k: 'clockStyle', label: 'Style', type: 'choice', def: 'flip', opts: [['flip', 'Flip cards'], ['simple', 'Simple (time and date)']], when: s => s.clock !== 'off',
+      help: 'Flip cards: big white numerals on dark cards that flip like a mechanical clock. Tap to show or hide seconds, double-tap to go back. Simple: a thin time with the date.' },
+    { k: 'clockAnim', label: 'Flip animation', type: 'choice', def: 'classic', opts: [['classic', 'Classic'], ['bounce', 'Bounce'], ['fold', 'Slow fold'], ['cascade', 'Cascade (per digit)'], ['roll', 'Roll'], ['fade', 'Fade']],
+      when: s => s.clock !== 'off' && s.clockStyle === 'flip',
+      help: 'Classic: the top half falls, the new bottom half lands. Bounce: the flap overshoots and settles. Slow fold: slower, with a light sheen and a shadow on the half below. Cascade: every digit is its own card and flips a beat after the one before (departure board). Roll: the digit rolls down a drum. Fade: a quiet crossfade.' },
+    { k: 'clockSeconds', label: 'Show seconds', type: 'toggle', def: false, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'A third card for seconds. Tapping the clock toggles it too.' },
+    { k: 'clock24', label: 'Time format', type: 'choice', def: '12', opts: [['12', '12-hour (AM / PM)'], ['24', '24-hour']], when: s => s.clock !== 'off', help: '12-hour shows AM or PM in the corner of the hours card.' },
+    { k: 'clockLayout', label: 'Arrangement', type: 'choice', def: 'auto', opts: [['auto', 'Follow the screen'], ['side', 'Side by side'], ['stacked', 'Stacked']], when: s => s.clock !== 'off' && s.clockStyle === 'flip',
+      help: 'Follow the screen: cards side by side in landscape, stacked in portrait.' },
+    { k: 'clockCards', label: 'Show the cards', type: 'toggle', def: true, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'Off: only the numerals on black (the flip still moves them).' },
+    { k: 'clockScale', label: 'Size', type: 'range', min: 0.5, max: 1, step: 0.05, def: 1, unit: '×', when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'Smaller cards leave more black around them.' },
+    { k: 'clockDim', label: 'Dim', type: 'range', min: 0, max: 0.85, step: 0.05, def: 0, when: s => s.clock !== 'off', help: 'Darkens the clock (for a bedroom at night).' },
+    { k: 'clockSound', label: 'Flip sound', type: 'choice', def: 'off', opts: [['off', 'Off'], ['mechanical', 'Mechanical (whoosh + click)'], ['click', 'Click'], ['whoosh', 'Whoosh'], ['soft', 'Soft tap']],
+      when: s => s.clock !== 'off' && s.clockStyle === 'flip',
+      help: 'A small sound made on the phone (no audio files) timed to the flap: the whoosh as it falls, the click as it lands. Silent during night mode.' },
+    { k: 'clockVolume', label: 'Sound volume', type: 'range', min: 0.05, max: 1, step: 0.05, def: 0.4, when: s => s.clock !== 'off' && s.clockSound !== 'off', help: 'Loudness of the flip sound (relative to the phone\'s media volume).' },
+    { k: 'clockSoundEvery', label: 'Sound with seconds on', type: 'choice', def: 'minute', opts: [['minute', 'Only when the minute changes'], ['all', 'Every flip']], when: s => s.clock !== 'off' && s.clockSound !== 'off' && s.clockSeconds,
+      help: 'A tick every second gets tiring: by default only the minute flip makes a sound.' },
+    { k: 'clockHaptic', label: 'Vibrate on flip', type: 'toggle', def: false, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'A very short tick of the vibration motor as the flap lands.' },
+    { k: 'clockCaption', label: 'Paused song under the clock', type: 'toggle', def: true, when: s => s.clock !== 'off', help: 'Shows "Paused · song" in small text below the clock.' },
+    { group: 'Performance', icon: 'gauge', cat: 'Device', desc: 'Background resolution, blur and frame rate: trade looks for smoothness on slower phones.' },
     { k: 'bgRes', label: 'Background resolution', type: 'range', min: 0.2, max: 1, step: 0.05, def: 0.5, unit: '×',
       help: 'Size the dynamic background is drawn at. Under this much blur 0.5 looks the same as 1 and is what lets a budget phone hold 60 fps.' },
     { k: 'bgBlur', label: 'Background blur passes', type: 'range', min: 1, max: 12, step: 1, def: 6, help: 'Softness of the dynamic background. More passes = smoother, more GPU work.' },
@@ -147,7 +169,7 @@ const Settings = (() => {
       help: 'Cap for the dynamic background. Match display runs at the screen\'s own refresh rate (60, 90, 120, 144 Hz…); a phone never goes above its screen. The background moves slowly, so 30 fps is hard to tell apart and saves power.' },
     { k: 'renderDistance', label: 'Lines kept drawn', type: 'range', min: 8, max: 60, step: 1, def: 20, help: 'Lines further than this from the current one are not drawn at all (long songs stay light). Raise it if you use a tiny text size.' },
 
-    { group: 'Playback source' },
+    { group: 'Playback source', icon: 'source', cat: 'Source', desc: 'Follow Spotify on the computer, your Spotify account, or both.' },
     { k: 'source', label: 'Source', type: 'choice', def: 'auto',
       desc: 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
       opts: [['auto', 'Auto'], ['bridge', 'Desktop (Spicetify)'], ['web', 'Spotify account']],
@@ -159,11 +181,11 @@ const Settings = (() => {
       run: () => (Web.loggedIn() ? Web.logout() : Web.login()), info: () => window.Web?.status() ?? '',
       help: 'Signs in on this phone (you type your password into Spotify\'s own page). Also lets Spotify on your computer find this phone without a code.' },
 
-    { group: 'Presets', desc: 'Built-in presets, plus your own (saved on the desktop, so another phone can reuse them)' },
+    { group: 'Presets', icon: 'layers', cat: 'Source', desc: 'Built-in looks and your own, saved on the computer so every phone can use them.' },
     { label: 'Export / import', type: 'io', help: 'Export copies all settings (without API keys) as text you can paste into another phone. Import applies settings pasted here. Spotify\'s LyricDock panel can export and import files too.' },
     { label: 'Presets', type: 'presets', help: 'Built-in: Default (the shipped config), Smooth (for slow phones) and Full Spicy (every effect up). Your own presets are stored in Spotify on the computer.' },
 
-    { group: 'Updates' },
+    { group: 'Updates', icon: 'download', cat: 'Ops', desc: 'Automatic updates, the beta channel and release notes.' },
     { k: 'channel', label: 'Update channel', type: 'choice', def: 'stable', opts: [['stable', 'Stable'], ['beta', 'Beta (pre-releases)']],
       help: 'Beta installs pre-releases as soon as they are published (they may have rough edges). Android cannot install an older version over a newer one, so going back from beta to stable waits for the next stable release.' },
     { k: 'autoUpdate', label: 'Update automatically', desc: 'New versions from GitHub Releases install on their own', type: 'toggle', def: true,
@@ -172,7 +194,7 @@ const Settings = (() => {
       help: 'Check for a new version now and install it if there is one.' },
     { label: 'Changelog', type: 'action', text: () => 'What\'s new', run: () => window.showChangelog?.(), help: 'Release notes for this and earlier versions, from GitHub.' },
 
-    { group: 'Connection' },
+    { group: 'Connection', icon: 'link', cat: 'Ops', desc: 'How the phone and Spotify find each other: pairing, signalling server, TURN, kiosk mode.' },
     { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
       help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer\'s internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection.' },
     { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'ntfy.sh (public)'], ['custom', 'My own ntfy server'], ['helper', 'LyricDock Helper on my PC']],
@@ -201,6 +223,21 @@ const Settings = (() => {
     'Full Spicy': { glow: true, glowStrength: 1.3, lift: true, liftAmount: 1.2, letters: true, blurLines: true, bgRes: 0.75, bgBlur: 8, bgFps: 'max', bgBeat: true, bgSaturation: 1.8 },
   };
 
+  // Section icons (24 x 24, 1.8 stroke), shared with Spotify's panel through schema().
+  const ICONS = {
+    layout: 'M3.5 4.5h17v15h-17zM9.5 4.5v15',
+    note: 'M9 18V5.5l11-2V16M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+    image: 'M3.5 5h17v14h-17zM3.5 16l5-5 4 4 3-3 5 5M15.5 9.5h.01',
+    text: 'M4 6h16M4 11h11M4 16h14M4 20.5h8',
+    spark: 'M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5',
+    phone: 'M7 2.5h10v19H7zM11 18.5h2',
+    clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3.2 2',
+    gauge: 'M4 17a8 8 0 1 1 16 0M12 17l4.2-5.3M3 17h2M19 17h2',
+    source: 'M4 15v-3a8 8 0 0 1 16 0v3M4 14.5h3v6H4zM17 14.5h3v6h-3z',
+    layers: 'M12 3.5l8.5 4.5-8.5 4.5L3.5 8zM3.5 12.5l8.5 4.5 8.5-4.5M3.5 16.5l8.5 4.5 8.5-4.5',
+    download: 'M12 3.5v11M7 10l5 5 5-5M4.5 20h15',
+    link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+  };
   const KEY = 'dock:settings';
   const defaults = Object.fromEntries(SCHEMA.filter(x => x.k).map(x => [x.k, x.def]));
   let saved = null;
@@ -352,65 +389,83 @@ const Settings = (() => {
     return slider(x);
   }
 
+  // ---- sheet: an icon rail of sections (a strip along the top in portrait), one section at a time on the right with
+  // its category, description and a Reset; the search box in the header searches every section at once.
+  let cur = null, query = '';
+  const svgI = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+  const groupKeys = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (SCHEMA[j].k) out.push(SCHEMA[j].k); return out; };
+  const visibleRows = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (!SCHEMA[j].when || SCHEMA[j].when(S)) out.push(SCHEMA[j]); return out; };
+  function makeRow(x, where) {
+    const row = el('div', 'sl-sp-row' + (['range', 'text', 'presets', 'action', 'io'].includes(x.type) ? ' sl-sp-row--stacked' : ''));
+    const lw = el('div', 'sl-sp-label-wrap');
+    const lab = el('div', 'sl-sp-label', x.label);
+    if (where) { const c = el('button', 'st-chip', where); c.onclick = e => { e.stopPropagation(); go(where); }; lab.append(c); }
+    if (x.help) { // ⓘ: tap to expand the explanation under the label (hover shows it too, via title)
+      const hb = el('button', 'sl-help-btn', 'i');
+      hb.title = x.help;
+      hb.setAttribute('aria-label', 'What does this do?');
+      hb.onclick = e => { e.stopPropagation(); row.classList.toggle('help-open'); };
+      lab.append(hb);
+    }
+    lw.append(lab);
+    if (x.desc) lw.append(el('div', 'sl-sp-description', x.desc));
+    const c = el('div', 'sl-sp-control');
+    c.append(control(x));
+    row.append(lw, c);
+    if (x.help) row.append(el('div', 'sl-sp-help', x.help)); // full row width, under the label + control
+    return row;
+  }
+  function go(g) { cur = g; query = ''; const f = document.getElementById('sfind'); if (f) f.value = ''; render(); }
   function render() {
     const body = document.querySelector('#settings .sl-modal-main-section');
     if (!body) return;
-    const top = body.scrollTop;
-    // Rows live in an inner, auto-height wrapper: multi-column on the fixed-height scroller itself would
-    // overflow into extra columns off to the side (settings "missing") instead of scrolling.
-    const cols = el('div', 'sl-cols');
-    body.replaceChildren(cols);
-    cols.append(...SCHEMA.filter(x => !x.when || x.when(S)).map(x => {
-      if (x.group) {
-        const t = el('div', 'sl-sp-section-title', x.group), keys = groupKeys(x.group);
-        if (keys.length) {
-          const r = el('button', 'sl-group-reset', 'Reset');
-          r.onclick = () => { for (const k of keys) if (k !== 'apiKey') S[k] = defaults[k]; save(); notify('*'); render(); window.notice?.(`${x.group} reset to defaults`); };
-          t.append(r);
-        }
-        t.dataset.group = x.group;
-        return t;
-      }
-      const row = el('div', 'sl-sp-row' + (['range', 'text', 'presets', 'action'].includes(x.type) ? ' sl-sp-row--stacked' : ''));
-      const lw = el('div', 'sl-sp-label-wrap');
-      const lab = el('div', 'sl-sp-label', x.label);
-      if (x.help) { // ⓘ: tap to expand the explanation under the label (hover shows it too, via title)
-        const hb = el('button', 'sl-help-btn', 'i');
-        hb.title = x.help;
-        hb.setAttribute('aria-label', 'What does this do?');
-        hb.onclick = e => { e.stopPropagation(); row.classList.toggle('help-open'); };
-        lab.append(hb);
-      }
-      lw.append(lab);
-      if (x.desc) lw.append(el('div', 'sl-sp-description', x.desc));
-      const c = el('div', 'sl-sp-control');
-      c.append(control(x));
-      row.append(lw, c);
-      if (x.help) row.append(el('div', 'sl-sp-help', x.help)); // full row width, under the label + control
-      row.dataset.find = `${x.label} ${x.desc || ''} ${x.help || ''}`.toLowerCase();
-      return row;
-    }));
-    filterRows();
-    body.scrollTop = top;
-  }
-
-  // Search: hide rows that don't match, and section titles left with no matching rows.
-  let query = '';
-  function filterRows() {
-    const q = query.trim().toLowerCase();
-    let title = null, any = false;
-    const done = () => { if (title) title.style.display = !q || any ? '' : 'none'; };
-    for (const r of document.querySelectorAll('#settings .sl-cols > *')) {
-      if (r.dataset.group !== undefined) { done(); title = r; any = false; continue; }
-      const ok = !q || (r.dataset.find || '').includes(q);
-      r.style.display = ok ? '' : 'none';
-      any = any || ok;
+    const groups = SCHEMA.filter(x => x.group), q = query.trim().toLowerCase();
+    if (!groups.some(g => g.group === cur)) cur = groups[0].group;
+    const oldPane = body.querySelector('.st-pane'), same = body.dataset.view === `${cur}|${q}`, top = oldPane?.scrollTop ?? 0;
+    const rail = el('nav', 'st-rail');
+    for (const g of groups) {
+      const b = el('button', 'st-tab' + (!q && g.group === cur ? ' on' : ''));
+      b.innerHTML = `${svgI(ICONS[g.icon] || '')}<span></span>`;
+      b.lastChild.textContent = g.group;
+      b.onclick = () => go(g.group);
+      rail.append(b);
     }
-    done();
+    const pane = el('div', 'st-pane'), box = el('div', 'st-box');
+    const head = (badge, title, lead, extra) => {
+      const hd = el('div', 'st-head');
+      hd.append(el('span', 'st-badge', badge), el('div', 'st-title', title));
+      if (extra) hd.append(extra);
+      pane.append(hd);
+      if (lead) pane.append(el('p', 'st-lead', lead));
+    };
+    if (q) {
+      let g = null, n = 0;
+      for (const x of SCHEMA) {
+        if (x.group) { g = x.group; continue; }
+        if ((x.when && !x.when(S)) || !`${x.label} ${x.desc || ''} ${x.help || ''} ${g}`.toLowerCase().includes(q)) continue;
+        box.append(makeRow(x, g)); n++;
+      }
+      head(`${n} result${n === 1 ? '' : 's'}`, 'Search', n ? 'Change them here, or tap a section name to open it.' : 'Nothing matches. Try other words.');
+    } else {
+      const g = groups.find(x => x.group === cur), keys = groupKeys(cur);
+      let r = null;
+      if (keys.length) {
+        r = el('button', 'sl-group-reset', 'Reset');
+        r.onclick = () => { for (const k of keys) if (k !== 'apiKey') S[k] = defaults[k]; save(); notify('*'); render(); window.notice?.(`${cur} reset to defaults`); };
+      }
+      head(g.cat || 'Settings', g.group, g.desc, r);
+      for (const x of visibleRows(cur)) box.append(makeRow(x));
+    }
+    if (box.childElementCount) pane.append(box);
+    const wrap = el('div', 'st-wrap');
+    wrap.append(rail, pane);
+    body.replaceChildren(wrap);
+    body.dataset.view = `${cur}|${q}`;
+    pane.scrollTop = same ? top : 0;
+    if (!same) rail.querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
-  const groupKeys = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (SCHEMA[j].k) out.push(SCHEMA[j].k); return out; };
   const findInput = document.getElementById('sfind');
-  if (findInput) findInput.oninput = () => { query = findInput.value; filterRows(); };
+  if (findInput) findInput.oninput = () => { query = findInput.value; render(); };
 
   const open = () => { render(); document.body.classList.add('settings-open'); };
   const close = () => document.body.classList.remove('settings-open');
@@ -425,13 +480,13 @@ const Settings = (() => {
   // Serializable copy of the schema for the desktop panel (functions dropped; actions/info/presets are phone-only).
   const schema = () => SCHEMA.filter(x => x.group || (x.k && x.type !== 'info'))
     .filter((x, i, a) => !x.group || (a[i + 1] && !a[i + 1].group)) // drop sections with nothing editable (Presets, Connection)
-    .map(({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help }) =>
-      ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help }));
+    .map(({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon, cat }) =>
+      ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon: ICONS[icon], cat }));
   // A change from the desktop panel: only known keys, and only values of the default's type.
   const setRemote = (k, v) => { if (k in defaults && typeof v === typeof defaults[k] && (x => !x.opts || x.opts.some(o => o[0] === v))(SCHEMA.find(x => x.k === k))) set(k, v); };
 
   return {
-    S, set, setRemote, schema, open, close, reset, load, fresh, render, BUILTIN, defaults,
+    S, set, setRemote, schema, open, close, reset, load, fresh, render, BUILTIN, defaults, ICONS,
     onChange: f => listeners.push(f),
     setPresets: p => { presets = p && typeof p === 'object' ? p : {}; render(); },
     onPreset: f => { presetHook = f; },

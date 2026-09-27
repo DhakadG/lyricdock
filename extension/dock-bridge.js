@@ -121,9 +121,12 @@
   }
 
   // Connection feedback: a dot on the top-bar button, and a notice only when the state has held for 3s.
-  let shown = null, pendingState = null, pendingSince = 0;
+  let shown = null, pendingState = null, pendingSince = 0, linkSig = '';
   function linkState() {
     const on = connected();
+    // The panel follows every change in which phones are linked (and how) at once; only the notification waits.
+    const sig = openLinks().map(l => `${l.code}:${l.kind}`).sort().join();
+    if (sig !== linkSig) { linkSig = sig; renderPanel(); }
     document.querySelector('.ld-topbar')?.classList.toggle('ld-on', on);
     if (on !== pendingState) { pendingState = on; pendingSince = Date.now(); }
     if (on !== shown && Date.now() - pendingSince > 3000) {
@@ -279,7 +282,9 @@
   let adbBusy = false, nextAdb = 0;
   function ensureLink() {
     linkState();
-    for (const [id, l] of links) if (l.readyState !== 1 || Date.now() - l.lastRx > 2500) closeLink(id, l.readyState === 1 ? 'went quiet' : 'disconnected');
+    // Quiet = dead: 2.5s over adb (a forwarded socket can look open after the phone died), 8s over WebRTC, which rides
+    // out Wi-Fi power-save hiccups (ICE recovers by itself; closing early is what caused needless reconnects).
+    for (const [id, l] of links) if (l.readyState !== 1 || Date.now() - l.lastRx > (l.kind === 'rtc' ? 8000 : 2500)) closeLink(id, l.readyState === 1 ? 'went quiet' : 'disconnected');
     if (!links.has('adb') && !adbBusy && Date.now() > nextAdb) {
       adbBusy = true; nextAdb = Date.now() + 3000;
       tryOpen(1200).then(s => { adbBusy = false; if (s) adopt('adb', s, null); });
@@ -298,7 +303,9 @@
         else s.close();
       });
     }
-    if (!connected()) autoPair();
+    // Account auto-pairing only while no phone is paired at all. Announcing on every short disconnect made paired
+    // phones pop the Allow prompt again. Adding more phones: the panel's 'Find phones on my account'.
+    if (!connected() && !pairs().length) autoPair();
   }
 
   function adopt(id, s, code) {
@@ -376,6 +383,8 @@
         act(m.cmd, uri, typeof m.uid === 'string' ? m.uid : null).then(r => sendTo(from, { type: 'acted', cmd: m.cmd, uri, ...r }));
       setTimeout(beat, 80);
     }
+    // Diagnostics for development: which of Spotify's internal APIs this client has (names only), last errors.
+    else if (m.type === 'probe') sendTo(from, { type: 'diag', gql: Object.keys(Spicetify.GraphQL?.Definitions ?? {}), platform: Object.keys(Spicetify.Platform ?? {}), errors: lastErrors.slice(-10) });
     else if (m.type === 'list' && ['queue', 'recent', 'library', 'friends', 'tracks', 'search'].includes(m.which)) {
       const arg = m.which === 'tracks' ? (URI.test(m.uri ?? '') ? m.uri : null) : m.which === 'search' ? String(m.q ?? '').slice(0, 100) : null;
       lists(m.which, arg).then(r => sendTo(from, { type: 'list', which: m.which, uri: m.uri, q: m.q, ...r }));
@@ -404,6 +413,15 @@
     const r = await fetch(path.startsWith('https:') ? path : `https://api.spotify.com/v1${path}`, { method, headers: { authorization: `Bearer ${await token()}` } });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.status === 204 ? null : r.json().catch(() => null);
+  }
+  // Spotify rate-limits the client's Web API token hard (429): cache slow-changing answers for 10 minutes.
+  const memo = new Map();
+  async function webCached(path, ttl = 600000) {
+    const hit = memo.get(path);
+    if (hit && Date.now() - hit.at < ttl) return hit.v;
+    const v = await web(path);
+    memo.set(path, { v, at: Date.now() });
+    return v;
   }
   const gql = (def, vars) => { const d = Spicetify.GraphQL?.Definitions?.[def]; if (!d) throw new Error(`no ${def}`); return Spicetify.GraphQL.Request(d, vars); };
   const names = xs => (xs ?? []).map(a => a?.name ?? a?.profile?.name).filter(Boolean).join(', ');
@@ -471,7 +489,7 @@
       if (which === 'recent') {
         let items = null;
         try {
-          const r = await web('/me/player/recently-played?limit=50');
+          const r = await webCached('/me/player/recently-played?limit=50', 60000);
           items = (r?.items ?? []).map(x => ({ ...trackRow(x.track), ctx: x.context?.uri, time: Date.parse(x.played_at) }));
         } catch {}
         if (!items?.length) items = readJson(HISTORY_KEY, []);
@@ -482,7 +500,7 @@
         const flat = xs => xs.flatMap(x => x.type === 'folder' ? flat(x.items ?? []) : [x]);
         const items = [boxRow('spotify:collection:tracks', 'Liked Songs', 'Playlist', 'liked'),
           ...flat(root?.items ?? []).filter(x => x.uri).map(x => boxRow(x.uri, x.name, ['Playlist', x.owner?.name ?? x.owner?.displayName].filter(Boolean).join(' · '), pickImg(x.images)))];
-        const [al, ar] = await Promise.all([web('/me/albums?limit=50').catch(() => null), web('/me/following?type=artist&limit=50').catch(() => null)]);
+        const [al, ar] = await Promise.all([webCached('/me/albums?limit=50').catch(() => null), webCached('/me/following?type=artist&limit=50').catch(() => null)]);
         items.push(...(al?.items ?? []).map(a => boxRow(a.album.uri, a.album.name, `Album · ${names(a.album.artists)}`, pickImg(a.album.images))),
           ...(ar?.artists?.items ?? []).map(a => boxRow(a.uri, a.name, 'Artist', pickImg(a.images))));
         return { items };
@@ -519,7 +537,7 @@
     if (type === 'playlist') {
       const A = Spicetify.Platform.PlaylistAPI;
       const [meta, c] = await Promise.all([A.getMetadata(uri).catch(() => null), A.getContents(uri, { limit: 500 })]);
-      const items = (c?.items ?? []).filter(t => t?.uri).map(t => trackRow(t));
+      const items = (c?.items ?? []).filter(t => t?.uri && t?.name).map(t => trackRow(t)); // unavailable / local rows have no name
       return { head: { uri, title: meta?.name ?? 'Playlist', sub: [meta?.owner?.displayName ?? meta?.owner?.name, `${c?.totalLength ?? items.length} songs`].filter(Boolean).join(' · '), art: pickImg(meta?.images) }, ctx: uri, items: await withLiked(items) };
     }
     if (type === 'album') {
@@ -529,7 +547,8 @@
         const art = pickImg(a?.coverArt?.sources);
         items = ((a?.tracksV2 ?? a?.tracks)?.items ?? []).map(x => trackRow(x.track, art));
         head = { uri, title: a?.name, sub: [names(a?.artists?.items), (a?.date?.isoString || '').slice(0, 4)].filter(Boolean).join(' · '), art };
-      } catch {
+      } catch (e) {
+        noteErr('album gql', e);
         const a = await web(`/albums/${id}`), art = pickImg(a?.images);
         items = (a?.tracks?.items ?? []).map(t => trackRow(t, art));
         head = { uri, title: a?.name, sub: [names(a?.artists), (a?.release_date || '').slice(0, 4)].filter(Boolean).join(' · '), art };
@@ -556,6 +575,8 @@
     throw new Error('Not browsable');
   }
 
+  const lastErrors = [];
+  const noteErr = (where, e) => { lastErrors.push(`${where}: ${String(e?.message || e).slice(0, 160)}`); if (lastErrors.length > 20) lastErrors.shift(); };
   async function search(q) {
     let items = [];
     try {
@@ -569,7 +590,8 @@
         ...(s.albumsV2?.items ?? s.albums?.items ?? []).map(d).filter(a => a?.uri).map(a => ({ ...boxRow(a.uri, a.name, `Album · ${names(a.artists?.items)}`, pickImg(a.coverArt?.sources)), section: 'Albums' })),
         ...(s.playlists?.items ?? []).map(d).filter(p => p?.uri).map(p => ({ ...boxRow(p.uri, p.name, `Playlist · ${p.ownerV2?.data?.name ?? ''}`, pickImg(p.images?.items?.[0]?.sources)), section: 'Playlists' })),
       ];
-    } catch {
+    } catch (e) {
+      noteErr('search gql', e);
       const r = await web(`/search?q=${encodeURIComponent(q)}&type=track,artist,album,playlist&limit=8`);
       items = [
         ...(r?.tracks?.items ?? []).map(t => ({ ...trackRow(t), section: 'Songs' })),
@@ -713,7 +735,7 @@
       try {
         const c = (await gql('canvas', { uri: it.uri }))?.data?.trackUnion?.canvas;
         if (c?.url && /\.mp4(\?|$)/.test(c.url)) keep({ type: 'canvas', id, url: c.url });
-      } catch {}
+      } catch (e) { noteErr('canvas', e); }
     })();
     try {
       const d = await Spicetify.getAudioData(it.uri);
@@ -774,65 +796,109 @@
     if (f) { e.preventDefault(); f(); }
   }, true);
 
-  // ---- Spotify top bar: LyricDock button -> settings panel. The phone sends its settings schema, so the panel
-  // always matches the app. Connected: changes apply instantly. Offline: saved, pushed when the phone connects.
+  // ---- Spotify top bar: LyricDock button -> settings window. The phone sends its settings schema (with section
+  // icons), so the window always matches the app. Connected: changes apply instantly. Offline: saved, sent later.
+  // Layout (after ivLyrics' settings): a sidebar of sections grouped by category with a search box, the section on
+  // the right as cards of rows, and a live preview only on the sections that change how the phone looks - full size
+  // at the top, shrinking to a slim strip as you scroll so it stays in view without eating the page.
   const ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
     + '<path d="M4.5 4h15A2.5 2.5 0 0 1 22 6.5v8a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 14.5v-8A2.5 2.5 0 0 1 4.5 4z"/>'
     + '<path d="M6 9h9" stroke-width="2.4"/><path d="M6 12.8h6" stroke-width="2.4" opacity=".5"/><path d="M12 17v2.6M8.6 20.6h6.8"/></svg>';
-  // Panel look: Spotify's own - its font stack, neutral greys, pill buttons, green only where Spotify uses it (switches).
   const FONT = 'var(--encore-body-font-stack, SpotifyMixUI, CircularSp, "Helvetica Neue", system-ui, sans-serif)';
-  const CSS = `.ld-panel{--hair:rgba(255,255,255,.07);--sub:rgba(255,255,255,.62);font-family:${FONT};font-size:14px;display:flex;flex-direction:column;gap:1px;padding-bottom:12px}
-    .ld-panel h3{display:flex;align-items:baseline;justify-content:space-between;font-size:15px;font-weight:700;letter-spacing:-.01em;margin:22px 4px 6px;color:#fff}
-    .ld-panel h3 a{font-size:12px;font-weight:600;color:var(--sub);cursor:pointer;text-decoration:none} .ld-panel h3 a:hover{color:#fff;text-decoration:underline}
-    .ld-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:10px 12px;border-radius:6px}
-    .ld-row>:first-child{min-width:0;flex:1} .ld-row>:last-child{flex-shrink:0}
-    .ld-row:hover{background:rgba(255,255,255,.04)}
-    .ld-desc{font-size:12.5px;color:var(--sub);margin-top:3px;line-height:1.45;max-width:52ch}
-    .ld-label{display:flex;align-items:center;gap:6px;font-weight:500;color:#fff}
-    .ld-help{flex:none;width:16px;height:16px;display:inline-grid;place-items:center;cursor:help;color:rgba(255,255,255,.45);transition:color .15s}
-    .ld-help svg{width:14px;height:14px;fill:currentColor}
-    .ld-help:hover,.ld-help:focus{color:#fff;outline:none}
-    .ld-help::after{content:attr(data-help);position:absolute;left:12px;right:12px;top:calc(100% - 2px);z-index:10;padding:10px 12px;border-radius:6px;
-      font:400 13px/1.5 ${FONT};color:rgba(255,255,255,.92);text-align:left;white-space:normal;
-      background:#282828;box-shadow:0 16px 24px rgba(0,0,0,.5),0 6px 8px rgba(0,0,0,.3);
-      opacity:0;transform:translateY(-3px);pointer-events:none;transition:opacity .12s,transform .12s}
-    .ld-help:hover::after,.ld-help:focus::after{opacity:1;transform:none;transition-delay:.25s}
-    .ld-panel select,.ld-panel input[type=text],.ld-panel input[type=search]{background:#2a2a2a;color:#fff;border:0;border-radius:4px;padding:8px 12px;font:inherit;font-size:13px;
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);transition:box-shadow .15s}
-    .ld-panel select:hover,.ld-panel input[type=text]:hover,.ld-panel input[type=search]:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
-    .ld-panel select:focus,.ld-panel input[type=text]:focus,.ld-panel input[type=search]:focus{outline:none;box-shadow:inset 0 0 0 1.5px #fff}
-    .ld-panel button{cursor:pointer;font:700 13px/1 ${FONT};color:#fff;background:transparent;border:0;border-radius:999px;padding:9px 16px;
+  const I = { // desktop-only sections
+    overview: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4',
+    diag: 'M4 5h16M4 10h16M4 15h10M4 20h7',
+    search: 'M10.5 3.5a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16 16l4.5 4.5',
+    presets: 'M12 3.5l8.5 4.5-8.5 4.5L3.5 8zM3.5 12.5l8.5 4.5 8.5-4.5M3.5 16.5l8.5 4.5 8.5-4.5',
+    close: 'M6 6l12 12M18 6L6 18',
+    eye: 'M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z',
+  };
+  const svgIcon = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+  const CSS = `.ldx{--hair:rgba(255,255,255,.07);--sub:rgba(255,255,255,.6);--g:#1ed760;position:fixed;inset:0;z-index:9999;display:grid;place-items:center;
+      background:rgba(0,0,0,.62);font-family:${FONT};font-size:14px;color:#fff;animation:ldxIn .16s ease-out}
+    @keyframes ldxIn{from{opacity:0}} @keyframes ldxCard{from{transform:translateY(10px) scale(.985);opacity:0}}
+    .ldx-card{width:min(1180px,94vw);height:min(840px,90vh);display:grid;grid-template-rows:auto 1fr;background:#121212;border-radius:14px;overflow:hidden;
+      box-shadow:0 40px 90px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.07);animation:ldxCard .22s cubic-bezier(.2,.8,.2,1)}
+    .ldx-head{display:flex;align-items:center;gap:12px;padding:16px 18px 16px 24px;border-bottom:1px solid var(--hair)}
+    .ldx-title{font-size:21px;font-weight:800;letter-spacing:-.02em}
+    .ldx-pill{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;color:var(--sub);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);font-variant-numeric:tabular-nums}
+    .ldx-conn{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:13px;color:var(--sub)}
+    .ldx-conn i{width:8px;height:8px;border-radius:50%;background:#f15e6c} .ldx-conn.on{color:#fff} .ldx-conn.on i{background:var(--g);box-shadow:0 0 0 4px rgba(30,215,96,.15)}
+    .ldx-x{width:36px;height:36px;border:0;border-radius:50%;background:transparent;color:var(--sub);cursor:pointer;display:grid;place-items:center;margin-left:8px}
+    .ldx-x:hover{background:rgba(255,255,255,.08);color:#fff}
+    .ldx svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+    .ldx-body{display:grid;grid-template-columns:250px 1fr;min-height:0}
+    .ldx-nav{border-right:1px solid var(--hair);padding:16px 12px 20px;overflow:auto;background:#0f0f0f}
+    .ldx-find{position:relative;margin:0 2px 6px} .ldx-find svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--sub);width:16px;height:16px}
+    .ldx-find input{width:100%;box-sizing:border-box;background:#1c1c1c;border:0;border-radius:8px;padding:11px 12px 11px 38px;color:#fff;font:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+    .ldx-find input:focus{outline:none;box-shadow:inset 0 0 0 1.5px var(--g)}
+    .ldx-cat{font-size:11.5px;font-weight:600;color:rgba(255,255,255,.42);margin:18px 12px 6px}
+    .ldx-item{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;border:0;background:transparent;padding:10px 12px;border-radius:8px;
+      color:rgba(255,255,255,.78);font:500 14px ${FONT};text-align:left;cursor:pointer;transition:background .12s,color .12s}
+    .ldx-item:hover{background:rgba(255,255,255,.05);color:#fff}
+    .ldx-item.on{background:rgba(30,215,96,.1);color:var(--g);box-shadow:inset 2px 0 0 var(--g)}
+    .ldx-main{overflow:auto;padding:26px 36px 48px;position:relative}
+    .ldx-main::-webkit-scrollbar,.ldx-nav::-webkit-scrollbar{width:10px} .ldx-main::-webkit-scrollbar-thumb,.ldx-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:5px;border:3px solid transparent;background-clip:padding-box}
+    .ldx-main::-webkit-scrollbar-track,.ldx-nav::-webkit-scrollbar-track{background:transparent}
+    .ldx-h{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+    .ldx-badge{font:700 11px/1 ${FONT};letter-spacing:.09em;text-transform:uppercase;color:var(--g);background:rgba(30,215,96,.1);padding:6px 8px;border-radius:6px}
+    .ldx-h h2{font-size:28px;font-weight:800;letter-spacing:-.025em;margin:0}
+    .ldx-lead{color:var(--sub);margin:4px 0 22px;max-width:72ch;line-height:1.5}
+    .ldx-sec{font-size:15px;font-weight:700;margin:26px 2px 10px;display:flex;justify-content:space-between;align-items:baseline}
+    .ldx-sec a{font-size:12.5px;font-weight:600;color:var(--sub);cursor:pointer} .ldx-sec a:hover{color:#fff;text-decoration:underline}
+    .ldx-box{background:#181818;border-radius:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);margin-bottom:18px}
+    .ldx-row{display:flex;align-items:center;justify-content:space-between;gap:28px;padding:15px 18px;border-top:1px solid var(--hair)}
+    .ldx-row:first-child{border-top:0}
+    .ldx-row>:first-child{min-width:0;flex:1} .ldx-row>:last-child{flex:none}
+    .ldx-row b{font-weight:600;font-size:14.5px;display:flex;align-items:center;gap:8px}
+    .ldx-row small{display:block;color:var(--sub);font-size:12.8px;line-height:1.5;margin-top:4px;max-width:78ch}
+    .ldx-row .ldx-in{font-size:11px;font-weight:600;color:rgba(255,255,255,.45);padding:2px 7px;border-radius:5px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);cursor:pointer}
+    .ldx-row.flash{animation:ldxFlash 1.6s ease-out} @keyframes ldxFlash{0%,30%{background:rgba(30,215,96,.12)}}
+    .ldx mark{background:rgba(30,215,96,.22);color:#fff;border-radius:3px;padding:0 2px}
+    .ldx-empty{color:var(--sub);padding:30px 4px}
+    .ldx select,.ldx input[type=text]{background:#2a2a2a;color:#fff;border:0;border-radius:6px;padding:9px 12px;font:inherit;font-size:13px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);min-width:180px}
+    .ldx select:hover,.ldx input[type=text]:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+    .ldx select:focus,.ldx input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 1.5px #fff}
+    .ldx option,.ldx optgroup{background:#282828;color:#fff}
+    .ldx button.ld-btn{cursor:pointer;font:700 13px/1 ${FONT};color:#fff;background:transparent;border:0;border-radius:999px;padding:9px 16px;
       box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);transition:transform .1s,box-shadow .15s,background .15s}
-    .ld-panel button:hover{box-shadow:inset 0 0 0 1px #fff;transform:scale(1.03)} .ld-panel button:active{transform:scale(.97)}
-    .ld-panel button.ld-primary{background:#fff;color:#000;box-shadow:none} .ld-panel button.ld-primary:hover{background:#f0f0f0}
-    .ld-panel option,.ld-panel optgroup{background:#282828;color:#fff}
-    .ld-panel input[type=range]{width:210px;accent-color:#fff;cursor:pointer} .ld-panel input[type=text]{width:240px}
-    .ld-search{position:sticky;top:149px;z-index:4;padding:8px 0;background:var(--background-elevated-base,#282828)} .ld-search input{width:100%!important;box-sizing:border-box}
-    .ld-switch{-webkit-appearance:none;appearance:none;width:40px;height:22px;border-radius:11px;background:#535353;position:relative;cursor:pointer;margin:0;transition:background .2s}
-    .ld-switch::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s cubic-bezier(.3,1.3,.6,1)}
-    .ld-switch:hover{background:#6a6a6a} .ld-switch:checked{background:#1ed760} .ld-switch:checked::after{transform:translateX(18px)}
-    .ld-val{min-width:58px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:rgba(255,255,255,.85)}
-    .ld-status{display:flex;align-items:center;gap:10px;padding:4px 12px 10px;font-size:13px;color:var(--sub)}
-    .ld-status i,.ld-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#f15e6c;display:inline-block}
-    .ld-status.on{color:#fff} .ld-status.on i,.ld-dot.on{background:#1ed760}
+    .ldx button.ld-btn:hover{box-shadow:inset 0 0 0 1px #fff;transform:scale(1.03)} .ldx button.ld-btn:active{transform:scale(.97)}
+    .ldx button.ld-primary{background:#fff;color:#000;box-shadow:none} .ldx button.ld-primary:hover{background:#f0f0f0}
+    .ldx input[type=range]{width:220px;accent-color:var(--g);cursor:pointer}
+    .ld-switch{-webkit-appearance:none;appearance:none;width:42px;height:24px;border-radius:12px;background:#4d4d4d;position:relative;cursor:pointer;margin:0;transition:background .2s}
+    .ld-switch::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s cubic-bezier(.3,1.3,.6,1)}
+    .ld-switch:hover{background:#5f5f5f} .ld-switch:checked{background:var(--g)} .ld-switch:checked::after{transform:translateX(18px)}
+    .ld-val{min-width:64px;text-align:center;font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px;padding:6px 8px;border-radius:6px;background:#242424}
     .ld-presets{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .ld-log{font-size:12px;color:var(--sub);padding:4px 12px;font-variant-numeric:tabular-nums;line-height:1.7}
-    .ld-kbd{font:600 11px/1 ${FONT};padding:3px 6px;border-radius:4px;background:#3e3e3e;color:#fff;margin:0 2px}
-    .ld-preview{position:sticky;top:-1px;z-index:5;margin:0 0 8px;height:150px;border-radius:8px;overflow:hidden;background:#181818 center/cover;
-      box-shadow:0 8px 24px rgba(0,0,0,.5)}
+    .ld-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#f15e6c;display:inline-block} .ld-dot.on{background:var(--g)}
+    .ld-log{font-size:12.5px;color:var(--sub);padding:12px 18px;font-variant-numeric:tabular-nums;line-height:1.8}
+    .ld-kbd{font:600 11px/1 ${FONT};padding:4px 7px;border-radius:5px;background:#333;color:#fff;margin-right:3px}
+    .ld-preview{position:sticky;top:-26px;z-index:4;margin:0 0 20px;height:168px;border-radius:12px;overflow:hidden;background:#181818 center/cover;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);transition:height .28s cubic-bezier(.2,.8,.2,1)}
+    .ld-preview.mini{height:58px}
     .ld-preview-bg{position:absolute;inset:-30px;background:inherit;background-size:cover;filter:blur(28px) saturate(1.4)}
     .ld-preview-dim{position:absolute;inset:0;background:#000}
-    .ld-preview-lines{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 22px;color:#fff;font-family:system-ui,Roboto,sans-serif}
-    .ld-preview-lines div{letter-spacing:-.012em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .ld-preview-tag{position:absolute;top:8px;right:10px;font-size:11px;font-weight:700;color:rgba(255,255,255,.6);letter-spacing:.02em}
+    .ld-preview-lines{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 24px;color:#fff;font-family:Inter,system-ui,sans-serif;transition:transform .28s}
+    .ld-preview-lines div{letter-spacing:-.02em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ld-preview.mini .ld-preview-lines div:not(:nth-child(2)){display:none}
+    .ld-preview.mini .ld-preview-lines{transform:scale(.72);transform-origin:left center}
+    .ld-preview-tag{position:absolute;top:10px;right:12px;display:flex;gap:6px;align-items:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.7)}
+    .ld-preview-tag svg{width:14px;height:14px}
+    .ld-preview.mini .ld-preview-tag{top:50%;transform:translateY(-50%)}
     .ld-topbar{position:relative}
     .ld-topbar::after{content:'';position:absolute;right:6px;top:6px;width:7px;height:7px;border-radius:50%;background:#e5534b;
       box-shadow:0 0 0 2px var(--background-base,#000);pointer-events:none}
-    .ld-topbar.ld-on::after{background:#3ddc97}`;
+    .ld-topbar.ld-on::after{background:#3ddc97}
+    .ld-panel{font-family:${FONT}} .ld-panel .ld-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:10px 12px}
+    .ld-panel .ld-desc{font-size:12.5px;color:rgba(255,255,255,.62);margin-top:3px;line-height:1.45}
+    .ld-panel button{cursor:pointer;font:700 13px/1 ${FONT};color:#fff;background:transparent;border:0;border-radius:999px;padding:9px 16px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+    .ld-panel button.ld-primary{background:#fff;color:#000;box-shadow:none} .ld-panel .ld-presets{display:flex;gap:8px;flex-wrap:wrap;align-items:center}`;
   safe(() => { const st = document.createElement('style'); st.textContent = CSS; document.head.append(st); });
 
-  let panel = null, panelPhone = null, filter = '';
+  let panel = null, main = null, nav = null, panelPhone = null, filter = '', section = 'overview';
   const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+  const hi = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; e.innerHTML = html; return e; };
+  const btn = (text, onclick, primary) => h('button', { className: `ld-btn${primary ? ' ld-primary' : ''}`, onclick }, text);
 
   // Every change is saved and sent at once (sliders while dragging), and shown in the live preview.
   function change(k, v) {
@@ -867,21 +933,22 @@
       r.dataset.k = x.k; out.dataset.out = x.k;
       return h('div', { className: 'ld-presets' }, r, out);
     }
-    if (x.type === 'action') return '';
     const t = h('input', { type: 'text', value: v ?? '', placeholder: x.placeholder ?? '', spellcheck: false });
     t.onchange = () => change(x.k, t.value.trim());
     return t;
   }
-
-  // Label + ⓘ chip; hovering (or focusing) the chip shows the setting's help text under the row.
-  function label(x) {
-    const l = h('div', { className: 'ld-label' }, x.label);
-    if (x.help) { const c = h('span', { className: 'ld-help', tabIndex: 0 }); c.innerHTML = INFO; c.dataset.help = x.help; l.append(c); }
-    return l;
+  const mark = (text, q) => { const e = document.createElement('span'); if (!q) { e.textContent = text; return e; }
+    const i = text.toLowerCase().indexOf(q); if (i < 0) { e.textContent = text; return e; }
+    e.append(text.slice(0, i), h('mark', {}, text.slice(i, i + q.length)), text.slice(i + q.length)); return e; };
+  // A settings row: label, the full explanation underneath (no hover needed), the control on the right.
+  function row(x, S, q, where) {
+    const r = h('div', { className: 'ldx-row' },
+      h('div', {}, h('b', {}, mark(x.label, q), ...(where ? [h('span', { className: 'ldx-in', onclick: () => go(where, x.k) }, where)] : [])),
+        ...(x.help || x.desc ? [h('small', {}, mark(x.help || x.desc, q))] : [])),
+      control(x, S));
+    r.dataset.row = x.k;
+    return r;
   }
-
-  const INFO = '<svg viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm8.75-3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zM7.25 7h1.5v4.5h-1.5z"/></svg>';
-  const scroller = () => { for (let e = panel?.parentElement; e; e = e.parentElement) if (e.scrollHeight > e.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(e).overflowY)) return e; return null; };
 
   // Changes coming back from the phone (or made there): update the controls in place - no rebuild, no scroll jump,
   // and a slider being dragged is left alone.
@@ -897,16 +964,16 @@
     preview(S);
   }
 
-  // Live preview: three lyric lines styled with the current settings over the playing cover, pinned to the top of the
-  // panel so every change is visible without leaving it.
+  // Live preview: three lyric lines styled with the current settings over the playing cover.
   const previewBox = h('div', { className: 'ld-preview' });
-  previewBox.innerHTML = '<div class="ld-preview-bg"></div><div class="ld-preview-dim"></div><div class="ld-preview-lines"><div></div><div></div><div></div></div><div class="ld-preview-tag">Live preview</div>';
+  previewBox.innerHTML = `<div class="ld-preview-bg"></div><div class="ld-preview-dim"></div><div class="ld-preview-lines"><div></div><div></div><div></div></div><div class="ld-preview-tag">${svgIcon(I.eye)}Live preview</div>`;
   function preview(S) {
-    const d = { size: 1, weight: '700', lineOpacity: 0.5, blurLines: true, blurAmount: 1.2, glow: true, glowStrength: 1, align: 'left', bgDim: 0.2, lineGap: 1.5, bg: 'dynamic', ...readJson('lyricdock:defaults', {}), ...S };
+    const d = { size: 1, weight: '800', lineOpacity: 0.5, blurLines: true, blurAmount: 1.2, glow: true, glowStrength: 1, align: 'left', bgDim: 0.2, lineGap: 1.5, bg: 'dynamic', ...readJson('lyricdock:defaults', {}), ...S };
     const art = safe(() => img(item()?.metadata?.image_xlarge_url || item()?.metadata?.image_url), '');
     previewBox.style.backgroundImage = art ? `url("${art}")` : 'none';
     previewBox.querySelector('.ld-preview-bg').style.display = d.bg === 'black' ? 'none' : '';
     previewBox.querySelector('.ld-preview-dim').style.opacity = d.bg === 'black' ? 1 : d.bgDim;
+    previewBox.querySelector('.ld-preview-lines').style.fontFamily = d.font && d.font !== 'system' ? `"${d.font}", system-ui` : 'system-ui';
     const lines = previewBox.querySelectorAll('.ld-preview-lines div'), words = ['Every change you make', 'shows up here as you move it', 'before it reaches the phone'];
     lines.forEach((l, i) => {
       const active = i === 1;
@@ -954,130 +1021,184 @@
     location.reload();
   }
 
-  function renderPanel() {
-    if (!panel?.isConnected) return;
-    const schema = readJson(SCHEMA_KEY, []), presets = readJson(PRESETS_KEY, {}), ps = pairs();
-    if (panelPhone && !ps.some(p => p.code === panelPhone)) panelPhone = null;
-    panelPhone ??= openLinks().find(l => l.code)?.code ?? ps[0]?.code ?? null;
-    const S = settingsFor(panelPhone), on = connected(), target = panelPhone ? linkFor(panelPhone) : openLinks()[0];
-    const kids = [h('div', { className: 'ld-status' + (on ? ' on' : '') }, h('i'),
-      on ? `${openLinks().length > 1 ? `${openLinks().length} phones` : 'Phone'} connected - changes apply instantly` : 'No phone connected - changes are saved and applied when it connects')];
+  // ---- sections
+  const VISUAL = new Set(['View']);
+  function sections(schema) {
+    const groups = schema.filter(x => x.group), byCat = new Map();
+    for (const g of groups) { const c = g.cat || 'More'; if (!byCat.has(c)) byCat.set(c, []); byCat.get(c).push(g); }
+    const list = [['General', [{ id: 'overview', label: 'Overview', icon: I.overview }]]];
+    for (const [cat, gs] of byCat) list.push([cat, gs.map(g => ({ id: g.group, label: g.group, icon: g.icon || I.overview, cat: g.cat, desc: g.desc }))]);
+    const src = list.find(([c]) => c === 'Source');
+    (src ? src[1] : list[0][1]).push({ id: 'presets', label: 'Presets', icon: I.presets, cat: 'Source' });
+    list.push(['Help', [{ id: 'diag', label: 'Diagnostics', icon: I.diag }]]);
+    return list;
+  }
+  const rowsOf = (schema, group) => { const out = []; let g = null; for (const x of schema) { if (x.group) { g = x.group; continue; } if (g === group && x.k && x.type !== 'action') out.push(x); } return out; };
+  function go(id, k) {
+    filter = ''; const f = panel?.querySelector('.ldx-find input'); if (f) f.value = '';
+    section = id; renderPanel(true);
+    if (k) setTimeout(() => { const r = main?.querySelector(`[data-row="${k}"]`); if (r) { r.scrollIntoView({ block: 'center' }); r.classList.add('flash'); } }, 30);
+  }
 
-    // version, channel, rollback
-    const latest = window.__lyricdock?.latest, loaderV2 = (window.__lyricdock?.loader ?? 0) >= 2;
-    kids.push(h('div', { className: 'ld-row' }, h('div', {}, `LyricDock ${VERSION === 'dev' ? '(development build)' : 'v' + VERSION}`,
-      h('div', { className: 'ld-desc' }, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : LS.get('lyricdock:pin') ? `Pinned to v${LS.get('lyricdock:pin')} - updates paused` : latest && latest !== VERSION ? `v${latest} downloaded` : 'Up to date - updates install automatically')),
-      VERSION === 'dev' ? '' : latest && latest !== VERSION ? h('button', { className: 'ld-primary', onclick: () => location.reload() }, 'Update now')
-        : h('button', { onclick: e => checkUpdate(e.target) }, 'Check for updates')));
+  function renderNav(schema) {
+    const list = h('div', {});
+    for (const [cat, items] of sections(schema)) {
+      list.append(h('div', { className: 'ldx-cat' }, cat));
+      for (const it of items) {
+        const b = h('button', { className: `ldx-item${!filter && section === it.id ? ' on' : ''}`, onclick: () => go(it.id) });
+        b.innerHTML = svgIcon(it.icon); b.append(it.label);
+        list.append(b);
+      }
+    }
+    nav.querySelector('.ldx-list').replaceWith(Object.assign(list, { className: 'ldx-list' }));
+  }
+
+  function header(badge, title, lead) {
+    return [h('div', { className: 'ldx-h' }, h('span', { className: 'ldx-badge' }, badge), h('h2', {}, title)), ...(lead ? [h('p', { className: 'ldx-lead' }, lead)] : [])];
+  }
+
+  function overview(S) {
+    const ps = pairs(), latest = window.__lyricdock?.latest, loaderV2 = (window.__lyricdock?.loader ?? 0) >= 2;
+    const kids = [...header('Core', 'Overview', 'Version, updates and the phones this Spotify drives.')];
+    const ver = h('div', { className: 'ldx-box' });
+    ver.append(h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, `LyricDock ${VERSION === 'dev' ? '(development build)' : 'v' + VERSION}`),
+      h('small', {}, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : LS.get('lyricdock:pin') ? `Pinned to v${LS.get('lyricdock:pin')} - updates paused` : latest && latest !== VERSION ? `v${latest} downloaded` : 'Up to date - updates install automatically')),
+      VERSION === 'dev' ? '' : latest && latest !== VERSION ? btn('Update now', () => location.reload(), true) : btn('Check for updates', e => checkUpdate(e.target))));
     if (VERSION !== 'dev') {
       const chan = h('select', {}, h('option', { value: 'stable' }, 'Stable'), h('option', { value: 'beta' }, 'Beta (pre-releases)'));
       chan.value = LS.get('lyricdock:channel') === 'beta' ? 'beta' : 'stable';
       chan.onchange = () => { LS.set('lyricdock:channel', chan.value); checkUpdate(null); };
-      const ver = h('select', {}, h('option', { value: '' }, 'Latest (auto-update)'));
-      loadReleases().then(rs => { rs.forEach(r => ver.append(h('option', { value: r.v, selected: LS.get('lyricdock:pin') === r.v }, `v${r.v}${r.pre ? ' (beta)' : ''}`))); });
-      ver.onchange = () => {
-        if (!ver.value) { LS.set('lyricdock:pin', ''); checkUpdate(null); return; }
-        LS.set('lyricdock:pin', ver.value);
-        useBuild(ver.value).catch(() => safe(() => Spicetify.showNotification('Could not download that version', true)));
+      const vs = h('select', {}, h('option', { value: '' }, 'Latest (auto-update)'));
+      loadReleases().then(rs => rs.forEach(r => vs.append(h('option', { value: r.v, selected: LS.get('lyricdock:pin') === r.v }, `v${r.v}${r.pre ? ' (beta)' : ''}`))));
+      vs.onchange = () => {
+        if (!vs.value) { LS.set('lyricdock:pin', ''); checkUpdate(null); return; }
+        LS.set('lyricdock:pin', vs.value);
+        useBuild(vs.value).catch(() => safe(() => Spicetify.showNotification('Could not download that version', true)));
       };
-      kids.push(h('div', { className: 'ld-row' }, h('div', {}, h('div', { className: 'ld-label' }, 'Update channel and version'),
-        h('div', { className: 'ld-desc' }, loaderV2 ? 'Beta gets pre-releases first. Pick an older version to roll back (updates pause until you choose Latest).' : 'Run the updater once (Update popup → Run updater) to enable channels and rollback.')),
-        h('div', { className: 'ld-presets' }, chan, ver)));
-      chan.disabled = ver.disabled = !loaderV2;
+      chan.disabled = vs.disabled = !loaderV2;
+      ver.append(h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'Update channel and version'),
+        h('small', {}, loaderV2 ? 'Beta gets pre-releases first. Pick an older version to roll back (updates pause until you choose Latest).' : 'Run the updater once (Update popup → Run updater) to enable channels and rollback.')),
+      h('div', { className: 'ld-presets' }, chan, vs)));
     }
-
-    // phones
-    kids.push(h('h3', {}, 'Phones', h('a', { onclick: () => { autoPair(true); safe(() => Spicetify.showNotification('Looking for phones on your Spotify account…')); } }, 'Find phones on my account')));
+    kids.push(ver, h('div', { className: 'ldx-sec' }, 'Phones', h('a', { onclick: () => { autoPair(true); safe(() => Spicetify.showNotification('Looking for phones on your Spotify account…')); } }, 'Find phones on my account')));
+    const box = h('div', { className: 'ldx-box' });
     for (const p of ps) {
-      const l = linkFor(p.code) || (links.get('adb')?.code === p.code ? links.get('adb') : null);
-      const nameIn = h('input', { type: 'text', value: p.name, style: 'width:150px' });
+      const l = linkFor(p.code);
+      const nameIn = h('input', { type: 'text', value: p.name, style: 'min-width:0;width:170px' });
       nameIn.onchange = () => { const all = pairs(); const x = all.find(y => y.code === p.code); if (x) { x.name = nameIn.value.trim().slice(0, 40) || x.name; writeJson(PAIRS_KEY, all); renderPanel(); } };
-      kids.push(h('div', { className: 'ld-row' },
-        h('div', {}, h('div', { className: 'ld-label' }, h('span', { className: 'ld-dot' + (l ? ' on' : '') }), nameIn),
-          h('div', { className: 'ld-desc' }, `${p.code.slice(0, 4)}-${p.code.slice(4, 7)}-${p.code.slice(7)} · ${l ? `connected via ${l.kind === 'rtc' ? 'direct network (WebRTC)' : 'adb'}${l.ip ? ` · ${l.ip}` : ''}` : 'offline'}`)),
+      box.append(h('div', { className: 'ldx-row' },
+        h('div', {}, h('b', {}, h('span', { className: 'ld-dot' + (l ? ' on' : '') }), nameIn),
+          h('small', {}, `${p.code.slice(0, 4)}-${p.code.slice(4, 7)}-${p.code.slice(7)} · ${l ? `connected via ${l.kind === 'rtc' ? 'direct network (WebRTC)' : 'adb'}${l.ip ? ` · ${l.ip}` : ''}` : 'offline'}`)),
         h('div', { className: 'ld-presets' },
-          ...(ps.length > 1 ? [h('button', { className: panelPhone === p.code ? 'ld-primary' : '', onclick: () => { panelPhone = p.code; renderPanel(); } }, panelPhone === p.code ? 'Editing' : 'Edit settings')] : []),
-          h('button', { onclick: () => { if (confirm(`Unpair ${p.name}?`)) { removePair(p.code); renderPanel(); } } }, 'Unpair'))));
+          ...(ps.length > 1 ? [btn(panelPhone === p.code ? 'Editing settings' : 'Edit settings', () => { panelPhone = p.code; renderPanel(); }, panelPhone === p.code)] : []),
+          btn('Unpair', () => { if (confirm(`Unpair ${p.name}?`)) { removePair(p.code); renderPanel(); } }))));
     }
-    const codeIn = h('input', { type: 'text', placeholder: 'Code on the phone, e.g. K7QX-9MP-2F2' });
-    kids.push(h('div', { className: 'ld-row' },
-      h('div', {}, h('div', {}, ps.length ? 'Add another phone' : 'Pair a phone'), h('div', { className: 'ld-desc' }, 'Enter the code the phone shows under its waiting screen (Settings → Connection). Several phones can be paired, each with its own settings.')),
-      h('div', { className: 'ld-presets' }, codeIn, h('button', { onclick: () => {
+    const codeIn = h('input', { type: 'text', placeholder: 'e.g. K7QX-9MP-2F2' });
+    box.append(h('div', { className: 'ldx-row' },
+      h('div', {}, h('b', {}, ps.length ? 'Add another phone' : 'Pair a phone'), h('small', {}, 'Enter the code the phone shows (waiting screen, or Settings → Connection). Several phones can be paired, each with its own settings.')),
+      h('div', { className: 'ld-presets' }, codeIn, btn('Pair', () => {
         const c = cleanCode(codeIn.value);
         if (c.length !== 10) return safe(() => Spicetify.showNotification('That code should be 10 characters', true));
         addPair(c); panelPhone = c; ensureLink(); renderPanel();
-      } }, 'Pair'))));
+      }))));
+    kids.push(box);
+    return kids;
+  }
 
-    // presets
-    const names_ = Object.keys(presets).sort();
-    // Built-in presets come from the phone (its shipped default config and variants); yours are stored here.
+  function presetsSection(S) {
+    const presets = readJson(PRESETS_KEY, {}), names_ = Object.keys(presets).sort();
     const builtins = readJson('lyricdock:builtins', {}), defs = readJson('lyricdock:defaults', {});
     const grp = (lab, list, pre) => { const g = h('optgroup', { label: lab }); list.forEach(n => g.append(h('option', { value: pre + n }, n))); return g; };
     const sel = h('select', {}, ...(Object.keys(builtins).length ? [grp('Built-in', Object.keys(builtins), 'b:')] : []),
-      ...(names_.length ? [grp('Yours', names_, 'u:')] : [h('option', { value: '' }, 'No presets of yours yet - save one')]));
+      ...(names_.length ? [grp('Yours', names_, 'u:')] : [h('option', { value: '' }, 'No presets of yours yet')]));
     const chosen = () => sel.value.startsWith('b:') ? { ...defs, ...builtins[sel.value.slice(2)] } : presets[sel.value.slice(2)];
     const name = h('input', { type: 'text', placeholder: 'New preset name' });
     const savePresets = p => { writeJson(PRESETS_KEY, p); send({ type: 'presets', presets: p }); renderPanel(); };
-    kids.push(h('h3', {}, `Presets${ps.length > 1 ? ` · ${phoneName(panelPhone)}` : ''}`, h('span', { className: 'ld-presets' },
-      h('a', { onclick: exportSettings }, 'Export'), h('a', { onclick: importSettings }, 'Import'))),
-    h('div', { className: 'ld-row' }, h('div', { className: 'ld-presets' },
-      sel,
-      h('button', { onclick: () => { const p = chosen(); if (p) loadAll(p); } }, 'Apply'),
-      h('button', { onclick: () => { if (!sel.value.startsWith('u:')) return; const p = { ...presets }; delete p[sel.value.slice(2)]; savePresets(p); } }, 'Delete'),
-      name,
-      h('button', { onclick: () => { const n = name.value.trim().slice(0, 40); if (!n) return; const { apiKey, videoKey, ...rest } = S; savePresets({ ...presets, [n]: rest }); } }, 'Save current'))));
-
-    // settings, with search and per-group reset
-    const search = h('input', { type: 'search', placeholder: 'Search settings', value: filter });
-    search.oninput = () => { filter = search.value; applyFilter(); };
-    kids.push(h('div', { className: 'ld-search' }, search));
-    if (!schema.length) kids.push(h('div', { className: 'ld-desc' }, 'Connect the phone once so its settings can load here.'));
-    let group = null;
-    for (const x of schema) {
-      if (x.group) {
-        group = x.group;
-        const keys = [];
-        for (let i = schema.indexOf(x) + 1; i < schema.length && !schema[i].group; i++) if (schema[i].k && schema[i].type !== 'action') keys.push(schema[i].k);
-        const g = h('h3', {}, x.group, keys.length ? h('a', { onclick: () => { if (!confirm(`Reset "${x.group}" to defaults?`)) return;
-          loadAll(Object.fromEntries(keys.filter(k => k in defs).map(k => [k, defs[k]]))); } }, 'Reset') : '');
-        g.dataset.group = group;
-        kids.push(g);
-        continue;
-      }
-      if (x.type === 'action') continue; // phone-only actions (leave kiosk...)
-      const row = h('div', { className: 'ld-row' }, h('div', {}, label(x), ...(x.desc ? [h('div', { className: 'ld-desc' }, x.desc)] : [])), control(x, S));
-      row.dataset.find = `${x.label} ${x.help ?? ''} ${x.desc ?? ''} ${group ?? ''}`.toLowerCase();
-      row.dataset.inGroup = group;
-      kids.push(row);
-    }
-
-    // connection log + shortcuts
-    kids.push(h('h3', {}, 'Connection log'), h('div', { className: 'ld-log' }, ...(events.length ? events.slice(0, 12).map(e =>
-      h('div', {}, `${new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}  ${e.text}`)) : ['Nothing yet'])));
-    const kbd = t => h('span', { className: 'ld-kbd' }, t);
-    kids.push(h('h3', {}, 'Shortcuts'), h('div', { className: 'ld-log' },
-      h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('L'), ' this panel'), h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('W'), ' wake the phone'),
-      h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('Y'), ' next phone layout'), h('div', {}, 'Right-click a song, playlist, album or artist for LyricDock actions.')));
-    if (!target && on) kids.splice(1, 0, h('div', { className: 'ld-desc', style: 'padding:0 12px 8px' }, `${phoneName(panelPhone)} is offline - its settings are saved and sent when it connects.`));
-
-    // Keep the scroll position: rebuilding must never throw you back to the top.
-    const sc = scroller(), top = sc?.scrollTop ?? 0;
-    panel.replaceChildren(previewBox, ...kids);
-    if (sc) sc.scrollTop = top;
-    applyFilter();
-    preview(S);
+    return [...header('Source', 'Presets', 'Built-in looks and your own. Yours are stored here in Spotify, so every phone can use them.'),
+      h('div', { className: 'ldx-box' },
+        h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'Apply a preset'), h('small', {}, 'Default is the shipped config; Smooth suits slow phones; Full Spicy turns every effect up.')),
+          h('div', { className: 'ld-presets' }, sel, btn('Apply', () => { const p = chosen(); if (p) loadAll(p); }, true),
+            btn('Delete', () => { if (!sel.value.startsWith('u:')) return; const p = { ...presets }; delete p[sel.value.slice(2)]; savePresets(p); }))),
+        h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'Save the current settings'), h('small', {}, 'API keys are never included.')),
+          h('div', { className: 'ld-presets' }, name, btn('Save', () => { const n = name.value.trim().slice(0, 40); if (!n) return; const { apiKey, videoKey, ...rest } = S; savePresets({ ...presets, [n]: rest }); }))),
+        h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'Settings file'), h('small', {}, 'Export this phone\'s settings as JSON, or import a file (from another PC, or a backup).')),
+          h('div', { className: 'ld-presets' }, btn('Export', exportSettings), btn('Import', importSettings))))];
   }
-  function applyFilter() {
-    if (!panel) return;
-    const q = filter.trim().toLowerCase(), hit = new Set();
-    for (const r of panel.querySelectorAll('[data-find]')) { const ok = !q || r.dataset.find.includes(q); r.style.display = ok ? '' : 'none'; if (ok) hit.add(r.dataset.inGroup); }
-    for (const g of panel.querySelectorAll('h3[data-group]')) g.style.display = !q || hit.has(g.dataset.group) ? '' : 'none';
+
+  function diagnostics() {
+    const kbd = t => h('span', { className: 'ld-kbd' }, t);
+    return [...header('Help', 'Diagnostics', 'What the connection has been doing, and the shortcuts.'),
+      h('div', { className: 'ldx-sec' }, 'Connection log'),
+      h('div', { className: 'ldx-box' }, h('div', { className: 'ld-log' }, ...(events.length ? events.slice(0, 20).map(e =>
+        h('div', {}, `${new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}   ${e.text}`)) : ['Nothing yet']))),
+      h('div', { className: 'ldx-sec' }, 'Shortcuts'),
+      h('div', { className: 'ldx-box' }, h('div', { className: 'ld-log' },
+        h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('L'), '  this window'), h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('W'), '  wake the phone'),
+        h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('Y'), '  next phone layout'), h('div', {}, 'Right-click a song, playlist, album or artist for LyricDock actions.')))];
+  }
+
+  function groupSection(schema, g, S) {
+    const defs = readJson('lyricdock:defaults', {}), rows = rowsOf(schema, g.group);
+    const kids = [...header(g.cat || 'Settings', g.group, g.desc)];
+    if (VISUAL.has(g.cat) && LS.get('lyricdock:hidePreview') !== '1') kids.push(previewBox);
+    kids.push(h('div', { className: 'ldx-sec' }, `${rows.length} setting${rows.length === 1 ? '' : 's'}`, h('span', { className: 'ld-presets' },
+      ...(VISUAL.has(g.cat) ? [h('a', { onclick: () => { LS.set('lyricdock:hidePreview', LS.get('lyricdock:hidePreview') === '1' ? '0' : '1'); renderPanel(true); } }, LS.get('lyricdock:hidePreview') === '1' ? 'Show preview' : 'Hide preview')] : []),
+      h('a', { onclick: () => { if (confirm(`Reset "${g.group}" to defaults?`)) loadAll(Object.fromEntries(rows.map(x => x.k).filter(k => k in defs).map(k => [k, defs[k]]))); } }, 'Reset section'))));
+    kids.push(h('div', { className: 'ldx-box' }, ...rows.map(x => row(x, S))));
+    return kids;
+  }
+
+  function searchSection(schema, S) {
+    const q = filter.trim().toLowerCase(), hits = [];
+    let g = null;
+    for (const x of schema) { if (x.group) { g = x.group; continue; } if (x.k && x.type !== 'action' && `${x.label} ${x.help ?? ''} ${x.desc ?? ''} ${g}`.toLowerCase().includes(q)) hits.push([x, g]); }
+    return [...header(`${hits.length} result${hits.length === 1 ? '' : 's'}`, 'Search settings', hits.length ? 'Change them right here, or open their section.' : 'Try different words.'),
+      ...(hits.length ? [h('div', { className: 'ldx-box' }, ...hits.map(([x, gg]) => row(x, S, q, gg)))] : [])];
+  }
+
+  function renderPanel(scrollTop) {
+    if (!panel?.isConnected) return;
+    const schema = readJson(SCHEMA_KEY, []), ps = pairs();
+    if (panelPhone && !ps.some(p => p.code === panelPhone)) panelPhone = null;
+    panelPhone ??= openLinks().find(l => l.code)?.code ?? ps[0]?.code ?? null;
+    const S = settingsFor(panelPhone), on = connected();
+    const conn = panel.querySelector('.ldx-conn');
+    conn.className = 'ldx-conn' + (on ? ' on' : '');
+    conn.lastChild.textContent = on ? `${openLinks().length > 1 ? `${openLinks().length} phones` : phoneName(openLinks()[0]?.code)} connected` : 'No phone connected';
+    renderNav(schema);
+    const groups = schema.filter(x => x.group);
+    if (section !== 'overview' && section !== 'presets' && section !== 'diag' && !groups.some(g => g.group === section)) section = 'overview';
+    const kids = filter.trim() ? searchSection(schema, S)
+      : section === 'overview' ? overview(S) : section === 'presets' ? presetsSection(S) : section === 'diag' ? diagnostics()
+      : groupSection(schema, groups.find(g => g.group === section), S);
+    if (!schema.length && section !== 'overview' && section !== 'diag') kids.push(h('p', { className: 'ldx-empty' }, 'Connect the phone once so its settings can load here.'));
+    if (ps.length > 1 && section !== 'overview' && section !== 'diag') kids.splice(2, 0, h('p', { className: 'ldx-lead' }, `Editing ${phoneName(panelPhone)}${linkFor(panelPhone) ? '' : ' (offline - changes are sent when it connects)'}. Switch phones in Overview.`));
+    const top = scrollTop === true ? 0 : main.scrollTop;
+    main.replaceChildren(...kids);
+    main.scrollTop = top;
+    previewBox.classList.toggle('mini', main.scrollTop > 40);
+    preview(S);
   }
 
   function openPanel() {
-    panel = h('div', { className: 'ld-panel' });
-    Spicetify.PopupModal.display({ title: 'LyricDock', content: panel, isLarge: true });
-    renderPanel();
+    if (panel?.isConnected) return;
+    panel = h('div', { className: 'ldx', role: 'dialog' });
+    panel.innerHTML = `<div class="ldx-card"><div class="ldx-head"><div class="ldx-title">LyricDock</div><span class="ldx-pill">${VERSION === 'dev' ? 'development' : 'v' + VERSION}</span>
+      <div class="ldx-conn"><i></i><span></span></div><button class="ldx-x" aria-label="Close">${svgIcon(I.close)}</button></div>
+      <div class="ldx-body"><nav class="ldx-nav"><div class="ldx-find">${svgIcon(I.search)}<input type="search" placeholder="Search settings…"></div><div class="ldx-list"></div></nav><main class="ldx-main"></main></div></div>`;
+    nav = panel.querySelector('.ldx-nav'); main = panel.querySelector('.ldx-main');
+    const close = () => { panel.remove(); panel = null; removeEventListener('keydown', esc, true); };
+    const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    panel.onclick = e => { if (e.target === panel) close(); };
+    panel.querySelector('.ldx-x').onclick = close;
+    addEventListener('keydown', esc, true);
+    const find = panel.querySelector('.ldx-find input');
+    find.value = filter;
+    find.oninput = () => { filter = find.value; renderPanel(true); };
+    // The preview shrinks to a slim strip once the section scrolls, and grows back at the top.
+    main.addEventListener('scroll', () => previewBox.classList.toggle('mini', main.scrollTop > 40), { passive: true });
+    document.body.append(panel);
+    renderPanel(true);
   }
   // isRight: Spicetify gives right-side buttons the class of Spotify's own round action buttons (left ones sit
   // small among the back/forward arrows), so this matches the native top-bar buttons.

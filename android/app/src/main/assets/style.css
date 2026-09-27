@@ -79,7 +79,7 @@ body.show-quality #quality:not(:empty) { display: block; }
 body.scroll-smooth #lines { transition: transform calc(.75s / var(--as)) cubic-bezier(.2, .8, .2, 1); }
 body.scroll-spring #lines { transition: transform calc(.9s / var(--as)) var(--spring); }
 body.scroll-snappy #lines { transition: transform calc(.35s / var(--as)) cubic-bezier(.3, .9, .3, 1); }
-.ln { font-size: var(--lsize); font-weight: var(--lw); line-height: 1.18; letter-spacing: -.012em; padding: var(--lgap) 0;
+.ln { font-size: var(--lsize); font-weight: var(--lw); line-height: 1.16; letter-spacing: -.022em; padding: var(--lgap) 0;
   opacity: var(--lop); transform-origin: left center; transform: scale(.95);
   transition: opacity .35s, transform calc(.6s / var(--as)) var(--ease), filter .5s; }
 .ln.sung { opacity: calc(var(--lop) * .97); }
@@ -88,6 +88,8 @@ body.align-center .ln { text-align: center; transform-origin: center; }
 .ln.opp { text-align: right; transform-origin: right center; }
 body.blurlines .ln[data-d="2"] { filter: blur(var(--blur)); }
 body.blurlines .ln[data-d="3"] { filter: blur(calc(var(--blur) * 2)); }
+/* Free scroll: every line readable while the finger is exploring. */
+#lyrics.free .ln { filter: none !important; opacity: .9; transition: opacity .3s, filter .3s; }
 /* Padding + equal negative margin: background-clip:text only paints inside the box, and Devanagari /
    Gurmukhi vowel marks sit above and below it - without this they get cut off while a line is active. */
 .sy { display: inline-block; --gp: -20%; --tsr: 4px; --tso: 0%; padding: .25em .06em; margin: -.25em -.06em; }
@@ -576,7 +578,27 @@ body.clock #clockScreen { opacity: 1; visibility: visible; transition: opacity 1
 #clkTime { font-size: 26vmin; font-weight: 200; letter-spacing: -.04em; font-variant-numeric: tabular-nums; line-height: 1; }
 #clkDate { font-size: 4.2vmin; font-weight: 500; opacity: .55; margin-top: 2vmin; }
 #clkNext { font-size: 3vmin; opacity: .4; margin-top: 4vmin; }
-#nightTint { position: fixed; inset: 0; z-index: 8; pointer-events: none; display: none;
+/* ---- flip clock (flipclock.js): dark cards split in two, only the flaps move */
+#clockScreen.flip { background: #000; }
+#clockScreen.flip #clkTime, #clockScreen.flip #clkDate { display: none; }
+#clockScreen:not(.flip) .fc-wrap { display: none; }
+.fc-wrap { display: flex; gap: calc(var(--cw) * .3); align-items: center; justify-content: center; opacity: var(--fc-dim, 1); transition: opacity .6s; }
+#clockScreen.stacked .fc-wrap { flex-direction: column; gap: calc(var(--cw) * .15); }
+.fc-group { display: flex; gap: calc(var(--cw) * .05); }
+/* One card per digit (Figma "Flip digit", 300 x 440). Each layer holds the whole card SVG and shows one half of it. */
+.fc-cell { position: relative; width: var(--cw); height: var(--ch); perspective: calc(var(--ch) * 4); }
+.fc-half, .fc-flap { position: absolute; left: 0; right: 0; height: calc(50% - .5px); overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.fc-half.top, .fc-flap.top { top: 0; }
+.fc-half.bot, .fc-flap.bot { bottom: 0; }
+.fc-flap { z-index: 2; visibility: hidden; will-change: transform; transform: translateZ(0); }
+.fc-flap.top { transform-origin: 50% 100%; }
+.fc-flap.bot { transform-origin: 50% 0; }
+.fc-svg { position: absolute; left: 0; width: var(--cw); height: var(--ch); display: block; }
+.top > .fc-svg { top: 0; } .bot > .fc-svg { bottom: 0; }
+.fc-num { fill: none; stroke: #fff; stroke-opacity: .74; stroke-width: 46.5; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 2.5; }
+.fc-ap { font: 700 34px var(--font), system-ui; letter-spacing: .02em; fill: #fff; fill-opacity: .74; }
+.fc-shade, .fc-drop { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+.fc-sheen { position: absolute; left: 0; right: 0; height: 60%; background: linear-gradient(transparent, rgba(255, 255, 255, .08), transparent); opacity: 0; pointer-events: none; }#nightTint { position: fixed; inset: 0; z-index: 8; pointer-events: none; display: none;
   background: rgba(255, 130, 40, calc(var(--nw, .4) * .22)); mix-blend-mode: multiply; }
 body.night #nightTint { display: block; box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, var(--nd, .5)); }
 body.night #bgc, body.night #bg, body.night #bgGrad { display: none; }
@@ -615,3 +637,30 @@ body.news-open #news { display: grid; }
 #newsBody ul { margin: 4px 0; padding-left: 18px; } #newsBody li { margin: 2px 0; }
 body:not(.bg-video) #yt { display: none; }
 #bgc, #bg, #bgGrad { z-index: 0; } #dim { z-index: 0; }
+
+/* ---- settings sheet layout: icon rail + one section (settings.js render) */
+#settings .sl-modal-main-section { padding: 0; overflow: hidden; display: flex; }
+.st-wrap { display: flex; flex: 1; min-height: 0; width: 100%; }
+.st-rail { flex: none; width: 170px; overflow-y: auto; padding: 10px 8px 16px; border-right: 1px solid var(--hair); display: flex; flex-direction: column; gap: 2px; scrollbar-width: none; }
+.st-rail::-webkit-scrollbar { display: none; }
+.st-tab { display: flex; align-items: center; gap: 11px; border: 0; background: none; color: var(--t2); padding: 9px 11px; border-radius: 10px;
+  font: 600 .8rem var(--font), system-ui; text-align: left; white-space: nowrap; transition: background .15s, color .15s; }
+.st-tab svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.st-tab.on { background: rgba(var(--acc), .16); color: #fff; box-shadow: inset 2px 0 0 rgb(var(--acc)); }
+.st-tab.on svg { color: rgb(var(--acc)); }
+.st-tab:active { background: var(--tint2); }
+.st-pane { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 18px 24px; scrollbar-width: thin; }
+.st-head { display: flex; align-items: center; gap: 10px; }
+.st-badge { flex: none; font: 700 .6rem/1 var(--font), system-ui; letter-spacing: .09em; text-transform: uppercase; color: rgb(var(--acc)); background: rgba(var(--acc), .14); padding: 5px 7px; border-radius: 5px; }
+.st-title { flex: 1; font-size: 1.25rem; font-weight: 800; letter-spacing: -.02em; }
+.st-lead { color: var(--t2); font-size: .78rem; line-height: 1.45; margin: 5px 0 12px; max-width: 62ch; }
+.st-box { background: rgba(255, 255, 255, .035); border-radius: 12px; box-shadow: inset 0 0 0 1px var(--hair); overflow: hidden; }
+.st-box > .sl-sp-row { border-radius: 0; border-top: 1px solid var(--hair); }
+.st-box > .sl-sp-row:first-child { border-top: 0; }
+.st-chip { border: 0; font: 600 .62rem var(--font), system-ui; color: var(--t2); background: var(--tint); box-shadow: inset 0 0 0 1px var(--hair2); padding: 3px 7px; border-radius: 5px; }
+@media (orientation: portrait) {
+  .st-wrap { flex-direction: column; }
+  .st-rail { width: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--hair); padding: 8px 10px; }
+  .st-tab { flex-direction: column; gap: 4px; padding: 8px 10px; font-size: .64rem; }
+  .st-tab.on { box-shadow: inset 0 -2px 0 rgb(var(--acc)); }
+}

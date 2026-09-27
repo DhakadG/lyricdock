@@ -58,19 +58,29 @@
 
   // ---- gestures: swipe to skip, double-tap to like, long-press the progress bar to scrub
   const interactive = e => e.target.closest?.('button, input, #settings, #listPanel, #bar, #pairAsk, a');
+  // Touch events, not pointer events: the WebView fires pointercancel as soon as it takes a drag for a pan, so a
+  // pointer-based swipe never finished. Works anywhere, including on the album art (Default / TV view).
   let down = null, lastTap = 0;
-  addEventListener('pointerdown', e => { down = interactive(e) ? null : { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
-  addEventListener('pointerup', e => {
+  addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    down = e.touches.length !== 1 || interactive(e) ? null : { x: t.clientX, y: t.clientY, t: performance.now() };
+  }, { capture: true, passive: true });
+  addEventListener('touchend', e => {
     if (!down) return;
-    const dx = e.clientX - down.x, dy = e.clientY - down.y, dt = performance.now() - down.t;
+    const t = e.changedTouches[0], dx = t.clientX - down.x, dy = t.clientY - down.y, dt = performance.now() - down.t;
     down = null;
-    if (S.swipe && Math.abs(dx) > 70 && Math.abs(dy) < 50 && dt < 700) { $(dx < 0 ? 'next' : 'prev').click(); return; }
+    if (S.swipe && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 800) { swipeFx(dx < 0 ? -1 : 1); $(dx < 0 ? 'next' : 'prev').click(); return; }
     if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && dt < 300) {
       const now2 = performance.now();
-      if (S.doubleTapLike && S.showLiked && now2 - lastTap < 320) { $('heart').click(); heartBurst(e.clientX, e.clientY); lastTap = 0; }
+      if (S.doubleTapLike && S.showLiked && now2 - lastTap < 320) { $('heart').click(); heartBurst(t.clientX, t.clientY); lastTap = 0; }
       else lastTap = now2;
     }
-  }, true);
+  }, { capture: true, passive: true });
+  // A quick nudge of the cover in the swipe direction, so the gesture feels answered before the song changes.
+  function swipeFx(dir) {
+    $('artbox')?.animate([{ transform: 'none' }, { transform: `translateX(${dir * 4}vmin) rotate(${dir * 1.5}deg)`, opacity: .7 }, { transform: 'none' }],
+      { duration: 380, easing: 'cubic-bezier(.3,.7,.3,1)' });
+  }
   function heartBurst(x, y) {
     const b = document.createElement('div');
     b.className = 'burst';
@@ -113,7 +123,11 @@
   // ---- screen: clock, night, burn-in, battery, keep-awake (checked every second)
   let lastPlayAt = Date.now(), clockDismissedAt = 0, shift = 0;
   const call = (fn, ...a) => { try { return Dock[fn](...a); } catch (e) { return null; } };
-  $('clockScreen').onclick = () => { clockDismissedAt = Date.now(); document.body.classList.remove('clock'); };
+  // Flip clock: tap toggles seconds, double tap goes back to the lyrics (the simple clock: any tap goes back).
+  $('clockScreen').onclick = () => {
+    if (S.clockStyle === 'flip' && Flip.onTap() !== 'dismiss') return;
+    clockDismissedAt = Date.now(); document.body.classList.remove('clock'); Flip.hide();
+  };
   function everySecond() {
     const tNow = Date.now(), idleMin = (tNow - lastPlayAt) / 60000, h = new Date().getHours();
     // chip
@@ -127,6 +141,9 @@
     const wantClock = S.clock !== 'off' && !P.playing && idleMin >= S.clockAfter && tNow - clockDismissedAt > S.clockAfter * 60000
       && (S.clock === 'paused' ? !!P.id : true);
     document.body.classList.toggle('clock', wantClock);
+    $('clockScreen').classList.toggle('flip', S.clockStyle === 'flip');
+    if (wantClock && S.clockStyle === 'flip') Flip.show(); else Flip.hide();
+    $('clkNext').style.display = S.clockCaption ? '' : 'none';
     if (wantClock) {
       const d = new Date();
       $('clkTime').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -203,7 +220,8 @@
       if (!v.q) setTimeout(() => q.focus(), 350);
       return;
     }
-    $('listBody').innerHTML = skeleton();
+    const hit = cached(v);
+    if (hit) showList({ ...hit, which: v.which, uri: v.uri, cached: true }); else $('listBody').innerHTML = skeleton();
     request(v);
   }
   const skeleton = () => '<div class="li-skel">' + '<div class="li"><div class="li-main"><div class="li-art"></div><div class="li-txt"><i></i><i></i></div></div></div>'.repeat(7) + '</div>';
@@ -222,11 +240,29 @@
   const ago = t => { const m = (Date.now() - t) / 60000; return m < 1 ? 'now' : m < 60 ? `${m | 0} min` : m < 1440 ? `${m / 60 | 0} h` : `${m / 1440 | 0} d`; };
   const artBg = a => a === 'liked' ? ' liked' : '';
   const artStyle = a => a && a !== 'liked' ? ` style="background-image:url('${esc(a)}')"` : '';
+  // Warm cache: every list / playlist / album / artist view is kept (25 most recent, localStorage) and shown at once
+  // on open, then refreshed in the background; the refresh only re-renders when something changed. Cover images
+  // come from the WebView's HTTP cache.
+  const LC = 'dock:lists';
+  let lcache = {};
+  try { lcache = JSON.parse(localStorage.getItem(LC)) || {}; } catch (e) {}
+  const ckey = v => v.which === 'search' ? null : `${v.which}|${v.uri || ''}`;
+  const cached = v => { const k = ckey(v); return k && lcache[k]; };
+  function cacheSave(v, m) {
+    const k = ckey(v);
+    if (!k || m.error || !m.items?.length) return false;
+    const { cached: _, ...clean } = m, same = lcache[k] && JSON.stringify(lcache[k].items) === JSON.stringify(clean.items) && JSON.stringify(lcache[k].head) === JSON.stringify(clean.head);
+    lcache[k] = { ...clean, at: Date.now() };
+    for (const x of Object.keys(lcache).sort((a, b) => lcache[b].at - lcache[a].at).slice(25)) delete lcache[x];
+    try { localStorage.setItem(LC, JSON.stringify(lcache)); } catch (e) { lcache = { [k]: lcache[k] }; }
+    return same;
+  }
   function showList(m) {
     const v = view();
     if (m.which !== v.which || (v.uri && m.uri !== v.uri) || (v.which === 'search' && m.q !== v.q)) return; // stale answer
     const out = v.which === 'search' ? $('liRes') : $('listBody');
     if (!out) return;
+    if (!m.cached && cacheSave(v, m) && viewData?.cached) { viewData = { ...m }; return; } // fresh = what's shown: keep it
     viewData = m;
     items = Array.isArray(m.items) ? m.items : [];
     if (m.head?.title && stack.length > 1) { v.title = m.head.title; $('listCrumb').textContent = m.head.title; }
@@ -242,7 +278,9 @@
       if (sec !== section) { section = sec; if (sec) html += `<h4>${esc(sec)}</h4>`; }
       html += row(x, i);
     });
+    const top = out.scrollTop;
     out.innerHTML = html;
+    out.scrollTop = top;
     wireHead(out, m);
     out.querySelectorAll('.li[data-i]').forEach(wireRow);
   }
@@ -341,6 +379,7 @@
     if (!k || k === '*' || ['marquee', 'layout', 'size'].includes(k)) setTimeout(remarquee, 50);
     if (k === 'albumLine') albumLine();
     if (k === 'hideExplicit') Lyrics.rebuild();
+    if (k && /^clock/.test(k)) { Flip.rebuild(); Flip.layout(); }
   };
   window.afterApply('*');
   addEventListener('resize', () => setTimeout(remarquee, 100));

@@ -333,6 +333,9 @@ phone screen). Nothing needs it day to day.
 - **Music video background:** Settings → Background → *Music video (YouTube)* plays the song's video muted behind the
   lyrics, in sync. Optional: your own [YouTube Data API key](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
   for more reliable matches (Google Cloud Console → enable *YouTube Data API v3* → Credentials → API key).
+- **Flip clock:** when the music stops, a flip clock takes over: one dark card per digit (designed in Figma, vectors in [design/flipclock](design/flipclock/)), six flip animations (classic, bounce, slow fold, cascade, roll, fade), optional seconds (tap the clock), 12/24 h, dim, size, cards on/off, and optional synthesised flip sounds and vibration. Double-tap to go back.
+- **Lyrics scrolling:** drag the lyrics to read ahead or back (flick to scroll fast); they glide back to the sung line a few seconds after you let go.
+- **Font:** Inter Extra Bold by default, the closest free match to Apple Music's San Francisco (which Apple licenses only for its own devices).
 - **Screen:** clock screen when paused, night mode (dim + warm + black), burn-in protection, battery indicator,
   keep-awake modes.
 - **Settings preview:** phone ⚙ → **Preview** moves the sheet aside so the player shows every change live; Spotify's
@@ -417,8 +420,8 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 |---|---|---|
 | Romanization | Smart (keep Hindi) | Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization. Options: Smart (keep Hindi) / Always / Original script. |
 | Text size | 1 × | Lyrics size. Layouts scale from this (TV and Cinema are bigger). Range 0.6–1.6 ×. |
-| Font | System (Roboto) | Typeface for lyrics and titles. Anything but System downloads once from Google Fonts and is then cached; scripts a font lacks (Devanagari, Gurmukhi…) fall back to the system font. Options: System (Roboto) / Inter / Outfit / Manrope / DM Sans / Plus Jakarta Sans / Space Grotesk / Sora / Lexend / Poppins / Playfair Display (serif) / Lora (serif) / JetBrains Mono. |
-| Text weight | Bold | Thickness of the lyrics font. Options: Medium / Semibold / Bold / Extra bold / Black. |
+| Font | Inter (Apple-style, default) | Typeface for lyrics and titles. Inter is the closest free match to Apple's San Francisco (Apple Music's lyrics font, which Apple only licenses for its own devices). Anything but System downloads once from Google Fonts and is then cached; scripts a font lacks (Devanagari, Gurmukhi…) fall back to the system font. Options: Inter (Apple-style, default) / System (Roboto) / Outfit / Manrope / DM Sans / Plus Jakarta Sans / Space Grotesk / Sora / Lexend / Poppins / Playfair Display (serif) / Lora (serif) / JetBrains Mono. |
+| Text weight | Extra bold | Thickness of the lyrics font. Options: Medium / Semibold / Bold / Extra bold / Black. |
 | Alignment | Left | Duet lines sung by the second singer still go to the other side. Options: Left / Centre. |
 | Active line position | 0.35 | 0.2 = near the top (more upcoming lines visible), 0.6 = below the middle (more past lines). Range 0.2–0.6. |
 | Line spacing | 1.5 | Space between lyric lines. Range 0–5. |
@@ -439,6 +442,7 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 | Interlude dots | On | Three breathing dots fill instrumental gaps and pop just before singing resumes. |
 | Dots after a gap of | 4 s | Minimum silence between lines before the dots appear. Range 2–12 s. |
 | Scroll ahead | 250 ms | The list starts moving to the next line this long before it is sung, so your eyes are already there. Range 0–800 ms. |
+| Return to the sung line after | 3 s | Drag the lyrics up or down to read ahead or look back (flick to scroll fast). This long after you let go, they glide back to the line being sung. Range 1–10 s. |
 | Show credits | On | Songwriters are optional; the lyrics provider (and community sync credits) are always shown, as the providers require. |
 | Tap a line to jump to it | On | Tap any synced line to seek Spotify to it. |
 | Sync offset | 0 ms | Nudge if lyrics run early or late (e.g. Bluetooth speaker delay: try +150 to +300 ms). Range -1000–1000 ms. |
@@ -459,8 +463,6 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 |---|---|---|
 | Keep the screen on | Always | Always: never sleeps (the kiosk default). Only while playing: the screen turns off after music has been paused for the time below. Follow Android: the normal screen timeout. Options: Always / Only while playing / Follow Android. |
 | Turn off after pausing for | 10 min | How long the screen stays on after music stops. Range 1–60 min. |
-| Clock screen | When paused | A calm full-screen clock with the date and the next song, shown after a while without music. Tap it to go back. Options: Off / When paused / When nothing is playing. |
-| Show the clock after | 3 min | Minutes without music before the clock appears. Range 1–30 min. |
 | Night mode | Off | Between the hours below: dims everything, switches to a black background and warms the colours. |
 | Night starts at | 22 :00 | Hour (24-hour clock) night mode starts. Range 0–23 :00. |
 | Night ends at | 7 :00 | Hour (24-hour clock) night mode ends. Range 0–23 :00. |
@@ -473,6 +475,26 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 | Volume buttons control Spotify | On | The phone's volume buttons change Spotify's volume (5% per press) instead of the phone's. |
 | Media notification | On | Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use). |
 | Battery indicator | Off | Shows the phone's battery level and whether it is charging, in a corner (handy for a kiosk dock). |
+
+**Clock**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Clock screen | When paused | A full-screen clock after a while without music. It goes away by itself when music plays; double-tap to go back sooner. Options: Off / When paused / When nothing is playing. |
+| Show the clock after | 3 min | Minutes without music before the clock appears. Range 1–30 min. |
+| Style | Flip cards | Flip cards: big white numerals on dark cards that flip like a mechanical clock. Tap to show or hide seconds, double-tap to go back. Simple: a thin time with the date. Options: Flip cards / Simple (time and date). |
+| Flip animation | Classic | Classic: the top half falls, the new bottom half lands. Bounce: the flap overshoots and settles. Slow fold: slower, with a light sheen and a shadow on the half below. Cascade: every digit is its own card and flips a beat after the one before (departure board). Roll: the digit rolls down a drum. Fade: a quiet crossfade. Options: Classic / Bounce / Slow fold / Cascade (per digit) / Roll / Fade. |
+| Show seconds | Off | A third card for seconds. Tapping the clock toggles it too. |
+| Time format | 12-hour (AM / PM) | 12-hour shows AM or PM in the corner of the hours card. Options: 12-hour (AM / PM) / 24-hour. |
+| Arrangement | Follow the screen | Follow the screen: cards side by side in landscape, stacked in portrait. Options: Follow the screen / Side by side / Stacked. |
+| Show the cards | On | Off: only the numerals on black (the flip still moves them). |
+| Size | 1 × | Smaller cards leave more black around them. Range 0.5–1 ×. |
+| Dim | 0 | Darkens the clock (for a bedroom at night). Range 0–0.85. |
+| Flip sound | Off | A small sound made on the phone (no audio files) timed to the flap: the whoosh as it falls, the click as it lands. Silent during night mode. Options: Off / Mechanical (whoosh + click) / Click / Whoosh / Soft tap. |
+| Sound volume | 0.4 | Loudness of the flip sound (relative to the phone's media volume). Range 0.05–1. |
+| Sound with seconds on | Only when the minute changes | A tick every second gets tiring: by default only the minute flip makes a sound. Options: Only when the minute changes / Every flip. |
+| Vibrate on flip | Off | A very short tick of the vibration motor as the flap lands. |
+| Paused song under the clock | On | Shows "Paused · song" in small text below the clock. |
 
 **Performance**
 

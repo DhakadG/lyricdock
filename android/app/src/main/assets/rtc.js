@@ -7,15 +7,17 @@
 // phone shows, so the relay only ever sees ciphertext. The extension carries the same code (dock-bridge.js).
 const Rtc = (() => {
   const CHUNK = 16000;
+  // Settings is a top-level const (not a window property): read it by name.
+  const SS = () => (typeof Settings !== 'undefined' ? Settings.S : {});
   // Signalling server + STUN/TURN from Settings -> Connection (the bridge reads the same settings from this phone).
   const relay = () => {
-    const S = window.Settings?.S || {};
+    const S = SS();
     if (S.relay === 'helper' && /^\d+\.\d+\.\d+\.\d+$/.test(S.relayUrl || '')) return `http://${S.relayUrl}:8977`;
     if (S.relay === 'custom' && /^https?:\/\/\S+$/.test(S.relayUrl || '')) return S.relayUrl.replace(/\/+$/, '');
     return 'https://ntfy.sh';
   };
   const wsOf = u => u.replace(/^http/, 'ws');
-  const ice = () => ({ iceServers: String(window.Settings?.S.ice || '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
+  const ice = () => ({ iceServers: String(SS().ice || '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
     const [urls, username, credential] = e.split('|');
     return /^(stun|turns?):/.test(urls) ? { urls, ...(username ? { username, credential } : {}) } : null;
   }).filter(Boolean) });
@@ -77,7 +79,7 @@ const Rtc = (() => {
   // Settings -> Connection path: offer only the Wi-Fi address, or only the other ones (the USB-tethering cable).
   // Auto offers everything and WebRTC picks the fastest that works.
   function onlyPath(desc) {
-    const mode = window.Settings?.S.linkPath || 'auto';
+    const mode = SS().linkPath || 'auto';
     let wifi = '';
     try { wifi = Dock.ip(); } catch (e) {}
     if (mode === 'auto' || !wifi) return desc;
@@ -117,7 +119,7 @@ const Rtc = (() => {
       }
       onMsg(m);
     };
-    ch.onclose = () => { if (dc === ch) dc = null; };
+    ch.onclose = () => { lastLink = Date.now(); if (dc === ch) dc = null; };
   }
 
   function send(str) {
@@ -131,7 +133,7 @@ const Rtc = (() => {
   // Both sides know the account id, so they meet on a relay topic derived from it. That id isn't secret, so the
   // pairing code is only released after an ECDH key agreement AND the user tapping Allow on this phone while
   // both screens show the same 4 digits (a swapped key would show different digits).
-  let acct = null, asking = false, onAsk = async () => false;
+  let acct = null, asking = false, onAsk = async () => false, lastLink = 0;
   const denied = new Set();
   const hex = u8 => Array.from(u8, b => b.toString(16).padStart(2, '0')).join('');
   const EC = { name: 'ECDH', namedCurve: 'P-256' };
@@ -153,7 +155,8 @@ const Rtc = (() => {
   }
 
   async function onDiscover(m) {
-    if (asking || denied.has(m.desk) || dc?.readyState === 'open') return;
+    // Already linked a moment ago: this is a reconnect, not a new computer - never ask again for it.
+    if (asking || denied.has(m.desk) || dc?.readyState === 'open' || Date.now() - lastLink < 5 * 60000) return;
     const kp = await crypto.subtle.generateKey(EC, false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await crypto.subtle.importKey('jwk', m.pub, EC, false, []) }, kp.privateKey, 256);
     const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));

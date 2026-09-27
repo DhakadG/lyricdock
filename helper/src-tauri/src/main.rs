@@ -54,7 +54,15 @@ fn spicetify_path() -> Option<String> {
     p.exists().then(|| p.display().to_string())
 }
 
+// Cached: finding adb runs PowerShell (slow); it doesn't move while the helper runs. Re-looked-up if it vanished.
+static ADB: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 fn adb_path() -> Option<String> {
+    if let Some(p) = ADB.lock().unwrap().clone() { if std::path::Path::new(&p).exists() { return Some(p); } }
+    let found = find_adb();
+    *ADB.lock().unwrap() = found.clone();
+    found
+}
+fn find_adb() -> Option<String> {
     let dir = local_dir().join("helper");
     let _ = std::fs::create_dir_all(&dir);
     let f = dir.join("find-adb.ps1");
@@ -67,8 +75,10 @@ fn link_running() -> bool {
     ps("[bool](Get-CimInstance Win32_Process -Filter \"Name like 'p%sh%.exe'\" | Where-Object { $_.CommandLine -like '*link.ps1*' })") == "True"
 }
 
+// Every command that shells out is async: Tauri runs plain fn commands on the UI thread, which froze the window
+// (the live phone screen ran adb every 2 seconds).
 #[tauri::command]
-fn status(app: AppHandle) -> Status {
+async fn status(app: AppHandle) -> Status {
     let spicetify = spicetify_path();
     let config = spicetify.as_ref().map(|s| ps(&format!("& '{s}' -c"))).unwrap_or_default();
     let extensions_dir = (!config.is_empty()).then(|| PathBuf::from(&config).parent().map(|p| p.join("Extensions")).unwrap_or_default());
@@ -100,12 +110,12 @@ fn console(script_url: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn install_extension() -> Result<(), String> { console(&format!("{REPO_RAW}/updater/install.ps1")) }
+async fn install_extension() -> Result<(), String> { console(&format!("{REPO_RAW}/updater/install.ps1")) }
 #[tauri::command]
-fn setup_phone() -> Result<(), String> { console(&format!("{REPO_RAW}/updater/setup-phone.ps1")) }
+async fn setup_phone() -> Result<(), String> { console(&format!("{REPO_RAW}/updater/setup-phone.ps1")) }
 
 #[tauri::command]
-fn set_autostart(on: bool) -> Result<(), String> {
+async fn set_autostart(on: bool) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let ok = if on {
         hidden("reg.exe", &["add", RUN_KEY, "/v", "LyricDockHelper", "/t", "REG_SZ", "/d", &format!("\"{}\" --tray", exe.display()), "/f"])
@@ -125,7 +135,7 @@ fn open_url(url: String) -> Result<(), String> {
 
 // ---- developer page (adb): the link script, phone controls and a screenshot
 #[tauri::command]
-fn link(start: bool) -> Result<bool, String> {
+async fn link(start: bool) -> Result<bool, String> {
     if start {
         let dir = local_dir().join("helper");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -144,7 +154,7 @@ fn link(start: bool) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn phone(action: String) -> Result<String, String> {
+async fn phone(action: String) -> Result<String, String> {
     let adb = adb_path().ok_or("adb not found")?;
     let pkg = "com.you.lyricdock";
     let run = |args: &[&str]| hidden(&adb, args).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
@@ -174,12 +184,12 @@ fn b64(data: &[u8]) -> String {
 struct RelayInfo { running: bool, ip: Option<String>, port: u16 }
 fn relay_flag() -> PathBuf { local_dir().join("helper").join("relay.on") }
 #[tauri::command]
-fn relay_status() -> RelayInfo { RelayInfo { running: relay::running(), ip: relay::lan_ip(), port: relay::PORT } }
+async fn relay_status() -> RelayInfo { RelayInfo { running: relay::running(), ip: relay::lan_ip(), port: relay::PORT } }
 #[tauri::command]
-fn relay_set(on: bool) -> Result<RelayInfo, String> {
+async fn relay_set(on: bool) -> Result<RelayInfo, String> {
     let _ = std::fs::create_dir_all(local_dir().join("helper"));
     if on { relay::start()?; let _ = std::fs::write(relay_flag(), "1"); } else { relay::stop(); let _ = std::fs::remove_file(relay_flag()); }
-    Ok(relay_status())
+    Ok(RelayInfo { running: relay::running(), ip: relay::lan_ip(), port: relay::PORT })
 }
 
 #[tauri::command]

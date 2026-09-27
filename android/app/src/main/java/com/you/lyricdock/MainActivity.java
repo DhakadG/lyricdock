@@ -38,6 +38,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     final ConcurrentLinkedQueue<String> inbox = new ConcurrentLinkedQueue<>();
     static volatile MainActivity current; // for MediaReceiver (notification buttons)
     static volatile boolean volKeys = true;
+    android.net.wifi.WifiManager.WifiLock wifiLock;
 
     // Called on the server thread.
     void deliver(String msg) { inbox.add(msg); web.post(this); }
@@ -69,6 +70,13 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         setContentView(root);
         web.loadUrl("file:///android_asset/index.html");
         kiosk();
+        // Keep Wi-Fi out of power-save while the dock runs: its naps stalled the WebRTC link long enough to drop.
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            wifiLock = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "lyricdock:link");
+            wifiLock.setReferenceCounted(false);
+            wifiLock.acquire();
+        } catch (Exception ignored) {}
         server = new DockServer(this);
         server.start();
     }
@@ -89,6 +97,17 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
 
     @JavascriptInterface
     public void setVolKeys(boolean on) { volKeys = on; }
+
+    // Flip clock haptics: a very short tick (5..40 ms), light amplitude where the motor supports it.
+    @JavascriptInterface
+    @SuppressWarnings("deprecation")
+    public void vibrate(int ms) {
+        android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
+        if (v == null || !v.hasVibrator()) return;
+        int t = Math.max(5, Math.min(40, ms));
+        if (Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createOneShot(t, v.hasAmplitudeControl() ? 90 : android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+        else v.vibrate(t);
+    }
 
     @JavascriptInterface
     public void wake() { runOnUiThread(new UiOp(this, UiOp.WAKE, 0, null)); }
@@ -210,6 +229,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     protected void onDestroy() {
         try { server.stop(500); } catch (Exception ignored) {}
         if (current == this) current = null;
+        try { if (wifiLock != null) wifiLock.release(); } catch (Exception ignored) {}
         super.onDestroy();
     }
 
