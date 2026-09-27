@@ -831,18 +831,21 @@
     .ldx-nav{border-right:1px solid var(--hair);padding:16px 12px 20px;overflow:auto;background:#0f0f0f}
     .ldx-find{position:relative;margin:0 2px 6px} .ldx-find svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--sub);width:16px;height:16px}
     .ldx-find input{width:100%;box-sizing:border-box;background:#1c1c1c;border:0;border-radius:8px;padding:11px 12px 11px 38px;color:#fff;font:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
-    .ldx-find input:focus{outline:none;box-shadow:inset 0 0 0 1.5px var(--g)}
+    .ldx-find input:focus{outline:none;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.55)}
     .ldx-cat{font-size:11.5px;font-weight:600;color:rgba(255,255,255,.42);margin:18px 12px 6px}
-    .ldx-item{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;border:0;background:transparent;padding:10px 12px;border-radius:8px;
-      color:rgba(255,255,255,.78);font:500 14px ${FONT};text-align:left;cursor:pointer;transition:background .12s,color .12s}
-    .ldx-item:hover{background:rgba(255,255,255,.05);color:#fff}
-    .ldx-item.on{background:rgba(30,215,96,.1);color:var(--g);box-shadow:inset 2px 0 0 var(--g)}
+    .ldx-item{display:flex;align-items:center;gap:11px;width:100%;box-sizing:border-box;border:0;background:transparent;padding:6px 10px 6px 7px;border-radius:8px;
+      color:rgba(255,255,255,.88);font:500 14px ${FONT};text-align:left;cursor:pointer;transition:background .12s}
+    .ldx-item:hover{background:rgba(255,255,255,.06)}
+    .ldx-item.on{background:rgba(255,255,255,.12);color:#fff}
+    .ldx-ico{flex:none;width:26px;height:26px;border-radius:7px;display:grid;place-items:center;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.18),0 1px 2px rgba(0,0,0,.3)}
+    .ldx .ldx-ico svg{width:16px;height:16px;stroke:#fff;stroke-width:2}
     .ldx-main{overflow:auto;padding:26px 36px 48px;position:relative}
     .ldx-main::-webkit-scrollbar,.ldx-nav::-webkit-scrollbar{width:10px} .ldx-main::-webkit-scrollbar-thumb,.ldx-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:5px;border:3px solid transparent;background-clip:padding-box}
     .ldx-main::-webkit-scrollbar-track,.ldx-nav::-webkit-scrollbar-track{background:transparent}
     .ldx-h{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-    .ldx-badge{font:700 11px/1 ${FONT};letter-spacing:.09em;text-transform:uppercase;color:var(--g);background:rgba(30,215,96,.1);padding:6px 8px;border-radius:6px}
-    .ldx-h h2{font-size:28px;font-weight:800;letter-spacing:-.025em;margin:0}
+    .ldx-h{flex-direction:column;align-items:flex-start;gap:2px}
+    .ldx-badge{font:600 12.5px/1.2 ${FONT};color:rgba(255,255,255,.45)}
+    .ldx-h h2{font-size:28px;font-weight:700;letter-spacing:-.025em;margin:0}
     .ldx-lead{color:var(--sub);margin:4px 0 22px;max-width:72ch;line-height:1.5}
     .ldx-sec{font-size:15px;font-weight:700;margin:26px 2px 10px;display:flex;justify-content:space-between;align-items:baseline}
     .ldx-sec a{font-size:12.5px;font-weight:600;color:var(--sub);cursor:pointer} .ldx-sec a:hover{color:#fff;text-decoration:underline}
@@ -1026,11 +1029,11 @@
   function sections(schema) {
     const groups = schema.filter(x => x.group), byCat = new Map();
     for (const g of groups) { const c = g.cat || 'More'; if (!byCat.has(c)) byCat.set(c, []); byCat.get(c).push(g); }
-    const list = [['General', [{ id: 'overview', label: 'Overview', icon: I.overview }]]];
-    for (const [cat, gs] of byCat) list.push([cat, gs.map(g => ({ id: g.group, label: g.group, icon: g.icon || I.overview, cat: g.cat, desc: g.desc }))]);
+    const list = [['General', [{ id: 'overview', label: 'Overview', icon: I.overview, tint: '#8E8E93' }]]];
+    for (const [cat, gs] of byCat) list.push([cat, gs.map(g => ({ id: g.group, label: g.group, icon: g.icon || I.overview, tint: g.tint, cat: g.cat, desc: g.desc }))]);
     const src = list.find(([c]) => c === 'Source');
-    (src ? src[1] : list[0][1]).push({ id: 'presets', label: 'Presets', icon: I.presets, cat: 'Source' });
-    list.push(['Help', [{ id: 'diag', label: 'Diagnostics', icon: I.diag }]]);
+    (src ? src[1] : list[0][1]).push({ id: 'presets', label: 'Presets', icon: I.presets, tint: '#FFD60A', cat: 'Source' });
+    list.push(['Help', [{ id: 'diag', label: 'Diagnostics', icon: I.diag, tint: '#636366' }]]);
     return list;
   }
   const rowsOf = (schema, group) => { const out = []; let g = null; for (const x of schema) { if (x.group) { g = x.group; continue; } if (g === group && x.k && x.type !== 'action') out.push(x); } return out; };
@@ -1046,7 +1049,7 @@
       list.append(h('div', { className: 'ldx-cat' }, cat));
       for (const it of items) {
         const b = h('button', { className: `ldx-item${!filter && section === it.id ? ' on' : ''}`, onclick: () => go(it.id) });
-        b.innerHTML = svgIcon(it.icon); b.append(it.label);
+        b.innerHTML = `<i class="ldx-ico" style="background:${it.tint || '#8E8E93'}">${svgIcon(it.icon)}</i>`; b.append(it.label);
         list.append(b);
       }
     }

@@ -238,6 +238,9 @@ const Settings = (() => {
     download: 'M12 3.5v11M7 10l5 5 5-5M4.5 20h15',
     link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
   };
+  // Icon tile colours (Apple's system palette, dark mode): each section reads at a glance, like System Settings.
+  const TINTS = { layout: '#0A84FF', note: '#FF375F', image: '#BF5AF2', text: '#FF9F0A', spark: '#64D2FF', phone: '#8E8E93', clock: '#5E5CE6',
+    gauge: '#30D158', source: '#FF453A', layers: '#FFD60A', download: '#0A84FF', link: '#30D158' };
   const KEY = 'dock:settings';
   const defaults = Object.fromEntries(SCHEMA.filter(x => x.k).map(x => [x.k, x.def]));
   let saved = null;
@@ -425,7 +428,7 @@ const Settings = (() => {
     const rail = el('nav', 'st-rail');
     for (const g of groups) {
       const b = el('button', 'st-tab' + (!q && g.group === cur ? ' on' : ''));
-      b.innerHTML = `${svgI(ICONS[g.icon] || '')}<span></span>`;
+      b.innerHTML = `<i class="st-ico" style="background:${TINTS[g.icon] || '#8E8E93'}">${svgI(ICONS[g.icon] || '')}</i><span></span>`;
       b.lastChild.textContent = g.group;
       b.onclick = () => go(g.group);
       rail.append(b);
@@ -433,7 +436,9 @@ const Settings = (() => {
     const pane = el('div', 'st-pane'), box = el('div', 'st-box');
     const head = (badge, title, lead, extra) => {
       const hd = el('div', 'st-head');
-      hd.append(el('span', 'st-badge', badge), el('div', 'st-title', title));
+      const tt = el('div', 'st-tt');
+      tt.append(el('div', 'st-cap', badge), el('div', 'st-title', title));
+      hd.append(tt);
       if (extra) hd.append(extra);
       pane.append(hd);
       if (lead) pane.append(el('p', 'st-lead', lead));
@@ -481,7 +486,7 @@ const Settings = (() => {
   const schema = () => SCHEMA.filter(x => x.group || (x.k && x.type !== 'info'))
     .filter((x, i, a) => !x.group || (a[i + 1] && !a[i + 1].group)) // drop sections with nothing editable (Presets, Connection)
     .map(({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon, cat }) =>
-      ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon: ICONS[icon], cat }));
+      ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon: ICONS[icon], tint: TINTS[icon], cat }));
   // A change from the desktop panel: only known keys, and only values of the default's type.
   const setRemote = (k, v) => { if (k in defaults && typeof v === typeof defaults[k] && (x => !x.opts || x.opts.some(o => o[0] === v))(SCHEMA.find(x => x.k === k))) set(k, v); };
 
