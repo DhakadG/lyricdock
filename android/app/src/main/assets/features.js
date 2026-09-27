@@ -228,6 +228,57 @@
   window.afterApply('*');
   addEventListener('resize', () => setTimeout(remarquee, 100));
 
+  // ---- music-video background (ivLyrics-style): the song's YouTube video, muted, cover-scaled behind the lyrics,
+  // kept in sync with the song. The blurred cover shows until (and if) a video is found.
+  const vids = new Map();
+  let vidFor = null, vidAt = 0;
+  // fetch with a timeout (public instances can hang forever; AbortSignal.timeout needs Chrome 103+).
+  const tfetch = (u, ms = 6000) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+    return fetch(u, { signal: c.signal }).then(x => x.ok ? x.json() : null).catch(() => null).finally(() => clearTimeout(t)); };
+  async function findVideo(title, artist) {
+    const q = `${title} ${String(artist || '').split(',')[0]} official video`;
+    if (S.videoKey) {
+      const r = await tfetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=1&q=${encodeURIComponent(q)}&key=${encodeURIComponent(S.videoKey)}`);
+      const id = r?.items?.[0]?.id?.videoId;
+      if (id) return id;
+    }
+    // Public Piped instances come and go: a known-good one first, then the live instance list.
+    let hosts = ['https://api.piped.private.coffee', 'https://pipedapi.kavin.rocks'];
+    const live = (await tfetch('https://piped-instances.kavin.rocks/', 4000)) || [];
+    hosts = [...new Set([...hosts, ...live.filter(i => i.api_url).map(i => i.api_url)])].slice(0, 8);
+    for (const host of hosts) {
+      const r = await tfetch(`${host}/search?q=${encodeURIComponent(q)}&filter=videos`);
+      const u = r?.items?.find(i => i.url?.includes('watch?v='))?.url;
+      if (u) return u.split('v=')[1].slice(0, 11);
+    }
+    return null;
+  }
+  function ytCmd(func, args = []) { $('yt')?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); }
+  async function video() {
+    const want = S.bg === 'video' && !document.body.classList.contains('night') ? P.id : null;
+    if (want === vidFor) return;
+    vidFor = want;
+    document.getElementById('yt')?.remove();
+    if (!want) return;
+    const title = $('title').textContent, artist = $('artist').textContent;
+    const id = vids.has(want) ? vids.get(want) : await findVideo(title, artist);
+    vids.set(want, id);
+    if (vidFor !== want || !id) { if (!id) window.notice?.('No music video found for this song'); return; }
+    const f = document.createElement('iframe');
+    f.id = 'yt';
+    f.allow = 'autoplay; encrypted-media';
+    f.src = `https://video.lyricdock.app/player?v=${id}&t=${Math.max(0, now() / 1000 | 0)}`; // served by PageClient.java
+    $('bg').after(f); // above the blurred-cover fallback, below the dim layer and the lyrics
+    vidAt = Date.now();
+  }
+  setInterval(() => {
+    video();
+    if (!document.getElementById('yt') || !S.videoSync) return;
+    // The embed reports nothing without the IFrame API handshake; re-seek every 20s (and on pause/play) to stay close.
+    if (P.playing) { ytCmd('playVideo'); if (Date.now() - vidAt > 20000) { vidAt = Date.now(); ytCmd('seekTo', [now() / 1000, true]); } }
+    else ytCmd('pauseVideo');
+  }, 2000);
+
   // ---- explicit filter used by lyrics.js when building lines
   const BAD = /\b(f+u+c+k\w*|s+h+i+t+\w*|b+i+t+c+h\w*|a+s+s+h+o+l+e\w*|d+i+c+k\w*|p+u+s+s+y\w*|c+u+n+t\w*|n+i+g+g+\w*|m+o+t+h+e+r+f+u+c+k\w*|b+a+s+t+a+r+d\w*|w+h+o+r+e\w*|s+l+u+t\w*)/gi;
   window.cleanWords = t => (S.hideExplicit && t ? t.replace(BAD, w => w[0] + '*'.repeat(w.length - 1)) : t);

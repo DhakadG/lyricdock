@@ -529,3 +529,9 @@ body.settings-open.settings-peek #settings { background-color: transparent; just
 body.settings-peek .sl-modal { width: min(52vw, 520px); height: 96vh; margin-right: calc(var(--sa-r) + 2vmin) !important; }
 body.settings-peek .sl-cols { columns: 1; }
 #speek[aria-pressed="true"] { background: #fff; color: #000; }
+
+/* ---- music-video background: 16:9 iframe scaled to cover, the blurred cover underneath while it loads */
+#yt { position: fixed; left: 50%; top: 50%; width: max(100vw, 177.78vh); height: max(100vh, 56.25vw); transform: translate(-50%, -50%) scale(1.02); border: 0; pointer-events: none; z-index: 0; }
+body.bg-video #bg { display: block; }
+body:not(.bg-video) #yt { display: none; }
+#bgc, #bg, #bgGrad { z-index: 0; } #dim { z-index: 0; }

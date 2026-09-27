@@ -91,6 +91,16 @@
     setTimeout(r, 3000);
   });
 
+  // Phone setting "Connection path: Prefer USB cable": leave out this PC's addresses on the phone's Wi-Fi subnet, so
+  // the only route left is the USB-tethering network (the phone does the same on its side).
+  function onlyPath(desc) {
+    const mode = readJson(SETTINGS_KEY, {}).linkPath, phoneIp = LS.get('lyricdock:phoneIp') || '';
+    if (mode !== 'usb' || !/^\d+\.\d+\.\d+\.\d+$/.test(phoneIp)) return desc;
+    const net = phoneIp.split('.').slice(0, 3).join('.') + '.';
+    const sdp = desc.sdp.split('\r\n').filter(l => !l.startsWith('a=candidate') || !l.split(' ')[4].startsWith(net)).join('\r\n');
+    return { type: desc.type, sdp };
+  }
+
   async function rtcOpen() {
     const code = pairCode();
     if (code.length !== 10 || typeof RTCPeerConnection === 'undefined') return null;
@@ -111,7 +121,7 @@
         setTimeout(() => res(null), 8000);
       });
       await new Promise(r => { sub.onopen = r; setTimeout(r, 3000); });
-      await fetch(`${RELAY}/${topic}`, { method: 'POST', body: await seal(key, { t: 'offer', id, sdp: pc.localDescription }), headers: { Cache: 'no', Firebase: 'no' } });
+      await fetch(`${RELAY}/${topic}`, { method: 'POST', body: await seal(key, { t: 'offer', id, sdp: onlyPath(pc.localDescription) }), headers: { Cache: 'no', Firebase: 'no' } });
       const m = await answer;
       sub.close();
       if (!m) throw 0;
@@ -260,6 +270,7 @@
   function onMessage(data) {
     const m = safe(() => JSON.parse(data), null);
     if (!m || typeof m !== 'object') return;
+    if (m.type === 'alive' && /^\d+\.\d+\.\d+\.\d+$/.test(m.ip ?? '') && LS.get('lyricdock:phoneIp') !== m.ip) LS.set('lyricdock:phoneIp', m.ip);
     if (m.type === 'pair' && /^[A-Z2-9]{10}$/.test(m.code?.replace(/-/g, '') ?? '')) {
       if (pairCode() !== m.code.replace(/-/g, '')) { LS.set(PAIR_KEY, m.code.replace(/-/g, '')); safe(() => Spicetify.showNotification('LyricDock phone paired')); renderPanel(); }
     }

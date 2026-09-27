@@ -8,11 +8,11 @@ $candidates = @(
     "$root\.tools\sdk\platform-tools\adb.exe",
     "$env:ANDROID_HOME\platform-tools\adb.exe",
     "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-    "$env:LOCALAPPDATA\LyricDock\platform-tools\adb.exe"   # the companion's "Get adb"
+    "$env:LOCALAPPDATA\LyricDock\platform-tools\adb.exe"   # platform-tools downloaded by earlier installers
 )
 $found = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 if (-not $found) { throw 'adb not found - install Android platform-tools or set $env:ADB to adb.exe' }
-# Remembered so the web installer and the companion (which don't live in this checkout) use the same adb.
+# Remembered so the helper app (which doesn't live in this checkout) use the same adb.
 New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\LyricDock" | Out-Null
 Set-Content "$env:LOCALAPPDATA\LyricDock\adb-path.txt" $found
 $found

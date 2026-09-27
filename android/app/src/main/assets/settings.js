@@ -50,7 +50,7 @@ const Settings = (() => {
 
     { group: 'Background' },
     { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
-      ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']],
+      ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['video', 'Music video (YouTube)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']],
       help: 'Dynamic: the cover slowly warped and blurred (Spicy Lyrics\' look, uses the GPU). Artist image: the same effect with the artist\'s photo. Blurred art: a still blurred cover. Colour gradient: slow gradient from the cover\'s colours. Black: nothing (OLED, lowest power).' },
     { k: 'bgSpeed', label: 'Motion speed', type: 'range', min: 0, max: 1.5, step: 0.05, def: 0.35, when: dyn, help: 'How fast the dynamic background drifts. 0 freezes it.' },
     { k: 'bgBeat', label: 'Move with the music', desc: 'Livelier while words are sung, calm in instrumental parts', type: 'toggle', def: true, when: dyn,
@@ -58,6 +58,10 @@ const Settings = (() => {
     { k: 'bgWarp', label: 'Warp', type: 'range', min: 0, max: 1, step: 0.05, def: 1, when: dyn, help: 'How much the image is swirled. 0 = just a blurred, slowly moving cover.' },
     { k: 'bgSaturation', label: 'Colour intensity', type: 'range', min: 0.5, max: 2.5, step: 0.05, def: 1.5, unit: '×', when: dyn, help: 'Saturation of the dynamic background. Higher = more vivid.' },
     { k: 'bgFade', label: 'Cover crossfade', type: 'range', min: 0, max: 3000, step: 100, def: 1000, unit: ' ms', when: dyn, help: 'How long the background takes to blend into the next song\'s cover.' },
+    { k: 'videoKey', label: 'YouTube Data API key (optional)', type: 'text', def: '', placeholder: 'AIza…', when: s => s.bg === 'video',
+      desc: 'Finds the right video more reliably. Without it, a public search service is used.',
+      help: 'Music video background: the song\'s video plays muted behind the lyrics, synced to the song. To use your own search quota: console.cloud.google.com → create a project → enable "YouTube Data API v3" → Credentials → Create credentials → API key (restrict it to YouTube Data API v3). Without a key, LyricDock asks a public Piped instance, which can be slow or down.' },
+    { k: 'videoSync', label: 'Keep the video in sync', type: 'toggle', def: true, when: s => s.bg === 'video', help: 'Seeks the video to the song position when they drift more than 2 seconds apart, and pauses it with the music.' },
     { k: 'bgDim', label: 'Dim', type: 'range', min: 0, max: 0.8, step: 0.05, def: 0.2, when: s => s.bg !== 'black', help: 'Darkens the background so white lyrics stay readable on bright covers or artist photos.' },
 
     { group: 'Lyrics' },
@@ -157,6 +161,8 @@ const Settings = (() => {
       help: 'Check for a new version now and install it if there is one.' },
 
     { group: 'Connection' },
+    { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
+      help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable uses USB tethering (turn on USB tethering on the phone with the cable connected) - useful when Wi-Fi blocks devices from talking to each other. Takes effect on the next connection (reconnect or restart).' },
     { label: 'Link', type: 'info', value: () => window.dockStatus?.() ?? '', help: 'How this phone is currently getting playback: from the computer (direct Wi-Fi / WebRTC, or USB for developers) or from your Spotify account.' },
     { label: 'Pairing code', desc: 'Enter once in Spotify → LyricDock (top bar) → Pair phone', type: 'info', value: () => window.Rtc?.code ?? '',
       help: 'Type this into Spotify on your computer once: click the LyricDock button in the top bar → Pair phone. It also encrypts the connection setup.' },

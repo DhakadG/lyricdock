@@ -199,8 +199,12 @@ For networks that block device-to-device traffic, or if you prefer a cable. No a
 3. Phone: **Settings → Connections → Mobile Hotspot and Tethering → USB tethering** (wording varies by brand).
 4. The PC and phone now share a private network over the cable; LyricDock's direct connection uses it like Wi-Fi.
 
-> Status: the direct (WebRTC) connection finds any shared network interface, so this is expected to work, but it has
-> not been tested on every phone yet. Standalone mode is the cable-free alternative.
+5. On the phone: **Settings → Connection → Connection path → Prefer USB cable**. Settings → Connection → Link then
+   shows *USB cable (192.168.x.x)* and the round-trip time. (Auto uses whichever network works best; with both
+   available it usually picks Wi-Fi.)
+
+> The phone still needs internet (Wi-Fi or mobile data) for the few-hundred-byte connection setup; the music data then
+> flows over the cable.
 
 ### C. Standalone (no PC, no Spicetify)
 
@@ -260,6 +264,13 @@ addresses, which is why the product uses WebRTC). See [Development](#development
 
 ---
 
+## LyricDock Helper (optional, Windows)
+
+A small tray app (download `LyricDock-Helper-vX.Y.Z.exe` from [Releases](https://github.com/DhakadG/lyricdock/releases/latest)):
+shows whether the Spotify extension is installed and enabled, installs or repairs it, runs the one-time phone setup,
+starts with Windows if you like, and has an optional Developer page (adb link, live phone screen). Nothing needs it
+day to day.
+
 ## Using it
 
 - **Tap anywhere** to show the controls: previous · play/pause · next, volume, and the ⚙ settings button. Tap the
@@ -270,6 +281,17 @@ addresses, which is why the product uses WebRTC). See [Development](#development
 - **Presets:** built-in **Default** (the shipped config, see [`config/default-settings.json`](config/default-settings.json)),
   **Smooth (slow phones)** and **Full Spicy**; save your own from either panel (stored in Spotify on the PC, so a new
   phone picks them up). **Reset all** returns to Default.
+- **Gestures:** swipe left/right to skip, double-tap to like, long-press the progress bar to scrub.
+- **Lists:** the controls have buttons for the **queue**, **recently played**, your **library** (playlists, Liked Songs,
+  albums) and **friends' listening activity** (desktop mode). Tap anything to play it.
+- **Player card layout:** an always-visible player (progress, shuffle, repeat, volume) beside the lyrics.
+- **Music video background:** Settings → Background → *Music video (YouTube)* plays the song's video muted behind the
+  lyrics, in sync. Optional: your own [YouTube Data API key](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
+  for more reliable matches (Google Cloud Console → enable *YouTube Data API v3* → Credentials → API key).
+- **Screen:** clock screen when paused, night mode (dim + warm + black), burn-in protection, battery indicator,
+  keep-awake modes.
+- **Settings preview:** phone ⚙ → **Preview** moves the sheet aside so the player shows every change live; Spotify's
+  panel has a live preview card at the top.
 - **Updates:** automatic. The Spotify extension checks every 30 minutes (Spotify's panel also has **Check for
   updates**; the popup's **Update** switches in a second). The phone checks at start and every 6 hours
   (Settings → Updates → **Check now**); kiosk phones install silently, normal installs ask once.
@@ -293,11 +315,18 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 
 | Setting | Default | What it does |
 |---|---|---|
-| Layout | Default | Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Options: Default / Lyrics only / Compact / TV view / Cinema / Now Bar. |
+| Layout | Default | Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Options: Default / Player card / Lyrics only / Compact / TV view / Cinema / Now Bar. |
 | Cover side | Cover left, lyrics right | Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top. Options: Cover left, lyrics right / Lyrics left, cover right. |
 | Progress bar | Bottom | Where the song progress bar sits. Tap it (while the controls are showing) to seek. Options: Bottom / Top / Off. |
 | Show times | Off | Shows 1:23 / 3:45 above the ends of the progress bar. |
 | Hide controls after | 4 s | Tap anywhere to show play/pause, next, previous, volume and the settings button. They fade out after this many seconds. Range 2–10 s. |
+| Scroll long titles | On | Song titles and artist lists that do not fit scroll slowly back and forth instead of being cut off. |
+| Shuffle and repeat buttons | On | Adds shuffle and repeat (off / all / one) next to previous and next. |
+| Queue, history and friends buttons | On | Buttons that open the queue, recently played, your library and your friends' listening activity. |
+| Swipe to skip | On | Swipe left for the next song, right for the previous one. |
+| Double-tap to like | On | Double-tap anywhere (not on a button) to add the song to Liked Songs or remove it. |
+| Up next chip | On | Near the end of a song, a small chip shows what plays next. |
+| Show it for the last | 15 s | How long before the end of the song the chip appears. Range 5–45 s. |
 | Volume slider | On | Show a volume slider in the controls. It changes Spotify's volume (not the phone's). |
 | Orientation | Auto-rotate (all 4) | Auto follows how the phone is standing, including upside down. Lock it if the phone lies on a sensor-confusing stand. Options: Auto-rotate (all 4) / Landscape / Portrait. |
 | Notch & edge spacing | Auto | Auto keeps text clear of the camera notch and pulls the progress bar in where the rounded corners would cut it. Manual lets you set both yourself. Options: Auto / Manual. |
@@ -309,6 +338,9 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 | Setting | Default | What it does |
 |---|---|---|
 | Show liked (heart) | On | Green heart = in your Liked Songs. Tapping it saves or removes the song in Spotify. |
+| Like button position | Badge on the cover | Where the heart sits: a small badge in the corner of the album art, or beside the song title. Options: Badge on the cover / Next to the title. |
+| Album and year | On | Shows the album name and release year under the artist. |
+| Lyrics source badge | Off | A small label in the corner naming where the lyrics came from (Spicy Lyrics, Apple Music, Spotify, LRCLIB). |
 | Show audio quality | On | Shows Spotify's current streaming quality (Low … Very high, Lossless) under the artist. |
 | Accent colour from cover | On | Tints the progress bar, buttons and settings with a colour picked from the album art. Off: plain white. |
 | Spinning cover (Now Bar) | On | The round cover in the Now Bar turns like a record while playing. |
@@ -318,12 +350,14 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 
 | Setting | Default | What it does |
 |---|---|---|
-| Background | Dynamic | Dynamic: the cover slowly warped and blurred (Spicy Lyrics' look, uses the GPU). Artist image: the same effect with the artist's photo. Blurred art: a still blurred cover. Colour gradient: slow gradient from the cover's colours. Black: nothing (OLED, lowest power). Options: Dynamic / Artist image (dynamic) / Blurred art / Colour gradient / Black. |
+| Background | Dynamic | Dynamic: the cover slowly warped and blurred (Spicy Lyrics' look, uses the GPU). Artist image: the same effect with the artist's photo. Blurred art: a still blurred cover. Colour gradient: slow gradient from the cover's colours. Black: nothing (OLED, lowest power). Options: Dynamic / Artist image (dynamic) / Music video (YouTube) / Blurred art / Colour gradient / Black. |
 | Motion speed | 0.35 | How fast the dynamic background drifts. 0 freezes it. Range 0–1.5. |
 | Move with the music | On | Speeds the background up while vocals are busy (read from the lyric timing) and slows it in instrumental parts. |
 | Warp | 1 | How much the image is swirled. 0 = just a blurred, slowly moving cover. Range 0–1. |
 | Colour intensity | 1.5 × | Saturation of the dynamic background. Higher = more vivid. Range 0.5–2.5 ×. |
 | Cover crossfade | 1000 ms | How long the background takes to blend into the next song's cover. Range 0–3000 ms. |
+| YouTube Data API key (optional) | (empty) | Music video background: the song's video plays muted behind the lyrics, synced to the song. To use your own search quota: console.cloud.google.com → create a project → enable "YouTube Data API v3" → Credentials → Create credentials → API key (restrict it to YouTube Data API v3). Without a key, LyricDock asks a public Piped instance, which can be slow or down. |
+| Keep the video in sync | On | Seeks the video to the song position when they drift more than 2 seconds apart, and pauses it with the music. |
 | Dim | 0.2 | Darkens the background so white lyrics stay readable on bright covers or artist photos. Range 0–0.8. |
 
 **Lyrics**
@@ -332,11 +366,17 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 |---|---|---|
 | Romanization | Smart (keep Hindi) | Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization. Options: Smart (keep Hindi) / Always / Original script. |
 | Text size | 1 × | Lyrics size. Layouts scale from this (TV and Cinema are bigger). Range 0.6–1.6 ×. |
+| Font | System (Roboto) | Typeface for lyrics and titles. Anything but System downloads once from Google Fonts and is then cached; scripts a font lacks (Devanagari, Gurmukhi…) fall back to the system font. Options: System (Roboto) / Inter / Outfit / Manrope / DM Sans / Plus Jakarta Sans / Space Grotesk / Sora / Lexend / Poppins / Playfair Display (serif) / Lora (serif) / JetBrains Mono. |
 | Text weight | Bold | Thickness of the lyrics font. Options: Medium / Semibold / Bold / Extra bold / Black. |
 | Alignment | Left | Duet lines sung by the second singer still go to the other side. Options: Left / Centre. |
 | Active line position | 0.35 | 0.2 = near the top (more upcoming lines visible), 0.6 = below the middle (more past lines). Range 0.2–0.6. |
 | Line spacing | 1.5 | Space between lyric lines. Range 0–5. |
 | Other lines brightness | 0.5 | How visible the lines that aren't being sung are. Spicy Lyrics uses 0.5. Range 0.15–0.85. |
+| Sung line colour | White | Colour the word fill sweeps in. Accent uses the colour picked from the album art. Options: White / Accent from cover. |
+| Colour per singer (duets) | On | In duets, the second singer's lines (sung on the other side) are tinted with the accent colour so the voices are easy to tell apart. |
+| Text shadow for bright backgrounds | Off | A soft dark shadow under the lyrics keeps them readable over bright covers and artist photos. |
+| Hide explicit words | Off | Masks common English swear words in the lyrics (f***). Only changes what is shown. |
+| Countdown before singing | On | In the intro, the last 3 seconds before the first line count down 3 · 2 · 1 above the dots. |
 | Blur distant lines | On | Lines two or more away from the current one are softly blurred, drawing the eye to the sung line. |
 | Blur strength | 1.2 px | Blur of lines two away; three and more get twice this. Range 0.5–5 px. |
 | Glow on sung words | On | Words glow softly as they are sung (Spicy Lyrics). The most expensive effect: turn it off on slow phones for smoother motion. |
@@ -362,13 +402,29 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 | Lyrics scroll | Smooth | How the lyrics glide to the next line. Springy overshoots a little. Options: Smooth / Springy / Snappy. |
 | Animation speed | 1 × | Speeds up or slows down every UI animation. Range 0.5–2 ×. |
 
+**Screen**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Keep the screen on | Always | Always: never sleeps (the kiosk default). Only while playing: the screen turns off after music has been paused for the time below. Follow Android: the normal screen timeout. Options: Always / Only while playing / Follow Android. |
+| Turn off after pausing for | 10 min | How long the screen stays on after music stops. Range 1–60 min. |
+| Clock screen | When paused | A calm full-screen clock with the date and the next song, shown after a while without music. Tap it to go back. Options: Off / When paused / When nothing is playing. |
+| Show the clock after | 3 min | Minutes without music before the clock appears. Range 1–30 min. |
+| Night mode | Off | Between the hours below: dims everything, switches to a black background and warms the colours. |
+| Night starts at | 22 :00 | Hour (24-hour clock) night mode starts. Range 0–23 :00. |
+| Night ends at | 7 :00 | Hour (24-hour clock) night mode ends. Range 0–23 :00. |
+| Night dimming | 0.5 | How much darker everything gets at night. Range 0–0.85. |
+| Night warmth | 0.4 | Amber tint at night (less blue light). Range 0–1. |
+| Burn-in protection | On | AMOLED screens can keep a ghost of things that never move. This shifts the layout by a few pixels every few minutes: invisible, but it spreads the wear. |
+| Battery indicator | Off | Shows the phone's battery level and whether it is charging, in a corner (handy for a kiosk dock). |
+
 **Performance**
 
 | Setting | Default | What it does |
 |---|---|---|
 | Background resolution | 0.5 × | Size the dynamic background is drawn at. Under this much blur 0.5 looks the same as 1 and is what lets a budget phone hold 60 fps. Range 0.2–1 ×. |
 | Background blur passes | 6 | Softness of the dynamic background. More passes = smoother, more GPU work. Range 1–12. |
-| Background frame rate | 60 fps | The background moves slowly, so 30 fps is hard to tell apart and saves power. Options: 60 fps / 30 fps / 20 fps. |
+| Background frame rate | Match display | Cap for the dynamic background. Match display runs at the screen's own refresh rate (60, 90, 120, 144 Hz…); a phone never goes above its screen. The background moves slowly, so 30 fps is hard to tell apart and saves power. Options: Match display / 165 fps / 144 fps / 120 fps / 100 fps / 90 fps / 75 fps / 60 fps / 45 fps / 30 fps / 24 fps / 20 fps / 15 fps. |
 | Lines kept drawn | 20 | Lines further than this from the current one are not drawn at all (long songs stay light). Raise it if you use a tiny text size. Range 8–60. |
 
 **Playback source**
@@ -396,6 +452,7 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 
 | Setting | Default | What it does |
 |---|---|---|
+| Connection path | Auto (fastest) | How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable uses USB tethering (turn on USB tethering on the phone with the cable connected) - useful when Wi-Fi blocks devices from talking to each other. Takes effect on the next connection (reconnect or restart). Options: Auto (fastest) / Prefer USB cable / Wi-Fi only. |
 | Link | — | How this phone is currently getting playback: from the computer (direct Wi-Fi / WebRTC, or USB for developers) or from your Spotify account. |
 | Pairing code | — | Type this into Spotify on your computer once: click the LyricDock button in the top bar → Pair phone. It also encrypts the connection setup. |
 | Kiosk mode | — | Kiosk mode was turned on by setup-phone.ps1. Leaving it gives the phone back its normal home screen, status bar and lock screen. |
@@ -457,7 +514,7 @@ here for development only.
 | Build + install on the USB phone (Gradle-free) | `./scripts/deploy.ps1` (`scripts/build-apk.ps1` builds only) |
 | Run this checkout's extension in Spotify (no auto-update) | `./scripts/install-extension.ps1 -Dev` |
 | Extra wired path for development (adb forward, USB/wireless adb) | `./scripts/link.ps1` / `./scripts/autostart.ps1` |
-| Tray tool: adb link, phone brightness/restart/reboot, live phone screen | `companion/LyricDock.ps1` |
+| Windows helper app (Tauri 2, same UI as Ethernet Guardian) | `cd helper/src-tauri; cargo build --release` |
 | Drive the phone's WebView (after `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`) | `node scripts/cdp.mjs eval "<js>"` / `shot out.png` |
 | Browser preview with a fake bridge (760×360) | `./scripts/preview.ps1` |
 | Romanizer tests | `node tests/roman.test.js` |
@@ -465,7 +522,7 @@ here for development only.
 
 Layout: `extension/` (Spicetify loader + bridge), `android/` (app: Java shell + `assets/` web UI — `style.css`,
 `settings.js` holds the settings schema and defaults), `updater/` (installer, phone setup), `config/` (generated
-default config), `companion/` and `scripts/` (tooling).
+default config), `helper/` (Windows helper app) and `scripts/` (tooling). `docs/ROADMAP.md` lists 200 rated features and their status.
 
 ---
 

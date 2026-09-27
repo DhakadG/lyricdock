@@ -25,3 +25,6 @@ New-RepoTreemap.ps1
 repo-treemap.html
 
 graphify-out/
+
+helper/src-tauri/target/
+helper/src-tauri/gen/

@@ -57,6 +57,21 @@ const Rtc = (() => {
     setTimeout(r, 3000);
   });
 
+  // Settings -> Connection path: offer only the Wi-Fi address, or only the other ones (the USB-tethering cable).
+  // Auto offers everything and WebRTC picks the fastest that works.
+  function onlyPath(desc) {
+    const mode = window.Settings?.S.linkPath || 'auto';
+    let wifi = '';
+    try { wifi = Dock.ip(); } catch (e) {}
+    if (mode === 'auto' || !wifi) return desc;
+    const keep = line => {
+      if (!line.startsWith('a=candidate')) return true;
+      const ip = line.split(' ')[4], isWifi = ip === wifi;
+      return mode === 'wifi' ? isWifi : !isWifi && !ip.includes(':'); // usb: IPv4 addresses that aren't the Wi-Fi one
+    };
+    return { type: desc.type, sdp: desc.sdp.split('\r\n').filter(keep).join('\r\n') };
+  }
+
   async function answer(m) {
     try { pc?.close(); } catch (e) {}
     pc = new RTCPeerConnection();
@@ -65,7 +80,7 @@ const Rtc = (() => {
     await pc.setRemoteDescription(m.sdp);
     await pc.setLocalDescription(await pc.createAnswer());
     await gathered(pc);
-    publish({ t: 'answer', id: m.id, sdp: pc.localDescription });
+    publish({ t: 'answer', id: m.id, sdp: onlyPath(pc.localDescription) });
   }
 
   // ---- data channel, with chunking (SCTP messages are capped; raw lyrics can be big)
@@ -137,6 +152,21 @@ const Rtc = (() => {
     await post(acct.topic, JSON.stringify({ t: 'accept', desk: m.desk, box: b64(iv) + '.' + b64(ct) }));
   }
 
+  // Which network the live connection uses: the selected ICE pair's local + remote address. The phone's Wi-Fi
+  // address means Wi-Fi/LAN; anything else (e.g. 192.168.42.x / .234.x on rndis0) is the USB-tethering cable.
+  let path = null;
+  async function refreshPath() {
+    if (!pc || dc?.readyState !== 'open') { path = null; return; }
+    try {
+      const st = await pc.getStats(), all = [...st.values()];
+      const tr = all.find(x => x.type === 'transport' && x.selectedCandidatePairId);
+      const pair = tr ? st.get(tr.selectedCandidatePairId) : all.find(x => x.type === 'candidate-pair' && x.nominated && x.state === 'succeeded');
+      const l = pair && st.get(pair.localCandidateId), r = pair && st.get(pair.remoteCandidateId);
+      path = l ? { local: l.address || l.ip, remote: r?.address || r?.ip, rtt: pair.currentRoundTripTime } : null;
+    } catch (e) { path = null; }
+  }
+  setInterval(refreshPath, 5000);
+
   init().then(listen);
   return {
     code: pretty,
@@ -145,6 +175,8 @@ const Rtc = (() => {
     onAsk: f => { onAsk = f; },
     onMessage: f => { onMsg = f; },
     open: () => dc?.readyState === 'open',
+    path: () => path,
+    refreshPath,
     status: () => dc?.readyState === 'open' ? 'connected' : ['failed', 'closed', 'disconnected'].includes(status) ? 'standby' : status, // desktop moved to USB / will re-offer
   };
 })();

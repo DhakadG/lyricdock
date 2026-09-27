@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LyricDock Helper</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* LyricDock additions on top of the shared Fluent stylesheet (app.css, from Ethernet Guardian). */
+  .ring img { width: 44px; height: 44px; }
+  .steps { margin: 8px 0 0; padding-left: 20px; color: var(--text-2); } .steps li { margin: 6px 0; }
+  .shot { width: 100%; aspect-ratio: 1520 / 720; border-radius: var(--radius-s); background: #111 center/contain no-repeat; box-shadow: 0 0 0 1px var(--stroke); }
+  .kv { display: grid; grid-template-columns: 180px 1fr; gap: 8px 16px; } .kv code { text-align: left; }
+  .linkish { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="Main">
+    <div class="brand"><img src="logo.png" width="22" height="22" alt=""><span class="label">LyricDock Helper</span></div>
+    <button class="nav-item" data-page="dashboard" aria-current="page"><span class="icon" aria-hidden="true" data-fb="&#x2302;">&#xE80F;</span><span class="label">Dashboard</span></button>
+    <button class="nav-item" data-page="phone"><span class="icon" aria-hidden="true" data-fb="&#x260E;">&#xE8EA;</span><span class="label">Phone</span></button>
+    <button class="nav-item" data-page="settings"><span class="icon" aria-hidden="true" data-fb="&#x2699;">&#xE713;</span><span class="label">Settings</span></button>
+    <button class="nav-item" data-page="developer" id="nav-dev" hidden><span class="icon" aria-hidden="true" data-fb="&#x2692;">&#xE90F;</span><span class="label">Developer</span></button>
+    <div class="spacer"></div>
+    <button class="nav-item" data-page="about"><span class="icon" aria-hidden="true" data-fb="&#x24D8;">&#xE946;</span><span class="label">About</span></button>
+  </nav>
+
+  <main class="content">
+    <section class="page" id="page-dashboard" aria-labelledby="h-dashboard">
+      <h1 id="h-dashboard">Dashboard</h1>
+      <div class="banner warn" id="banner-spicetify" hidden role="alert">
+        <span class="icon" aria-hidden="true" data-fb="&#x26A0;">&#xE7BA;</span>
+        Spicetify is not installed. LyricDock runs inside it - <span class="linkish" data-url="https://spicetify.app/docs/getting-started">install Spicetify</span>, then click Install below.
+      </div>
+      <div class="card hero">
+        <div class="hero-top">
+          <div class="ring s-off" id="ring"><img src="logo.png" alt=""></div>
+          <div class="hero-main">
+            <div class="status-line"><span class="badge s-off" id="ext-badge">Checking</span><span class="muted">Spotify extension</span></div>
+            <div class="speed" id="ext-title">LyricDock</div>
+            <div class="muted sub" id="ext-sub">Looking for Spicetify…</div>
+          </div>
+          <div class="hero-actions">
+            <button class="btn primary" id="btn-install">Install / repair</button>
+            <button class="btn" id="btn-refresh">Check again</button>
+            <button class="btn" data-url="https://github.com/DhakadG/lyricdock/releases/latest">Release notes</button>
+          </div>
+        </div>
+        <div class="chips" id="chips"></div>
+        <div class="muted small">The extension updates itself inside Spotify. Run Install / repair after a Spotify update wipes Spicetify, or if the LyricDock button is missing.</div>
+      </div>
+      <div class="stats">
+        <div class="card stat"><div class="muted small">Latest release</div><div class="stat-v" id="st-latest">—</div></div>
+        <div class="card stat"><div class="muted small">This helper</div><div class="stat-v" id="st-helper">—</div></div>
+        <div class="card stat"><div class="muted small">Starts with Windows</div><div class="stat-v" id="st-auto">—</div></div>
+        <div class="card stat"><div class="muted small">adb (developers)</div><div class="stat-v" id="st-adb">—</div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-phone" hidden aria-labelledby="h-phone">
+      <h1 id="h-phone">Phone</h1>
+      <div class="card group"><h2>Install the app on the phone</h2>
+        <div class="row"><span class="row-l"><b>Normal app</b><small>Download the APK on the phone and open it. No cable needed.</small></span>
+          <button class="btn" data-url="https://github.com/DhakadG/lyricdock/releases/latest">Open releases</button></div>
+        <div class="row"><span class="row-l"><b>Dedicated dock (kiosk)</b><small>Full screen, starts on boot, updates silently. One time, over USB.</small></span>
+          <button class="btn primary" id="btn-kiosk">Run phone setup</button></div>
+        <ol class="steps">
+          <li>Remove all accounts from the phone (Settings → Accounts) or use a factory-reset phone.</li>
+          <li>Settings → About phone → Software information → tap <b>Build number</b> 7 times.</li>
+          <li>Settings → Developer options → turn on <b>USB debugging</b>, connect the cable.</li>
+          <li>Click <b>Run phone setup</b> and tap <b>Allow</b> on the phone when asked. adb is downloaded temporarily and deleted afterwards.</li>
+        </ol>
+      </div>
+      <div class="card group"><h2>Pair</h2>
+        <p class="muted">The phone shows a code like <code>K7QX-9MP-2F2</code>. In Spotify click the LyricDock button in the top bar → <b>Pair phone</b>, type it, click Pair. Once per phone.</p>
+      </div>
+      <div class="card group"><h2>Connection</h2>
+        <p class="muted">Spotify and the phone connect directly over your network. If your Wi-Fi blocks devices from reaching each other, turn on <b>USB tethering</b> on the phone (cable connected) and set the phone's Settings → Connection → <b>Connection path</b> to <b>Prefer USB cable</b>.</p>
+      </div>
+    </section>
+
+    <section class="page" id="page-settings" hidden aria-labelledby="h-settings">
+      <h1 id="h-settings">Settings</h1>
+      <div class="card group"><h2>Helper</h2>
+        <label class="row"><span class="row-l"><b>Start with Windows</b><small>Starts minimised in the tray</small></span>
+          <input type="checkbox" class="toggle" id="set-auto" role="switch"></label>
+        <label class="row"><span class="row-l"><b>Developer tools</b><small>Shows the Developer page (adb link, live phone screen). Not needed for normal use.</small></span>
+          <input type="checkbox" class="toggle" id="set-dev" role="switch"></label>
+      </div>
+      <div class="card group"><h2>LyricDock settings</h2>
+        <p class="muted">Everything about how the phone looks and behaves is set in Spotify (LyricDock button → settings, with a live preview) or on the phone (⚙).</p>
+      </div>
+    </section>
+
+    <section class="page" id="page-developer" hidden aria-labelledby="h-developer">
+      <h1 id="h-developer">Developer</h1>
+      <div class="card group"><h2>adb link</h2>
+        <div class="row"><span class="row-l"><b>USB / wireless-adb link</b><small id="dev-link-sub">Points Spotify's localhost:8975 at the phone over adb (development path; users use the direct link).</small></span>
+          <button class="btn" id="btn-link">Start</button></div>
+        <div class="row"><span class="row-l"><b>Phone</b><small id="dev-devices">—</small></span>
+          <button class="btn" id="btn-restart">Restart app</button></div>
+      </div>
+      <div class="card group"><h2>Live phone screen</h2>
+        <div class="shot" id="shot"></div>
+        <div class="row"><span class="row-l"><b>Auto refresh</b><small>Every 2 seconds while this page is open</small></span>
+          <input type="checkbox" class="toggle" id="dev-live" role="switch"></label>
+      </div>
+    </section>
+
+    <section class="page" id="page-about" hidden aria-labelledby="h-about">
+      <h1 id="h-about">About</h1>
+      <div class="card"><div class="kv">
+        <b>Version</b><code id="ab-ver">—</code>
+        <b>Spicetify</b><code id="ab-spice">—</code>
+        <b>Extensions folder</b><code id="ab-ext">—</code>
+        <b>adb</b><code id="ab-adb">—</code>
+      </div></div>
+      <div class="card"><h2>How it works</h2>
+        <p class="muted">LyricDock is a Spicetify extension plus an Android app. Spotify sends the playing track, lyrics and position straight to the phone over your network; the phone sends play, pause, skip, seek and like back. This helper only installs and checks things - you can close it.</p>
+        <p class="muted" style="margin-top:8px"><span class="linkish" data-url="https://github.com/DhakadG/lyricdock#readme">Documentation</span> · <span class="linkish" data-url="https://github.com/DhakadG/lyricdock/issues">Report a problem</span></p>
+      </div>
+      <div class="card"><div class="row" style="border:0"><span class="row-l"><b>Quit</b><small>Closes the helper and its tray icon</small></span><button class="btn danger" id="btn-quit">Quit LyricDock Helper</button></div></div>
+    </section>
+  </main>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

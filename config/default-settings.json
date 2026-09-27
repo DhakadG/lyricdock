@@ -32,6 +32,8 @@
     "bgWarp": 1,
     "bgSaturation": 1.5,
     "bgFade": 1000,
+    "videoKey": "",
+    "videoSync": true,
     "bgDim": 0.2,
     "roman": "smart",
     "size": 1,
@@ -80,7 +82,8 @@
     "bgFps": "max",
     "renderDistance": 20,
     "source": "auto",
-    "autoUpdate": true
+    "autoUpdate": true,
+    "linkPath": "auto"
   },
   "presets": {
     "Default": {},

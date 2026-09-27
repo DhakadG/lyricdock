@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for the helper window",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:default", "core:tray:default"]
+}

@@ -391,10 +391,13 @@ $('bar').addEventListener('pointerdown', e => {
 
 // Keep-alive for the bridge: an adb-forwarded socket can stay "open" on the PC after the phone end dies,
 // so the bridge reconnects when these stop arriving.
+// Direct link over Wi-Fi or over the USB cable (tethering): compare the link's local address with the Wi-Fi one.
+const rtcVia = () => { const p = Rtc.path(); if (!p?.local) return 'direct'; const ms = p.rtt ? ` · ${Math.round(p.rtt * 1000)} ms` : '';
+  return (p.local === myIp ? 'direct Wi-Fi' : `USB cable (${p.local})`) + ms; };
 window.dockStatus = () => {
   const link = document.body.classList.contains('stale') ? 'Not connected'
     : P.source === 'web' ? `Spotify account${SRC.web.pos?.device ? ` · ${SRC.web.pos.device}` : ''}`
-    : `Desktop bridge (${Rtc.open() ? 'direct / WebRTC' : 'adb'})`;
+    : `Desktop bridge (${Rtc.open() ? rtcVia() : 'adb'})`;
   const api = Api.enabled() ? ` · API key set${Api.lastStatus ? ` (last ${Api.lastStatus})` : ''}` : '';
   return `${link} · phone IP ${myIp || 'none'}${api}`;
 };

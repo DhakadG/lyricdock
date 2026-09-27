@@ -55,7 +55,8 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true); // settings persist in localStorage
-        web.setWebViewClient(new WebViewClient());
+        web.getSettings().setMediaPlaybackRequiresUserGesture(false); // muted music-video background autoplays
+        web.setWebViewClient(new PageClient()); // adds the Referer YouTube's embed needs
         web.setBackgroundColor(0xFF000000);
         web.addJavascriptInterface(this, "Dock"); // page -> PC (prev/play/next/seek); only @JavascriptInterface methods are exposed
         web.setOnApplyWindowInsetsListener(this);
