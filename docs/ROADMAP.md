@@ -92,8 +92,8 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 69 | Device picker (Spotify Connect) | P | 6 | 5 | 5.6 | ⬜ |
 | 70 | Speed / crossfade info | P | 2 | 6 | 3.6 | ⬜ |
 | 71 | Sleep timer | P | 5 | 8 | 6.2 | ⬜ |
-| 72 | Hardware volume keys control Spotify | P | 5 | 7 | 5.8 | ⬜ |
-| 73 | Media notification / lock-screen controls | P | 3 | 5 | 3.8 | ⬜ |
+| 72 | Hardware volume keys control Spotify | P | 5 | 7 | 5.8 | ✅ |
+| 73 | Media notification / lock-screen controls | P | 3 | 5 | 3.8 | ✅ (notification buttons; headset keys need audio focus) |
 | 74 | Podcast episode support (chapters, no lyrics) | P+E | 4 | 5 | 4.4 | 🟡 |
 | 75 | Ads shown as "Advertisement" | E | 4 | 9 | 6.0 | ✅ |
 
@@ -105,11 +105,11 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 77 | Recently played | P+E | 7 | 7 | 7.0 | ✅ |
 | 78 | Friends' listening activity (desktop) | P+E | 7 | 6 | 6.6 | ✅ |
 | 79 | Library: playlists + Liked Songs + albums, tap to play | P+E | 8 | 6 | 7.2 | ✅ |
-| 80 | Browse a playlist's tracks | P+E | 6 | 5 | 5.6 | ⬜ |
-| 81 | Search Spotify from the phone | P | 6 | 5 | 5.6 | ⬜ |
-| 82 | Add to queue from lists | P+E | 5 | 7 | 5.8 | ⬜ |
-| 83 | Remove / reorder queue | P+E | 3 | 4 | 3.4 | ⬜ |
-| 84 | Artist page (top tracks) | P | 4 | 5 | 4.4 | ⬜ |
+| 80 | Browse a playlist's tracks | P+E | 6 | 5 | 5.6 | ✅ |
+| 81 | Search Spotify from the phone | P | 6 | 5 | 5.6 | ✅ |
+| 82 | Add to queue from lists | P+E | 5 | 7 | 5.8 | ✅ |
+| 83 | Remove / reorder queue | P+E | 3 | 4 | 3.4 | ✅ (remove, move to top) |
+| 84 | Artist page (top tracks) | P | 4 | 5 | 4.4 | ✅ |
 | 85 | Lyrics of queued songs preloaded | P+E | 7 | 7 | 7.0 | 🟡 (next song) |
 
 ## Layouts & look
@@ -143,11 +143,11 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 105 | Background resolution / blur passes / fps (15–165, match display) | P | 7 | 8 | 7.4 | ✅ |
 | 106 | Colour intensity, crossfade, warp, speed, dim | P | 6 | 9 | 7.2 | ✅ |
 | 107 | YouTube music video background (ivLyrics) | P | 7 | 3 | 5.4 | ✅ |
-| 108 | Spotify Canvas (looping video) background | P+E | 7 | 4 | 5.8 | ⬜ |
+| 108 | Spotify Canvas (looping video) background | P+E | 7 | 4 | 5.8 | ✅ |
 | 109 | Solid custom colour background (ivLyrics) | P | 3 | 9 | 5.4 | ⬜ |
 | 110 | Blur-gradient from album colours (ivLyrics) | P | 4 | 8 | 5.6 | 🟡 (gradient) |
 | 111 | Minimal background (no effect) | P | 3 | 10 | 5.8 | ✅ (Black) |
-| 112 | Background drift animation for still cover | P | 4 | 8 | 5.6 | ⬜ |
+| 112 | Background drift animation for still cover | P | 4 | 8 | 5.6 | ✅ |
 
 ## Screen & device
 
@@ -158,8 +158,8 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 115 | Burn-in protection | P | 6 | 8 | 6.8 | ✅ |
 | 116 | Keep awake: always / while playing / system | P | 7 | 7 | 7.0 | ✅ |
 | 117 | Battery indicator | P | 4 | 8 | 5.6 | ✅ |
-| 118 | Brightness control in app | P | 5 | 7 | 5.8 | ⬜ |
-| 119 | Auto-brightness by time | P | 4 | 7 | 5.2 | 🟡 (night dim) |
+| 118 | Brightness control in app | P | 5 | 7 | 5.8 | ✅ |
+| 119 | Auto-brightness by time | P | 4 | 7 | 5.2 | ✅ |
 | 120 | Weather on the clock screen | P | 3 | 5 | 3.8 | ⬜ |
 | 121 | Screen-off when phone face down | P | 2 | 5 | 3.2 | ⬜ |
 | 122 | Kiosk mode (boot, full screen, silent updates) | P | 9 | 5 | 7.4 | ✅ |
@@ -175,14 +175,14 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 127 | Encrypted setup via ntfy relay | P+E | 8 | 5 | 6.8 | ✅ |
 | 128 | Pairing code | P+E | 9 | 7 | 8.2 | ✅ |
 | 129 | Pair automatically by Spotify account | P+E | 7 | 4 | 5.8 | ✅ |
-| 130 | USB-tethering path + "Connection path" setting | P+E | 6 | 6 | 6.0 | 🟡 (built; cable-only test pending) |
+| 130 | USB-tethering path + "Connection path" setting | P+E | 6 | 6 | 6.0 | ✅ (cable-only needs the PC routed via the phone) |
 | 131 | Link path + latency shown in Settings | P | 5 | 8 | 6.2 | ✅ |
 | 132 | Standalone mode (Spotify Web API) | P | 9 | 5 | 7.4 | ✅ |
 | 133 | Auto source switching | P | 8 | 6 | 7.2 | ✅ |
-| 134 | Several phones paired to one PC | P+E | 6 | 4 | 5.2 | ⬜ |
-| 135 | Self-hosted signalling option (no ntfy) | E+H | 4 | 4 | 4.0 | ⬜ |
-| 136 | TURN relay for remote (away from home) | E | 3 | 3 | 3.0 | ⬜ |
-| 137 | Reconnect backoff + status history | P+E | 5 | 8 | 6.2 | 🟡 |
+| 134 | Several phones paired to one PC | P+E | 6 | 4 | 5.2 | ✅ |
+| 135 | Self-hosted signalling option (no ntfy) | E+H | 4 | 4 | 4.0 | ✅ |
+| 136 | TURN relay for remote (away from home) | E | 3 | 3 | 3.0 | ✅ |
+| 137 | Reconnect backoff + status history | P+E | 5 | 8 | 6.2 | ✅ |
 | 138 | Developer adb link | I | 5 | 6 | 5.4 | ✅ |
 
 ## Settings
@@ -194,13 +194,13 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 141 | Live preview (phone: side sheet; Spotify: preview card) | P+E | 8 | 6 | 7.2 | ✅ |
 | 142 | Built-in presets + your own | P+E | 7 | 7 | 7.0 | ✅ |
 | 143 | Shipped default config file | I | 6 | 9 | 7.2 | ✅ |
-| 144 | Settings search | P+E | 6 | 7 | 6.4 | ⬜ |
-| 145 | Import / export settings (JSON) | P+E | 5 | 8 | 6.2 | ⬜ |
-| 146 | Reset a single group | P | 3 | 8 | 5.0 | ⬜ |
+| 144 | Settings search | P+E | 6 | 7 | 6.4 | ✅ |
+| 145 | Import / export settings (JSON) | P+E | 5 | 8 | 6.2 | ✅ |
+| 146 | Reset a single group | P | 3 | 8 | 5.0 | ✅ |
 | 147 | Sliders apply live, no scroll jump (Spotify panel) | E | 8 | 8 | 8.0 | ✅ |
 | 148 | Settings synced desktop ↔ phone | P+E | 8 | 6 | 7.2 | ✅ |
-| 149 | Keyboard shortcuts in Spotify (toggle lyrics dock etc.) | E | 4 | 7 | 5.2 | ⬜ |
-| 150 | Per-device settings profiles (multi-phone) | P+E | 4 | 4 | 4.0 | ⬜ |
+| 149 | Keyboard shortcuts in Spotify (toggle lyrics dock etc.) | E | 4 | 7 | 5.2 | ✅ |
+| 150 | Per-device settings profiles (multi-phone) | P+E | 4 | 4 | 4.0 | ✅ |
 
 ## Updates & install
 
@@ -214,10 +214,10 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 156 | lyricdock-updater:// protocol | I | 5 | 7 | 5.8 | ✅ |
 | 157 | One-time phone setup script (temporary adb) | I | 7 | 6 | 6.6 | ✅ |
 | 158 | Release script | I | 7 | 8 | 7.4 | ✅ |
-| 159 | Changelog page in app | P | 3 | 7 | 4.6 | ⬜ |
-| 160 | Beta channel | I | 3 | 6 | 4.2 | ⬜ |
-| 161 | Rollback to previous version | E | 3 | 6 | 4.2 | ⬜ |
-| 162 | Signed release APK (own key, not debug) | I | 6 | 7 | 6.4 | ⬜ |
+| 159 | Changelog page in app | P | 3 | 7 | 4.6 | ✅ |
+| 160 | Beta channel | I | 3 | 6 | 4.2 | ✅ |
+| 161 | Rollback to previous version | E | 3 | 6 | 4.2 | ✅ (extension; Android blocks APK downgrades) |
+| 162 | Signed release APK (own key, not debug) | I | 6 | 7 | 6.4 | 🟡 (supported via env vars; releases still debug-signed) |
 
 ## Helper app (Windows)
 
@@ -226,13 +226,13 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 163 | Redesign on Ethernet Guardian's Tauri UI | H | 7 | 5 | 6.2 | ✅ |
 | 164 | Dashboard: Spotify extension, phone link, versions | H | 7 | 6 | 6.6 | ✅ |
 | 165 | Install / repair / update extension | H | 7 | 7 | 7.0 | ✅ |
-| 166 | Phone setup wizard (kiosk) | H | 6 | 5 | 5.6 | ⬜ |
+| 166 | Phone setup wizard (kiosk) | H | 6 | 5 | 5.6 | ✅ |
 | 167 | Tray icon with status | H | 6 | 6 | 6.0 | ✅ |
 | 168 | Start with Windows | H | 5 | 8 | 6.2 | ✅ |
-| 169 | History / log view | H | 4 | 7 | 5.2 | ⬜ |
+| 169 | History / log view | H | 4 | 7 | 5.2 | 🟡 (connection log in Spotify panel + phone) |
 | 170 | Developer tools page (adb link, live screen) | H | 5 | 6 | 5.4 | ✅ |
-| 171 | Local signalling server (no ntfy) | H | 4 | 4 | 4.0 | ⬜ |
-| 172 | Notifications (update available, phone offline) | H | 4 | 7 | 5.2 | ⬜ |
+| 171 | Local signalling server (no ntfy) | H | 4 | 4 | 4.0 | ✅ |
+| 172 | Notifications (update available, phone offline) | H | 4 | 7 | 5.2 | 🟡 (update available; phone offline shows in Spotify) |
 
 ## Extension (Spotify side)
 
@@ -243,7 +243,7 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 175 | Connection notifications | E | 5 | 9 | 6.6 | ✅ |
 | 176 | Worker timer (works minimised) | E | 8 | 7 | 7.6 | ✅ |
 | 177 | Pop-out lyrics window on the PC (PiP, Wave Player) | E | 6 | 4 | 5.2 | ⬜ (declined for now) |
-| 178 | Right-click "Send to dock" / "Open lyrics on phone" | E | 3 | 7 | 4.6 | ⬜ |
+| 178 | Right-click "Send to dock" / "Open lyrics on phone" | E | 3 | 7 | 4.6 | ✅ |
 | 179 | Diagnostics page (last errors, link log) | E | 5 | 7 | 5.8 | 🟡 |
 | 180 | Split bridge into modules (<500 lines each) | E | 5 | 6 | 5.4 | ⬜ |
 
@@ -259,7 +259,7 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 186 | Large touch targets / accessibility labels | P | 5 | 7 | 5.8 | 🟡 |
 | 187 | Unit tests for romanizer | I | 5 | 8 | 6.2 | ✅ |
 | 188 | Tests for lyrics normaliser + timing | I | 5 | 7 | 5.8 | ⬜ |
-| 189 | CI build of the APK on GitHub Actions | I | 5 | 6 | 5.4 | ⬜ |
+| 189 | CI build of the APK on GitHub Actions | I | 5 | 6 | 5.4 | ✅ |
 | 190 | Crash / error reporting to the desktop panel | P+E | 5 | 7 | 5.8 | 🟡 (diag) |
 
 ## Docs & privacy
@@ -272,9 +272,9 @@ working (10 = trivial). **Score** = Value × 0.6 + Ease × 0.4, the order to bui
 | 194 | Screenshots / GIFs in README | I | 6 | 7 | 6.4 | ⬜ |
 | 195 | Website / landing page | I | 4 | 5 | 4.4 | ⬜ |
 | 196 | Localisation of the app UI | P+E | 4 | 4 | 4.0 | ⬜ |
-| 197 | In-app "What's new" after update | P | 4 | 8 | 5.6 | ⬜ |
-| 198 | FAQ inside the helper app | H | 3 | 8 | 5.0 | ⬜ |
-| 199 | Contribution guide | I | 3 | 9 | 5.4 | ⬜ |
+| 197 | In-app "What's new" after update | P | 4 | 8 | 5.6 | ✅ |
+| 198 | FAQ inside the helper app | H | 3 | 8 | 5.0 | ✅ |
+| 199 | Contribution guide | I | 3 | 9 | 5.4 | ✅ |
 | 200 | Security review of relay + keys | I | 7 | 6 | 6.6 | 🟡 |
 
-**Count:** ✅ 116 · 🟡 14 · ⬜ 70 (as of v1.3.0).
+**Count:** ✅ 147 · 🟡 14 · ⬜ 39 (as of v1.4.0).

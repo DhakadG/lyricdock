@@ -1,18 +1,22 @@
 # Publish a LyricDock release: every installed copy updates itself from this.
-#   ./scripts/release.ps1 -Version 1.2.0 [-Notes "what changed"]
+#   ./scripts/release.ps1 -Version 1.2.0 [-Notes "what changed"] [-Beta]
+# -Beta: a pre-release. version.json keeps the stable version and gets "beta": X.Y.Z, so only beta-channel installs
+#        (Spotify panel / phone Settings -> Updates -> Update channel) move to it.
 # - extension/version.json is the one version for everything (the loader reads it on GitHub; the APK is built with it)
 # - the git tag vX.Y.Z is what jsDelivr serves the extension from (immutable), so the tag and main are pushed together
 # - the APK goes on a GitHub Release, where the phone app's updater finds it
-param([Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version, [string]$Notes)
+param([Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version, [string]$Notes, [switch]$Beta)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 Set-Location $root
 if (git status --porcelain) { throw 'Commit or stash your changes first.' }
-$current = (Get-Content extension\version.json -Raw | ConvertFrom-Json).version
+$vj = Get-Content extension\version.json -Raw | ConvertFrom-Json
+$current = if ($vj.beta -and [version]$vj.beta -gt [version]$vj.version) { $vj.beta } else { $vj.version }
 if (git tag -l "v$Version") { throw "v$Version is already released." }
 if ([version]$Version -lt [version]$current) { throw "Version must not be older than $current." }
 
-Set-Content extension\version.json "{ `"version`": `"$Version`" }`n" -NoNewline
+$json = if ($Beta) { "{ `"version`": `"$($vj.version)`", `"beta`": `"$Version`" }`n" } else { "{ `"version`": `"$Version`" }`n" }
+Set-Content extension\version.json $json -NoNewline
 & "$PSScriptRoot\build-apk.ps1"
 $apk = "$root\android\build\lyricdock-v$Version.apk"
 Copy-Item "$root\android\build\lite\lyricdock.apk" $apk -Force
@@ -28,5 +32,5 @@ git add extension/version.json helper/src-tauri/tauri.conf.json helper/src-tauri
 git diff --cached --quiet; if ($LASTEXITCODE) { git commit -q -m "Release v$Version" } # first release: version.json already matches
 git tag "v$Version"
 git push -q --atomic origin main "v$Version"
-gh release create "v$Version" $apk $helperExe --title "LyricDock v$Version" --notes $Notes
+gh release create "v$Version" $apk $helperExe --title "LyricDock v$Version$(if ($Beta) { ' (beta)' })" --notes $Notes @(if ($Beta) { '--prerelease' })
 Write-Host "Released v$Version - Spotify picks it up on next start (or within 30 min), phones within 6 h."

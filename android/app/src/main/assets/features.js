@@ -41,6 +41,10 @@
     const h = $('heart'), onArt = S.heartPos === 'art' && !['player', 'lyrics'].includes(S.layout); // no big cover there
     (onArt ? $('art') : $('titlerow')).appendChild(h);
     h.classList.toggle('badge', onArt);
+    // Quality tag: vertical on the cover's edge; next to the title when there is no big cover.
+    const q = $('quality'), cover = ['split', 'tv'].includes(S.layout);
+    (cover ? $('art') : $('titlerow')).appendChild(q);
+    q.classList.toggle('vert', cover); q.classList.toggle('inline', !cover);
   }
 
   // ---- shuffle / repeat state (from the bridge beat or the Web API poll)
@@ -164,44 +168,155 @@
   setInterval(everySecond, 1000);
   function applyBg() { try { art(P.art).then(im => background(P.art, im)); } catch (e) {} }
 
-  // ---- queue / recently played / library / friends
-  let tab = 'queue';
-  const panel = $('listPanel');
+  // ---- queue / recently played / library / search / friends, with browsing into playlists, albums and artists.
+  // A view stack: the tab at the bottom, each opened playlist / album / artist on top (Back pops it).
+  // Rows: tap a song to play it (in the list's context), tap a playlist / album / artist to open it.
+  // Swipe right = add to queue (queue tab: move to the top), swipe left = like / unlike (queue tab: remove).
+  const TABS = { queue: 'Nothing queued', recent: 'Nothing played yet', library: 'Your library is empty', search: 'Search songs, artists, albums and playlists', friends: 'No friend activity' };
+  let stack = [{ which: 'queue' }], items = [], viewData = null, searchT = 0;
+  const view = () => stack[stack.length - 1];
+  const I = {
+    heart: '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/></svg>',
+    add: '<svg viewBox="0 0 24 24"><path d="M3 6h12v2H3zm0 5h12v2H3zm0 5h8v2H3zm14-2v-3h2v3h3v2h-3v3h-2v-3h-3v-2z"/></svg>',
+    x: '<svg viewBox="0 0 24 24"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4z"/></svg>',
+    top: '<svg viewBox="0 0 24 24"><path d="M5 4h14v2H5zm7 3 6 6h-4v7h-4v-7H6z"/></svg>',
+    more: '<svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7-1.4-1.4 5.6-5.6-5.6-5.6z"/></svg>',
+  };
   document.querySelectorAll('#lists button').forEach(b => b.onclick = () => openList(b.dataset.list));
   document.querySelectorAll('#listTabs button').forEach(b => b.onclick = () => openList(b.dataset.tab));
   $('listClose').onclick = () => document.body.classList.remove('lists-open');
-  function openList(which) {
-    tab = which;
-    document.body.classList.add('lists-open');
-    document.querySelectorAll('#listTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === which));
-    $('listBody').innerHTML = '<div class="li-empty">Loading…</div>';
-    if (P.source === 'web') Web.list(which).then(r => showList({ which, ...r }));
-    else send({ type: 'list', which });
+  $('listBack').onclick = () => { if (stack.length > 1) { stack.pop(); load(); } };
+  function openList(which) { stack = [{ which }]; document.body.classList.add('lists-open'); load(); }
+  function browse(uri, title) { stack.push({ which: 'tracks', uri, title }); document.body.classList.add('lists-open'); load(); }
+  window.dockBrowse = uri => { if (/^spotify:/.test(uri || '')) browse(uri); };
+  function load() {
+    const v = view(), root = stack[0].which;
+    document.querySelectorAll('#listTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === root));
+    $('listPanel').classList.toggle('deep', stack.length > 1);
+    $('listCrumb').textContent = stack.length > 1 ? v.title || '' : '';
+    $('listBody').scrollTop = 0;
+    if (v.which === 'search') {
+      $('listBody').innerHTML = `<div class="li-search"><input id="liQ" type="search" placeholder="What do you want to play?" value="${esc(v.q || '')}" enterkeyhint="search"></div><div id="liRes"></div>`;
+      const q = $('liQ');
+      q.oninput = () => { clearTimeout(searchT); v.q = q.value; searchT = setTimeout(() => request(v), 450); };
+      if (v.q) request(v); else $('liRes').innerHTML = `<div class="li-empty">${TABS.search}</div>`;
+      if (!v.q) setTimeout(() => q.focus(), 350);
+      return;
+    }
+    $('listBody').innerHTML = skeleton();
+    request(v);
+  }
+  const skeleton = () => '<div class="li-skel">' + '<div class="li"><div class="li-main"><div class="li-art"></div><div class="li-txt"><i></i><i></i></div></div></div>'.repeat(7) + '</div>';
+  function request(v) {
+    const msg = { which: v.which, uri: v.uri, q: v.q };
+    if (v.which === 'search' && !v.q?.trim()) return;
+    if (v.which === 'search') $('liRes').innerHTML = skeleton();
+    if (P.source === 'web') Web.list(v.which, v.uri || v.q).then(r => showList({ ...msg, ...r }));
+    else send({ type: 'list', ...msg });
   }
   window.onExtra = m => {
     if (m.type === 'list') showList(m);
+    else if (m.type === 'acted') acted(m);
     else if (m.type === 'album' && m.id) { albums.set(m.id, m); if (m.id === P.id) albumLine(); }
   };
   const ago = t => { const m = (Date.now() - t) / 60000; return m < 1 ? 'now' : m < 60 ? `${m | 0} min` : m < 1440 ? `${m / 60 | 0} h` : `${m / 1440 | 0} d`; };
+  const artBg = a => a === 'liked' ? ' liked' : '';
+  const artStyle = a => a && a !== 'liked' ? ` style="background-image:url('${esc(a)}')"` : '';
   function showList(m) {
-    if (m.which !== tab) return;
-    const items = Array.isArray(m.items) ? m.items : [];
-    if (!items.length) { $('listBody').innerHTML = `<div class="li-empty">${esc(m.error || { queue: 'Nothing queued', recent: 'Nothing played yet', library: 'Your library is empty', friends: 'No friend activity' }[tab])}</div>`; return; }
-    const head = tab === 'queue' && m.now ? `<h4>Now playing</h4>${row(m.now, -1)}<h4>Next up</h4>` : '';
-    $('listBody').innerHTML = head + items.map((x, i) => row(x, i)).join('');
-    $('listBody').querySelectorAll('.li[data-i]').forEach(el => {
-      const x = items[+el.dataset.i];
-      if (!x?.uri) return;
-      el.onclick = () => { cmdOf('play', { uri: x.uri, ctx: x.ctx }); document.body.classList.remove('lists-open'); window.notice?.(`Playing ${x.title}`); };
+    const v = view();
+    if (m.which !== v.which || (v.uri && m.uri !== v.uri) || (v.which === 'search' && m.q !== v.q)) return; // stale answer
+    const out = v.which === 'search' ? $('liRes') : $('listBody');
+    if (!out) return;
+    viewData = m;
+    items = Array.isArray(m.items) ? m.items : [];
+    if (m.head?.title && stack.length > 1) { v.title = m.head.title; $('listCrumb').textContent = m.head.title; }
+    let html = '';
+    if (m.head) html += `<div class="li-head"><div class="li-hart${artBg(m.head.art)}${m.head.round ? ' round' : ''}"${artStyle(m.head.art)}></div>
+      <div class="li-htxt"><div class="li-ht">${esc(m.head.title)}</div><div class="li-hs">${esc(m.head.sub || '')}</div>
+      <div class="li-hbtns"><button class="li-play" data-a="play">Play</button><button data-a="shuffle">Shuffle</button></div></div></div>`;
+    if (!items.length) { out.innerHTML = html + `<div class="li-empty">${esc(m.error || TABS[stack[0].which] || 'Nothing here')}</div>`; wireHead(out, m); return; }
+    if (v.which === 'queue' && m.now) html += `<h4>Now playing</h4>${row(m.now, -1)}`;
+    let section = v.which === 'queue' ? null : '';
+    items.forEach((x, i) => {
+      const sec = v.which === 'queue' ? (x.queued ? 'Next in queue' : `Next from ${m.ctxName || 'this list'}`) : x.section || '';
+      if (sec !== section) { section = sec; if (sec) html += `<h4>${esc(sec)}</h4>`; }
+      html += row(x, i);
+    });
+    out.innerHTML = html;
+    wireHead(out, m);
+    out.querySelectorAll('.li[data-i]').forEach(wireRow);
+  }
+  function wireHead(out, m) {
+    out.querySelectorAll('.li-head button').forEach(b => b.onclick = () => {
+      cmdOf('play', { uri: m.head.uri || m.ctx, shuffle: b.dataset.a === 'shuffle' });
+      window.notice?.(`${b.dataset.a === 'shuffle' ? 'Shuffling' : 'Playing'} ${m.head.title}`);
+      document.body.classList.remove('lists-open');
     });
   }
+  const isTrack = x => /^spotify:(track|episode|local):/.test(x?.uri || '');
   function row(x, i) {
-    const now = i < 0;
-    const right = tab === 'friends' ? (x.live ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span>${esc(ago(x.time))}</span>`) : '';
-    return `<div class="li${now ? ' now' : ''}"${now ? '' : ` data-i="${i}"`}>
-      <div class="li-art${tab === 'friends' ? ' round' : ''}" style="background-image:url('${esc(x.art || '')}')">${x.live ? '<b></b>' : ''}</div>
+    const now = i < 0, tab = stack[0].which, v = view(), q = tab === 'queue' && v.which === 'queue';
+    let right = '';
+    if (x.friend) right = x.live ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="li-time">${esc(ago(x.time))}</span>`;
+    else if (x.box) right = `<span class="li-go">${I.more}</span>`;
+    else if (isTrack(x) && !now) right = (q ? (x.queued ? `<button data-a="top" aria-label="Move to top">${I.top}</button><button data-a="remove" aria-label="Remove from queue">${I.x}</button>` : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`)
+      : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`) + `<button data-a="like" class="${x.liked ? 'on' : ''}" aria-label="Like">${I.heart}</button>`;
+    const time = x.time && !x.friend && tab === 'recent' ? `<span class="li-time">${esc(ago(x.time))}</span>` : '';
+    return `<div class="li${now ? ' now' : ''}${x.box ? ' box' : ''}"${now ? '' : ` data-i="${i}"`}>
+      <div class="li-swipe l">${q && x.queued ? I.x : I.heart}</div><div class="li-swipe r">${q && x.queued ? I.top : I.add}</div>
+      <div class="li-main"><div class="li-art${artBg(x.art)}${x.round || x.friend ? ' round' : ''}"${artStyle(x.art)}>${x.live ? '<b></b>' : ''}</div>
       <div class="li-txt"><div class="li-t">${esc(x.title)}</div><div class="li-s">${esc(x.sub || '')}</div>${x.ctxName ? `<div class="li-c">${esc(x.ctxName)}</div>` : ''}</div>
-      <div class="li-r">${right}</div></div>`;
+      <div class="li-r">${time}${right}</div></div></div>`;
+  }
+  // Row gestures: horizontal drag reveals the swipe action; a short tap plays / opens.
+  function wireRow(el) {
+    const x = items[+el.dataset.i], main = el.querySelector('.li-main');
+    if (!x?.uri) return;
+    const q = stack[0].which === 'queue' && view().which === 'queue' && x.queued;
+    el.querySelectorAll('button[data-a]').forEach(b => b.onclick = e => { e.stopPropagation(); doAct(b.dataset.a, x, el); });
+    let sx = 0, sy = 0, dx = 0, drag = false, id = null;
+    main.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; dx = 0; drag = false; id = e.pointerId; });
+    main.addEventListener('pointermove', e => {
+      if (e.pointerId !== id) return;
+      const mx = e.clientX - sx, my = e.clientY - sy;
+      if (!drag && Math.abs(mx) > 12 && Math.abs(mx) > Math.abs(my) * 1.5 && isTrack(x)) { drag = true; main.setPointerCapture(id); el.classList.add('dragging'); }
+      if (!drag) return;
+      dx = Math.max(-140, Math.min(140, mx));
+      main.style.transform = `translateX(${dx}px)`;
+      el.classList.toggle('arm-r', dx > 80); el.classList.toggle('arm-l', dx < -80);
+    });
+    const end = e => {
+      if (e.pointerId !== id) return;
+      id = null;
+      if (drag) {
+        el.classList.remove('dragging', 'arm-r', 'arm-l');
+        main.style.transform = '';
+        if (dx > 80) doAct(q ? 'top' : 'add', x, el);
+        else if (dx < -80) doAct(q ? 'remove' : 'like', x, el);
+        return;
+      }
+      if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) return; // a scroll
+      if (x.box) return browse(x.uri, x.title);
+      const ctx = x.ctx || viewData?.ctx;
+      cmdOf('play', { uri: x.uri, ctx });
+      window.notice?.(`Playing ${x.title}`);
+      document.body.classList.remove('lists-open');
+    };
+    main.addEventListener('pointerup', end);
+    main.addEventListener('pointercancel', e => { if (e.pointerId === id) { id = null; el.classList.remove('dragging', 'arm-r', 'arm-l'); main.style.transform = ''; } });
+  }
+  function doAct(a, x, el) {
+    const cmd = { add: 'queueAdd', remove: 'queueRemove', top: 'queueTop', like: x.liked ? 'unlike' : 'like' }[a];
+    if (a === 'like') { x.liked = !x.liked; el.querySelector('button[data-a=like]')?.classList.toggle('on', x.liked); heartPop(el); }
+    if (a === 'remove') el.classList.add('gone');
+    window.notice?.({ queueAdd: `Added ${x.title} to the queue`, queueRemove: `Removed ${x.title}`, queueTop: `${x.title} plays next`, like: `Liked ${x.title}`, unlike: `Removed ${x.title} from Liked Songs` }[cmd]);
+    if (P.source === 'web') Web.act(cmd, x.uri).then(r => acted({ cmd, uri: x.uri, ...r }));
+    else send({ type: 'cmd', cmd, uri: x.uri, uid: x.uid });
+  }
+  function heartPop(el) { el.querySelector('button[data-a=like]')?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 320, easing: 'cubic-bezier(.3,1.6,.5,1)' }); }
+  function acted(m) {
+    if (m.ok === false) window.notice?.(`Couldn't do that: ${m.error || 'failed'}`);
+    if (view().which === 'queue' && ['queueRemove', 'queueTop', 'queueAdd'].includes(m.cmd)) setTimeout(() => request(view()), 350);
   }
 
   // ---- settings live preview: the sheet slides to one side so the player behind it shows every change live.
@@ -219,6 +334,8 @@
     b.classList.toggle('line-accent', S.lineColor === 'accent');
     b.classList.toggle('duet', S.duetColors);
     b.classList.toggle('outline', S.outline);
+    b.classList.toggle('drift', S.bgDrift && (S.bg === 'blur' || S.bg === 'canvas'));
+    call('setVolKeys', !!S.volKeys);
     placeHeart();
     if (!k || k === '*' || k === 'font') applyFont();
     if (!k || k === '*' || ['marquee', 'layout', 'size'].includes(k)) setTimeout(remarquee, 50);
@@ -278,6 +395,71 @@
     if (P.playing) { ytCmd('playVideo'); if (Date.now() - vidAt > 20000) { vidAt = Date.now(); ytCmd('seekTo', [now() / 1000, true]); } }
     else ytCmd('pauseVideo');
   }, 2000);
+
+  // ---- Spotify Canvas background: the song's short looping video (sent by the bridge), over the blurred cover.
+  const canvases = new Map(), baseExtra = window.onExtra;
+  window.onExtra = m => {
+    if (m.type !== 'canvas') return baseExtra(m);
+    if (typeof m.id !== 'string' || !/^https:\/\/[^"'\s]+\.mp4(\?\S*)?$/.test(m.url || '')) return;
+    canvases.set(m.id, m.url);
+    if (canvases.size > 20) canvases.delete(canvases.keys().next().value);
+    canvasTick();
+  };
+  function canvasTick() {
+    const want = S.bg === 'canvas' && !document.body.classList.contains('night') ? canvases.get(P.id) : null;
+    let v = document.getElementById('cv');
+    if (!want) { v?.remove(); return; }
+    if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
+    v?.remove();
+    v = Object.assign(document.createElement('video'), { id: 'cv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
+    v.dataset.src = want;
+    v.oncanplay = () => v.classList.add('on');
+    $('bg').after(v);
+  }
+  setInterval(canvasTick, 1000);
+
+  // ---- phone hardware: volume keys (MainActivity forwards them while the setting is on), media notification,
+  // brightness schedule, and "wake" from Spotify (Ctrl+Alt+W / right-click menu).
+  window.volKey = d => {
+    const v = Math.max(0, Math.min(100, Math.round(+$('vol').value + d * 5)));
+    $('vol').value = v;
+    P.volLock = performance.now() + 2000;
+    cmdOf('volume', { v });
+    window.notice?.(`Volume ${v}%`, 900);
+  };
+  window.mediaCmd = c => { if (['toggle', 'next', 'prev'].includes(c)) cmdOf(c); };
+  window.dockWake = () => {
+    lastPlayAt = Date.now(); clockDismissedAt = Date.now();
+    document.body.classList.remove('clock');
+    call('wake');
+  };
+  window.connLog = () => Rtc.log?.() ?? [];
+  let mediaKey = null;
+  function hardware(h) {
+    const inNight = S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo;
+    const b = S.bright === 'system' ? -1 : S.bright === 'schedule' && inNight ? S.brightNight : S.brightDay;
+    if (b !== window.__bright) { window.__bright = b; call('brightness', b); }
+    const mk = S.mediaNotif && P.id ? `${P.id}|${!!P.playing}|${$('title').textContent}` : '';
+    if (mk !== mediaKey) { mediaKey = mk; call('media', mk ? $('title').textContent : '', $('artist').textContent, P.art || '', !!P.playing); }
+  }
+  setInterval(() => hardware(new Date().getHours()), 1000);
+
+  // ---- release notes: Settings -> Updates -> What's new, and once after the app updated itself.
+  const md = t => '<ul>' + esc(t).split(/\r?\n/).map(l => l.trim()).filter(l => l && !/^#+\s*$/.test(l))
+    .map(l => /^#+\s/.test(l) ? `</ul><b>${l.replace(/^#+\s*/, '')}</b><ul>` : `<li>${l.replace(/^[-*]\s*/, '')}</li>`).join('') + '</ul>';
+  async function changelog() {
+    const rs = await fetch('https://api.github.com/repos/DhakadG/lyricdock/releases?per_page=8').then(r => r.json()).catch(() => null);
+    if (!Array.isArray(rs)) return window.notice?.('Could not load the release notes');
+    $('newsBody').innerHTML = rs.map(r => `<h5>${esc(r.name || r.tag_name)}<small>${esc((r.published_at || '').slice(0, 10))}${r.prerelease ? ' · beta' : ''}</small></h5>${md(r.body || '')}`).join('');
+    document.body.classList.add('news-open');
+  }
+  window.showChangelog = changelog;
+  $('newsClose').onclick = () => document.body.classList.remove('news-open');
+  try {
+    const v = Dock.version(), seen = localStorage.getItem('dock:seenVersion');
+    if (v && seen && seen !== v) setTimeout(changelog, 5000);
+    if (v) localStorage.setItem('dock:seenVersion', v);
+  } catch (e) {}
 
   // ---- explicit filter used by lyrics.js when building lines
   const BAD = /\b(f+u+c+k\w*|s+h+i+t+\w*|b+i+t+c+h\w*|a+s+s+h+o+l+e\w*|d+i+c+k\w*|p+u+s+s+y\w*|c+u+n+t\w*|n+i+g+g+\w*|m+o+t+h+e+r+f+u+c+k\w*|b+a+s+t+a+r+d\w*|w+h+o+r+e\w*|s+l+u+t\w*)/gi;

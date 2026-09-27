@@ -34,7 +34,8 @@ Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory "$out\gen", "$out\classes" | Out-Null
 
 # AGP normally injects these from build.gradle. One version for everything: extension/version.json.
-$ver = (Get-Content "$root\extension\version.json" -Raw | ConvertFrom-Json).version
+$vj = Get-Content "$root\extension\version.json" -Raw | ConvertFrom-Json
+$ver = if ($vj.beta -and [version]$vj.beta -gt [version]$vj.version) { $vj.beta } else { $vj.version } # a beta build carries the beta version
 $parts = $ver.Split('.') | ForEach-Object { [int]$_ }
 $code = $parts[0] * 10000 + $parts[1] * 100 + $parts[2]
 $manifest = (Get-Content "$app\AndroidManifest.xml" -Raw) -replace '<manifest ', "<manifest package=`"com.you.lyricdock`" android:versionCode=`"$code`" android:versionName=`"$ver`" "
@@ -70,8 +71,16 @@ $zip = [IO.Compression.ZipFile]::Open("$out\base.apk", 'Update')
 $zip.Dispose()
 
 & "$bt\zipalign.exe" -f -p 4 "$out\base.apk" "$out\aligned.apk"
-# Android's standard debug keystore (well-known test password), same key Gradle signs debug builds with.
-java -jar "$bt\lib\apksigner.jar" sign --ks $ks --ks-pass pass:android --key-pass pass:android `
-    --ks-key-alias androiddebugkey --out "$out\lyricdock.apk" "$out\aligned.apk"
+# Signing: your own release key when LYRICDOCK_KEYSTORE (+ LYRICDOCK_KS_PASS, LYRICDOCK_KEY_ALIAS) is set - keep that
+# keystore out of the repo (secrets/ is gitignored). Otherwise Android's standard debug key (well-known password).
+# Android only installs an update signed with the same key as the installed app: switching keys means a reinstall.
+if ($env:LYRICDOCK_KEYSTORE) {
+    if (-not (Test-Path $env:LYRICDOCK_KEYSTORE)) { throw "LYRICDOCK_KEYSTORE not found: $env:LYRICDOCK_KEYSTORE" }
+    java -jar "$bt\lib\apksigner.jar" sign --ks $env:LYRICDOCK_KEYSTORE --ks-pass env:LYRICDOCK_KS_PASS --key-pass env:LYRICDOCK_KS_PASS `
+        --ks-key-alias ($env:LYRICDOCK_KEY_ALIAS ?? 'lyricdock') --out "$out\lyricdock.apk" "$out\aligned.apk"
+} else {
+    java -jar "$bt\lib\apksigner.jar" sign --ks $ks --ks-pass pass:android --key-pass pass:android `
+        --ks-key-alias androiddebugkey --out "$out\lyricdock.apk" "$out\aligned.apk"
+}
 if ($LASTEXITCODE) { throw 'apksigner failed' }
 Write-Host "built $out\lyricdock.apk"

@@ -1,10 +1,9 @@
 // LyricDock bridge (Spicetify extension). Pushes the playing track, lyrics, position, liked state and audio
-// quality to the LyricDock phone app, preloads the next track, stores the phone's settings/presets, and takes
-// playback commands back.
+// quality to the LyricDock phone app(s), preloads the next track, stores each phone's settings/presets, answers
+// the phone's queue / library / search panel, and takes playback commands back.
 //
-// Transport: always ws://127.0.0.1:8975. Chromium refuses ws:// from Spotify's https page to a LAN address, so
-// the phone is reached through adb's port forward - over USB, or wireless adb when the cable is out
-// (scripts/link.ps1 switches between them).
+// Transport: a WebRTC data channel per paired phone (signalled through ntfy.sh, a self-hosted ntfy server, or the
+// LyricDock Helper's local relay), plus ws://127.0.0.1:8975 over adb for development.
 (function dockBridge() {
   if (!Spicetify?.Player?.addEventListener || !Spicetify.CosmosAsync || !Spicetify.Platform || !Spicetify.LocalStorage)
     return setTimeout(dockBridge, 300);
@@ -14,13 +13,76 @@
 
   const URL_ = 'ws://127.0.0.1:8975';
   const P = Spicetify.Player, LS = Spicetify.LocalStorage;
-  let ws = null, track = null, preload = null, busy = false, lastRx = 0;
+  let track = null, preload = null;
   let last = { pos: 0, at: 0, playing: false };
 
-  const send = o => ws?.readyState === 1 && ws.send(JSON.stringify(o));
   const safe = (f, d) => { try { return f(); } catch { return d; } }; // getProgress throws before anything loads
   const sleep = t => new Promise(r => setTimeout(r, t));
   const readJson = (k, d) => safe(() => JSON.parse(LS.get(k)) ?? d, d);
+  const writeJson = (k, v) => LS.set(k, JSON.stringify(v));
+
+  // ---- links: one per phone. Key = the phone's pairing code, or 'adb' for the developer link.
+  const links = new Map();
+  const openLinks = () => [...links.values()].filter(l => l.readyState === 1);
+  const connected = () => openLinks().length > 0;
+  const sendTo = (l, o) => { if (l?.readyState === 1) l.send(JSON.stringify(o)); };
+  const send = o => { const s = JSON.stringify(o); for (const l of openLinks()) l.send(s); };
+  const linkFor = code => openLinks().find(l => l.code === code);
+
+  // Connection log for the panel (last 30 events).
+  const events = [];
+  const log = text => { events.unshift({ t: Date.now(), text }); events.length = Math.min(events.length, 30); };
+
+  // ---- paired phones: [{ code, name }]. Migrates the single code older versions stored.
+  const PAIR_KEY = 'lyricdock:pair', PAIRS_KEY = 'lyricdock:pairs';
+  function pairs() {
+    let p = readJson(PAIRS_KEY, null);
+    if (!Array.isArray(p)) {
+      const c = (LS.get(PAIR_KEY) || '').toUpperCase().replace(/[^A-Z2-9]/g, '');
+      p = c.length === 10 ? [{ code: c, name: 'Phone' }] : [];
+      writeJson(PAIRS_KEY, p);
+    }
+    return p.filter(x => /^[A-Z2-9]{10}$/.test(x?.code ?? ''));
+  }
+  const cleanCode = s => String(s ?? '').toUpperCase().replace(/[^A-Z2-9]/g, '');
+  function addPair(code, name) {
+    const p = pairs(), had = p.find(x => x.code === code);
+    if (had) { if (name && /^Phone( \d+)?$/.test(had.name)) { had.name = name; writeJson(PAIRS_KEY, p); } return false; }
+    p.push({ code, name: name || `Phone ${p.length + 1}` });
+    writeJson(PAIRS_KEY, p);
+    log(`Paired ${name || 'a phone'}`);
+    return true;
+  }
+  function removePair(code) {
+    writeJson(PAIRS_KEY, pairs().filter(x => x.code !== code));
+    closeLink(code, 'unpaired');
+    const by = readJson(SET_BY, {}); delete by[code]; writeJson(SET_BY, by);
+  }
+  const phoneName = code => pairs().find(x => x.code === code)?.name || (code ? `Phone ${code.slice(0, 4)}` : 'Phone');
+
+  // ---- settings: per phone (a new phone starts from the last settings used), presets shared.
+  const SETTINGS_KEY = 'lyricdock:settings', SET_BY = 'lyricdock:settingsBy', PRESETS_KEY = 'lyricdock:presets', SCHEMA_KEY = 'lyricdock:schema', DIRTY_BY = 'lyricdock:dirtyBy';
+  const okSettings = s => s && typeof s === 'object' && !Array.isArray(s) && JSON.stringify(s).length < 20000;
+  const settingsFor = code => (code && readJson(SET_BY, {})[code]) || readJson(SETTINGS_KEY, {});
+  function saveSettings(code, S) {
+    writeJson(SETTINGS_KEY, S);
+    if (code) { const by = readJson(SET_BY, {}); by[code] = S; writeJson(SET_BY, by); }
+  }
+  const dirty = (code, on) => { const d = readJson(DIRTY_BY, {}); if (on === undefined) return !!d[code]; if (on) d[code] = 1; else delete d[code]; writeJson(DIRTY_BY, d); };
+  // Signalling + ICE come from the phone's Connection settings (so both ends agree).
+  function relayFor(S) {
+    if (S.relay === 'helper') return 'http://127.0.0.1:8977'; // the helper's local relay, as seen from this PC
+    if (S.relay === 'custom' && /^https:\/\/[^\s]+$/.test(S.relayUrl ?? '')) return S.relayUrl.replace(/\/+$/, '');
+    return 'https://ntfy.sh';
+  }
+  function iceFor(S) {
+    const servers = String(S.ice ?? '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
+      const [urls, username, credential] = e.split('|');
+      return /^(stun|turns?):/.test(urls) ? { urls, ...(username ? { username, credential } : {}) } : null;
+    }).filter(Boolean);
+    return { iceServers: servers };
+  }
+  const wsUrl = u => u.replace(/^http/, 'ws');
 
   // ---- audio quality, best effort across Spotify client versions
   const QUALITY = { lossless: 'Lossless', hifi: 'Lossless', very_high: 'Very high', veryhigh: 'Very high', high: 'High', normal: 'Normal', low: 'Low' };
@@ -36,12 +98,12 @@
   function beat() {
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     last = { pos, at: Date.now(), playing };
-    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality(), via: ws?.kind,
-      volume: safe(() => Math.round(P.getVolume() * 100), undefined), shuffle: safe(() => P.getShuffle(), undefined), repeat: safe(() => P.getRepeat(), undefined) });
+    const b = { type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality(),
+      volume: safe(() => Math.round(P.getVolume() * 100), undefined), shuffle: safe(() => P.getShuffle(), undefined), repeat: safe(() => P.getRepeat(), undefined) };
+    for (const l of openLinks()) sendTo(l, { ...b, via: l.kind });
   }
 
-  // ---- link. The phone sends {type:'alive'} every second; an adb-forwarded socket can look open after the
-  // phone end died (cable pulled, app restarted), so 2.5s of silence means dead: drop it and reconnect.
+  // ---- adb link (development): ws://127.0.0.1:8975 forwarded to the phone.
   const tryOpen = ms => new Promise(res => {
     const s = new WebSocket(URL_);
     const t = setTimeout(() => { s.onopen = null; s.close(); res(null); }, ms);
@@ -49,27 +111,31 @@
     s.onerror = () => { clearTimeout(t); res(null); };
   });
 
-  function drop() { const dead = ws; ws = null; if (dead) { dead.onclose = null; dead.close(); } }
+  function closeLink(id, why) {
+    const l = links.get(id);
+    if (!l) return;
+    links.delete(id);
+    l.onclose = null;
+    try { l.close(); } catch {}
+    if (why) log(`${phoneName(l.code)} ${why}`);
+  }
 
-  // Connection feedback: a dot on the top-bar button, and a notice only when the state has held for 3s
-  // (a USB <-> Wi-Fi handoff shouldn't pop two toasts).
+  // Connection feedback: a dot on the top-bar button, and a notice only when the state has held for 3s.
   let shown = null, pendingState = null, pendingSince = 0;
   function linkState() {
-    const on = ws?.readyState === 1;
+    const on = connected();
     document.querySelector('.ld-topbar')?.classList.toggle('ld-on', on);
     if (on !== pendingState) { pendingState = on; pendingSince = Date.now(); }
     if (on !== shown && Date.now() - pendingSince > 3000) {
-      if (shown !== null) safe(() => Spicetify.showNotification(on ? 'LyricDock connected' : 'LyricDock disconnected'));
+      if (shown !== null) safe(() => Spicetify.showNotification(on ? 'LyricDock connected' : 'LyricDock phone offline'));
       shown = on;
       renderPanel();
     }
   }
 
-  // ---- no-adb link: WebRTC data channel straight to the phone (Wi-Fi, or USB tethering). WebRTC isn't blocked
-  // the way ws:// to a LAN address is. The offer/answer swap goes through ntfy.sh as a dumb mailbox; topic and
-  // AES-GCM key come from the phone's pairing code, so the relay only sees ciphertext. Mirrors the phone's rtc.js.
-  const PAIR_KEY = 'lyricdock:pair', RELAY = 'https://ntfy.sh', CHUNK = 16000;
-  const pairCode = () => (LS.get(PAIR_KEY) || '').toUpperCase().replace(/[^A-Z2-9]/g, '');
+  // ---- WebRTC link. The offer/answer swap goes through the relay as a dumb mailbox; topic and AES-GCM key come
+  // from the phone's pairing code, so the relay only sees ciphertext. Mirrors the phone's rtc.js.
+  const CHUNK = 16000;
   const te = new TextEncoder(), b64 = u8 => btoa(String.fromCharCode(...u8)), unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
   async function sigKeys(code) {
     const h = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode('lyricdock-topic:' + code)));
@@ -91,26 +157,17 @@
     setTimeout(r, 3000);
   });
 
-  // Phone setting "Connection path: Prefer USB cable": leave out this PC's addresses on the phone's Wi-Fi subnet, so
-  // the only route left is the USB-tethering network (the phone does the same on its side).
-  function onlyPath(desc) {
-    const mode = readJson(SETTINGS_KEY, {}).linkPath, phoneIp = LS.get('lyricdock:phoneIp') || '';
-    if (mode !== 'usb' || !/^\d+\.\d+\.\d+\.\d+$/.test(phoneIp)) return desc;
-    const net = phoneIp.split('.').slice(0, 3).join('.') + '.';
-    const sdp = desc.sdp.split('\r\n').filter(l => !l.startsWith('a=candidate') || !l.split(' ')[4].startsWith(net)).join('\r\n');
-    return { type: desc.type, sdp };
-  }
-
-  async function rtcOpen() {
-    const code = pairCode();
-    if (code.length !== 10 || typeof RTCPeerConnection === 'undefined') return null;
+  async function rtcOpen(code) {
+    if (typeof RTCPeerConnection === 'undefined') return null;
+    const S = settingsFor(code), RELAY = relayFor(S);
     const { topic, key } = await sigKeys(code);
-    const pc = new RTCPeerConnection(), dc = pc.createDataChannel('dock', { ordered: true });
+    const pc = new RTCPeerConnection(iceFor(S)), dc = pc.createDataChannel('dock', { ordered: true });
+    let sub = null;
     try {
       await pc.setLocalDescription(await pc.createOffer());
       await gathered(pc);
       const id = Math.random().toString(36).slice(2);
-      const sub = new WebSocket(`${RELAY.replace('https', 'wss')}/${topic}/ws`);
+      sub = new WebSocket(`${wsUrl(RELAY)}/${topic}/ws`);
       const answer = new Promise(res => {
         sub.onmessage = async e => {
           const ev = safe(() => JSON.parse(e.data), {});
@@ -121,15 +178,15 @@
         setTimeout(() => res(null), 8000);
       });
       await new Promise(r => { sub.onopen = r; setTimeout(r, 3000); });
-      await fetch(`${RELAY}/${topic}`, { method: 'POST', body: await seal(key, { t: 'offer', id, sdp: onlyPath(pc.localDescription) }), headers: { Cache: 'no', Firebase: 'no' } });
+      await fetch(`${RELAY}/${topic}`, { method: 'POST', body: await seal(key, { t: 'offer', id, sdp: pc.localDescription }), headers: { Cache: 'no', Firebase: 'no' } });
       const m = await answer;
-      sub.close();
       if (!m) throw 0;
       await pc.setRemoteDescription(m.sdp);
       const ok = await new Promise(r => { if (dc.readyState === 'open') r(true); dc.onopen = () => r(true); setTimeout(() => r(false), 6000); });
       if (!ok) throw 0;
       return rtcWrap(pc, dc);
     } catch { try { pc.close(); } catch {} return null; }
+    finally { try { sub?.close(); } catch {} }
   }
 
   // Looks like a WebSocket to the rest of the bridge; splits big messages (SCTP caps message size).
@@ -157,19 +214,20 @@
   }
 
   // ---- automatic pairing through the Spotify account (mirrors rtc.js watchAccount on the phone). While no phone
-  // is linked, announce on a relay topic derived from the account id; a phone signed in to the same account
-  // answers with its ECDH key, both screens show the same 4 digits, and tapping Allow on the phone sends its
-  // pairing code back, encrypted with the agreed key. The account id isn't secret - the Allow tap is the gate.
+  // is linked (or when "Find phones" is clicked), announce on a relay topic derived from the account id; a phone
+  // signed in to the same account answers with its ECDH key, both screens show the same 4 digits, and tapping
+  // Allow on the phone sends its pairing code back, encrypted with the agreed key.
   const EC = { name: 'ECDH', namedCurve: 'P-256' };
   let autoBusy = false, nextAuto = 0;
   async function accountId() {
     return safe(() => Spicetify.Platform.username, null) || (await Spicetify.CosmosAsync.get('https://api.spotify.com/v1/me').catch(() => null))?.id || null;
   }
-  async function autoPair() {
-    if (autoBusy || ws?.readyState === 1 || Date.now() < nextAuto || typeof RTCPeerConnection === 'undefined') return;
+  async function autoPair(force) {
+    if (autoBusy || (!force && (connected() || Date.now() < nextAuto)) || typeof RTCPeerConnection === 'undefined') return;
     autoBusy = true;
     nextAuto = Date.now() + 30000;
     let sub = null, modal = false;
+    const RELAY = relayFor(readJson(SETTINGS_KEY, {}));
     try {
       const uid = await accountId();
       if (!uid) return;
@@ -180,7 +238,7 @@
       const kp = await crypto.subtle.generateKey(EC, false, ['deriveBits']);
       let got = () => {};
       const inbox = [];
-      sub = new WebSocket(`${RELAY.replace('https', 'wss')}/${topic}/ws`);
+      sub = new WebSocket(`${wsUrl(RELAY)}/${topic}/ws`);
       sub.onmessage = e => {
         const ev = safe(() => JSON.parse(e.data), {}), m = ev.event === 'message' ? safe(() => JSON.parse(ev.message), null) : null;
         if (m?.desk === desk && (m.t === 'key' || m.t === 'accept')) { inbox.push(m); got(); }
@@ -193,8 +251,8 @@
       await new Promise(r => { sub.onopen = r; setTimeout(r, 3000); });
       const name = `Spotify on ${navigator.userAgentData?.platform || 'this computer'}`;
       await fetch(`${RELAY}/${topic}`, { method: 'POST', body: JSON.stringify({ t: 'discover', desk, name, pub: await crypto.subtle.exportKey('jwk', kp.publicKey) }), headers: { Cache: 'no', Firebase: 'no' } });
-      const k = await next('key', 8000);
-      if (!k?.pub) return;
+      const k = await next('key', force ? 15000 : 8000);
+      if (!k?.pub) { if (force) safe(() => Spicetify.showNotification('No new phone answered. Open LyricDock on the phone and sign in to the same Spotify account.', true)); return; }
       const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await crypto.subtle.importKey('jwk', k.pub, EC, false, []) }, kp.privateKey, 256);
       const hk = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));
       const digits = String(((hk[0] << 16) | (hk[1] << 8) | hk[2]) % 10000).padStart(4, '0');
@@ -204,11 +262,11 @@
       const a = await next('accept', 65000);
       if (!a?.box) return;
       const aes = await crypto.subtle.importKey('raw', hk, 'AES-GCM', false, ['decrypt']);
-      const c = (await unseal(aes, a.box))?.code?.replace(/-/g, '');
-      if (!/^[A-Z2-9]{10}$/.test(c ?? '')) return;
-      LS.set(PAIR_KEY, c);
+      const c = cleanCode((await unseal(aes, a.box))?.code);
+      if (c.length !== 10) return;
+      addPair(c);
       safe(() => Spicetify.showNotification('LyricDock phone paired'));
-      drop(); nextAuto = Date.now() + 60000; ensureLink(); renderPanel();
+      nextAuto = Date.now() + 60000; ensureLink(); renderPanel();
     } catch {} finally {
       try { sub?.close(); } catch {}
       if (modal) safe(() => Spicetify.PopupModal.hide());
@@ -216,41 +274,48 @@
     }
   }
 
-  let nextUsbProbe = 0;
-  async function ensureLink() {
+  // ---- keep every paired phone linked. Failed dials back off (1, 2, 4, 8s, then every 10s).
+  const dial = new Map();
+  let adbBusy = false, nextAdb = 0;
+  function ensureLink() {
     linkState();
-    if (ws?.readyState === 1 && Date.now() - lastRx > 2500) drop();
-    // On WebRTC, look for the adb/USB link every 10s and move to it when it appears (developer / wired use).
-    if (!busy && ws?.readyState === 1 && ws.kind === 'rtc' && Date.now() > nextUsbProbe) {
-      nextUsbProbe = Date.now() + 10000;
-      busy = true;
-      const s = await tryOpen(800);
-      busy = false;
-      if (s) { const old = ws; ws = null; old.onclose = null; old.close(); return adopt(s); }
+    for (const [id, l] of links) if (l.readyState !== 1 || Date.now() - l.lastRx > 2500) closeLink(id, l.readyState === 1 ? 'went quiet' : 'disconnected');
+    if (!links.has('adb') && !adbBusy && Date.now() > nextAdb) {
+      adbBusy = true; nextAdb = Date.now() + 3000;
+      tryOpen(1200).then(s => { adbBusy = false; if (s) adopt('adb', s, null); });
     }
-    if (busy || ws?.readyState === 1) return;
-    busy = true;
-    try {
-      const s = (await tryOpen(1500)) ?? (await rtcOpen());
-      if (s) adopt(s); else autoPair();
-    } finally { busy = false; }
+    const adbCode = links.get('adb')?.code;
+    for (const { code } of pairs()) {
+      if (links.has(code) || code === adbCode) continue;
+      const d = dial.get(code) ?? { busy: false, next: 0, fails: 0 };
+      dial.set(code, d);
+      if (d.busy || Date.now() < d.next) continue;
+      d.busy = true;
+      rtcOpen(code).then(s => {
+        d.busy = false;
+        if (s && !links.has(code) && links.get('adb')?.code !== code) { d.fails = 0; adopt(code, s, code); }
+        else if (!s) { d.fails++; d.next = Date.now() + Math.min(10000, 1000 * 2 ** Math.min(d.fails - 1, 4)); }
+        else s.close();
+      });
+    }
+    if (!connected()) autoPair();
   }
 
-  function adopt(s) {
+  function adopt(id, s, code) {
     s.kind ??= 'adb';
-    ws = s;
-    s.onclose = () => { if (ws === s) { ws = null; ensureLink(); } };
-    s.onmessage = e => { lastRx = Date.now(); onMessage(e.data); };
-    lastRx = Date.now();
-    console.log('[dock] linked via', s.kind);
-    // `apply`: settings were changed in the desktop panel while the phone was away - push them now.
-    const dirty = LS.get(DIRTY_KEY) === '1';
-    send({ type: 'hello', last: readJson(SETTINGS_KEY, null), presets: readJson(PRESETS_KEY, {}), paired: pairCode().length === 10, version: VERSION });
-    if (dirty) { send({ type: 'load', S: readJson(SETTINGS_KEY, {}) }); LS.set(DIRTY_KEY, '0'); }
+    s.code = code;
+    s.lastRx = Date.now();
+    links.set(id, s);
+    s.onclose = () => { if (links.get(id) === s) { links.delete(id); log(`${phoneName(s.code)} disconnected`); ensureLink(); } };
+    s.onmessage = e => { s.lastRx = Date.now(); onMessage(e.data, s); };
+    log(`${phoneName(code)} connected via ${s.kind === 'rtc' ? 'direct network (WebRTC)' : 'adb'}`);
+    const S = settingsFor(code);
+    sendTo(s, { type: 'hello', last: S, presets: readJson(PRESETS_KEY, {}), paired: !!code, version: VERSION });
+    if (code && dirty(code)) { sendTo(s, { type: 'load', S }); dirty(code, false); }
     renderPanel();
-    if (track) send(track); else sendTrack();
-    if (preload) send(preload);
-    extraMsgs.forEach(send);
+    if (track) sendTo(s, track); else sendTrack();
+    if (preload) sendTo(s, preload);
+    extraMsgs.forEach(m => sendTo(s, m));
     beat();
   }
 
@@ -263,34 +328,41 @@
     } catch { setInterval(fn, 100); }
   }
 
-  // ---- phone settings + presets live here too, so a new phone (or a reinstall) starts configured.
-  const SETTINGS_KEY = 'lyricdock:settings', PRESETS_KEY = 'lyricdock:presets', SCHEMA_KEY = 'lyricdock:schema', DIRTY_KEY = 'lyricdock:dirty';
-  const okSettings = s => s && typeof s === 'object' && !Array.isArray(s) && JSON.stringify(s).length < 20000;
-
-  function onMessage(data) {
+  const URI = /^spotify:[a-z]+:[A-Za-z0-9:._-]+$/;
+  function onMessage(data, from) {
     const m = safe(() => JSON.parse(data), null);
     if (!m || typeof m !== 'object') return;
-    if (m.type === 'alive' && /^\d+\.\d+\.\d+\.\d+$/.test(m.ip ?? '') && LS.get('lyricdock:phoneIp') !== m.ip) LS.set('lyricdock:phoneIp', m.ip);
-    if (m.type === 'pair' && /^[A-Z2-9]{10}$/.test(m.code?.replace(/-/g, '') ?? '')) {
-      if (pairCode() !== m.code.replace(/-/g, '')) { LS.set(PAIR_KEY, m.code.replace(/-/g, '')); safe(() => Spicetify.showNotification('LyricDock phone paired')); renderPanel(); }
+    if (m.type === 'alive') {
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(m.ip ?? '')) from.ip = m.ip;
+      const c = cleanCode(m.code);
+      if (c.length === 10 && from.kind === 'adb' && from.code !== c) { from.code = c; closeLink(c, 'moved to adb'); addPair(c, m.name); renderPanel(); }
+      if (c.length === 10 && typeof m.name === 'string' && m.name) addPair(c, m.name.slice(0, 40));
+      return;
     }
-    else if (m.type === 'settings' && okSettings(m.S)) { LS.set(SETTINGS_KEY, JSON.stringify(m.S)); syncControls(m.S); }
+    if (m.type === 'pair') {
+      const c = cleanCode(m.code);
+      if (c.length !== 10) return;
+      if (from.kind === 'adb') from.code = c;
+      if (addPair(c)) { safe(() => Spicetify.showNotification('LyricDock phone paired')); renderPanel(); }
+    }
+    else if (m.type === 'settings' && okSettings(m.S)) { saveSettings(from.code, m.S); if (!panelPhone || panelPhone === from.code) syncControls(m.S); }
     else if (m.type === 'schema' && Array.isArray(m.schema) && JSON.stringify(m.schema).length < 60000) {
-      LS.set(SCHEMA_KEY, JSON.stringify(m.schema));
-      if (m.builtins && typeof m.builtins === 'object' && JSON.stringify(m.builtins).length < 20000) LS.set('lyricdock:builtins', JSON.stringify(m.builtins));
-      if (okSettings(m.defaults)) LS.set('lyricdock:defaults', JSON.stringify(m.defaults));
-      if (okSettings(m.S)) LS.set(SETTINGS_KEY, JSON.stringify(m.S));
+      writeJson(SCHEMA_KEY, m.schema);
+      if (m.builtins && typeof m.builtins === 'object' && JSON.stringify(m.builtins).length < 20000) writeJson('lyricdock:builtins', m.builtins);
+      if (okSettings(m.defaults)) writeJson('lyricdock:defaults', m.defaults);
+      if (okSettings(m.S)) saveSettings(from.code, m.S);
       renderPanel();
     }
     else if (m.type === 'preset' && typeof m.name === 'string' && m.name.length <= 40) {
       const presets = readJson(PRESETS_KEY, {});
-      if (m.action === 'save' && okSettings(m.S)) { const { apiKey, ...rest } = m.S; presets[m.name] = rest; } // keys stay out of presets
+      if (m.action === 'save' && okSettings(m.S)) { const { apiKey, videoKey, ...rest } = m.S; presets[m.name] = rest; } // keys stay out of presets
       else if (m.action === 'delete') delete presets[m.name];
-      LS.set(PRESETS_KEY, JSON.stringify(presets));
+      writeJson(PRESETS_KEY, presets);
       send({ type: 'presets', presets });
       renderPanel();
     }
     else if (m.type === 'cmd') {
+      const uri = URI.test(m.uri ?? '') ? m.uri : null;
       if (m.cmd === 'toggle') P.togglePlay();
       else if (m.cmd === 'next') P.next();
       else if (m.cmd === 'prev') P.back();
@@ -299,47 +371,214 @@
       else if (m.cmd === 'volume' && Number.isFinite(m.v)) P.setVolume(Math.max(0, Math.min(1, m.v / 100)));
       else if (m.cmd === 'shuffle') P.toggleShuffle();
       else if (m.cmd === 'repeat') { if (P.setRepeat) P.setRepeat(Number.isFinite(m.v) ? m.v % 3 : (P.getRepeat() + 1) % 3); else P.toggleRepeat(); }
-      else if (m.cmd === 'play' && /^spotify:[a-z]+:[A-Za-z0-9:]+$/.test(m.uri ?? '')) playItem(m.uri, m.ctx);
+      else if (m.cmd === 'play' && uri) playItem(uri, URI.test(m.ctx ?? '') ? m.ctx : null, !!m.shuffle);
+      else if (uri && ['queueAdd', 'queueRemove', 'queueTop', 'like', 'unlike'].includes(m.cmd))
+        act(m.cmd, uri, typeof m.uid === 'string' ? m.uid : null).then(r => sendTo(from, { type: 'acted', cmd: m.cmd, uri, ...r }));
       setTimeout(beat, 80);
     }
-    else if (m.type === 'list' && ['queue', 'recent', 'library', 'friends'].includes(m.which)) lists(m.which).then(r => send({ type: 'list', which: m.which, ...r }));
+    else if (m.type === 'list' && ['queue', 'recent', 'library', 'friends', 'tracks', 'search'].includes(m.which)) {
+      const arg = m.which === 'tracks' ? (URI.test(m.uri ?? '') ? m.uri : null) : m.which === 'search' ? String(m.q ?? '').slice(0, 100) : null;
+      lists(m.which, arg).then(r => sendTo(from, { type: 'list', which: m.which, uri: m.uri, q: m.q, ...r }));
+    }
   }
 
-  // ---- queue / recently played / library / friends for the phone's slide-over panel
-  const art64 = x => img(x?.images?.find?.(i => i.width <= 300)?.url || x?.images?.[0]?.url || x?.imageUrl || x?.image_url || x?.image || '');
-  function playItem(uri, ctx) {
+  // ---- queue / recently played / library / friends / browse / search for the phone's panel.
+  // Spotify's own clients (Platform APIs, GraphQL) first; the Web API with the client's token as a fallback.
+  const img = u => {
+    u = u || '';
+    if (u.startsWith('spotify:mosaic:')) return `https://mosaic.scdn.co/300/${u.slice(15).split(':').join('')}`;
+    return u.replace('spotify:image:', 'https://i.scdn.co/image/');
+  };
+  const pickImg = srcs => {
+    const s = [...(srcs ?? [])].map(x => ({ url: x?.url, w: x?.width || x?.maxWidth || 0 })).filter(x => x.url).sort((a, b) => a.w - b.w);
+    return img((s.find(x => x.w >= 200) || s[s.length - 1])?.url);
+  };
+  async function token() {
+    try {
+      const s = await Spicetify.Platform.AuthorizationAPI?.getState?.();
+      if (s?.token?.accessToken) return s.token.accessToken;
+    } catch {}
+    return Spicetify.Platform.Session?.accessToken;
+  }
+  async function web(path, method = 'GET') {
+    const r = await fetch(path.startsWith('https:') ? path : `https://api.spotify.com/v1${path}`, { method, headers: { authorization: `Bearer ${await token()}` } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.status === 204 ? null : r.json().catch(() => null);
+  }
+  const gql = (def, vars) => { const d = Spicetify.GraphQL?.Definitions?.[def]; if (!d) throw new Error(`no ${def}`); return Spicetify.GraphQL.Request(d, vars); };
+  const names = xs => (xs ?? []).map(a => a?.name ?? a?.profile?.name).filter(Boolean).join(', ');
+  const kindOf = uri => uri?.split(':')[1];
+
+  function playItem(uri, ctx, shuffle) {
+    if (shuffle) safe(() => P.setShuffle(true));
     if (/^spotify:(playlist|album|artist|show|collection|user)/.test(uri)) return P.playUri(uri);
-    if (ctx && /^spotify:/.test(ctx)) return P.playUri(ctx, {}, { skipTo: { uri } });
+    if (ctx) return P.playUri(ctx, {}, { skipTo: { uri } });
     return P.playUri(uri);
   }
-  async function lists(which) {
+
+  // Liked flags for track rows (one call for the whole list).
+  async function withLiked(items) {
+    const uris = items.filter(x => kindOf(x.uri) === 'track').map(x => x.uri).slice(0, 300);
+    if (!uris.length) return items;
+    try {
+      const got = await Spicetify.Platform.LibraryAPI.contains(...uris);
+      const set = new Set(uris.filter((u, i) => got?.[i]));
+      return items.map(x => kindOf(x.uri) === 'track' ? { ...x, liked: set.has(x.uri) } : x);
+    } catch { return items; }
+  }
+
+  async function act(cmd, uri, uid) {
+    try {
+      if (cmd === 'queueAdd') await Spicetify.addToQueue([{ uri }]);
+      else if (cmd === 'queueRemove') await Spicetify.removeFromQueue([{ uri, ...(uid ? { uid } : {}) }]);
+      else if (cmd === 'queueTop') {
+        // Move to the top of the user queue: take the queued items out and put them back with this one first.
+        const queued = (Spicetify.Queue?.nextTracks ?? []).filter(t => t?.provider === 'queue').map(t => t.contextTrack ?? t).filter(t => t?.uri);
+        if (queued.length) await Spicetify.removeFromQueue(queued.map(t => ({ uri: t.uri, uid: t.uid })));
+        const rest = queued.filter(t => !(t.uri === uri && (!uid || t.uid === uid)));
+        await Spicetify.addToQueue([{ uri }, ...rest.map(t => ({ uri: t.uri }))]);
+      }
+      else if (cmd === 'like' || cmd === 'unlike') {
+        const L = Spicetify.Platform.LibraryAPI;
+        try { await (cmd === 'like' ? L.add({ uris: [uri] }) : L.remove({ uris: [uri] })); }
+        catch { await web(`/me/library?uris=${encodeURIComponent(uri)}`, cmd === 'like' ? 'PUT' : 'DELETE'); }
+        if (uri === item()?.uri) setTimeout(beat, 300);
+      }
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 120) }; }
+  }
+
+  // Local play history: always available, even when Spotify's recently-played endpoint refuses.
+  const HISTORY_KEY = 'lyricdock:history';
+  function remember_(t, it) {
+    const h = readJson(HISTORY_KEY, []).filter(x => x.uri !== t.uri);
+    h.unshift({ uri: t.uri, title: t.title, sub: t.artist, art: t.art, ctx: safe(() => P.data?.context?.uri, null) || undefined, time: Date.now() });
+    writeJson(HISTORY_KEY, h.slice(0, 60));
+  }
+
+  const trackRow = (t, art) => ({ uri: t?.uri, uid: t?.uid, title: t?.name, sub: names(t?.artists?.items ?? t?.artists), art: art ?? pickImg(t?.album?.images ?? t?.albumOfTrack?.coverArt?.sources), dur: t?.duration?.milliseconds ?? t?.duration?.totalMilliseconds ?? t?.duration_ms });
+  const boxRow = (uri, title, sub, art) => ({ uri, title, sub, art, box: true });
+
+  async function lists(which, arg) {
     try {
       if (which === 'queue') {
-        const q = Spicetify.Queue ?? {}, meta = t => ({ uri: t?.contextTrack?.uri ?? t?.uri, title: t?.contextTrack?.metadata?.title ?? t?.metadata?.title,
-          sub: t?.contextTrack?.metadata?.artist_name ?? t?.metadata?.artist_name, art: img(t?.contextTrack?.metadata?.image_url ?? t?.metadata?.image_url) });
-        const items = (q.nextTracks ?? []).filter(t => (t?.contextTrack?.uri ?? t?.uri)?.startsWith('spotify:track') && t?.provider !== 'unavailable').slice(0, 60).map(meta);
-        return { now: q.track ? meta(q.track) : null, items };
+        const q = Spicetify.Queue ?? {}, meta = t => { const c = t?.contextTrack ?? t, md = c?.metadata ?? {};
+          return { uri: c?.uri, uid: c?.uid, title: md.title, sub: md.artist_name, art: img(md.image_url), queued: t?.provider === 'queue' }; };
+        const items = (q.nextTracks ?? []).filter(t => (t?.contextTrack?.uri ?? t?.uri)?.startsWith('spotify:track') && t?.provider !== 'unavailable').slice(0, 80).map(meta);
+        const ctx = safe(() => P.data?.context, null);
+        return { now: q.track ? meta(q.track) : null, items: await withLiked(items), ctxName: ctx?.metadata?.context_description || '' };
       }
       if (which === 'recent') {
-        const r = await Spicetify.CosmosAsync.get('https://api.spotify.com/v1/me/player/recently-played?limit=40');
-        return { items: (r?.items ?? []).map(x => ({ uri: x.track.uri, ctx: x.context?.uri, title: x.track.name, sub: x.track.artists.map(a => a.name).join(', '),
-          art: art64(x.track.album), time: Date.parse(x.played_at) })) };
+        let items = null;
+        try {
+          const r = await web('/me/player/recently-played?limit=50');
+          items = (r?.items ?? []).map(x => ({ ...trackRow(x.track), ctx: x.context?.uri, time: Date.parse(x.played_at) }));
+        } catch {}
+        if (!items?.length) items = readJson(HISTORY_KEY, []);
+        return { items: await withLiked(items) };
       }
       if (which === 'library') {
         const root = await Spicetify.Platform.RootlistAPI.getContents({ limit: 500 });
         const flat = xs => xs.flatMap(x => x.type === 'folder' ? flat(x.items ?? []) : [x]);
-        const items = [{ uri: 'spotify:collection:tracks', title: 'Liked Songs', sub: 'Playlist', art: '' },
-          ...flat(root?.items ?? []).filter(x => x.uri).map(x => ({ uri: x.uri, title: x.name, sub: `Playlist · ${x.owner?.name ?? ''}`, art: art64(x) }))];
+        const items = [boxRow('spotify:collection:tracks', 'Liked Songs', 'Playlist', 'liked'),
+          ...flat(root?.items ?? []).filter(x => x.uri).map(x => boxRow(x.uri, x.name, ['Playlist', x.owner?.name ?? x.owner?.displayName].filter(Boolean).join(' · '), pickImg(x.images)))];
+        const [al, ar] = await Promise.all([web('/me/albums?limit=50').catch(() => null), web('/me/following?type=artist&limit=50').catch(() => null)]);
+        items.push(...(al?.items ?? []).map(a => boxRow(a.album.uri, a.album.name, `Album · ${names(a.album.artists)}`, pickImg(a.album.images))),
+          ...(ar?.artists?.items ?? []).map(a => boxRow(a.uri, a.name, 'Artist', pickImg(a.images))));
         return { items };
       }
       if (which === 'friends') {
-        const r = await Spicetify.CosmosAsync.get('https://spclient.wg.spotify.com/presence-view/v1/buddylist');
+        const tok = await token();
+        let r = null, err = '';
+        for (const host of ['https://guc-spclient.spotify.com', 'https://spclient.wg.spotify.com']) {
+          try {
+            const x = await fetch(`${host}/presence-view/v1/buddylist`, { headers: { authorization: `Bearer ${tok}` } });
+            if (x.ok) { r = await x.json(); break; }
+            err = `HTTP ${x.status}`;
+          } catch (e) { err = String(e?.message || e); }
+        }
+        if (!r) r = await Spicetify.CosmosAsync.get('https://spclient.wg.spotify.com/presence-view/v1/buddylist').catch(e => { throw new Error(err || e?.message); });
         return { items: (r?.friends ?? []).sort((a, b) => b.timestamp - a.timestamp).map(f => ({ uri: f.track?.uri, ctx: f.track?.context?.uri,
           title: f.user?.name, sub: `${f.track?.name ?? ''} · ${f.track?.artist?.name ?? ''}`, ctxName: f.track?.context?.name,
-          art: f.user?.imageUrl || '', time: f.timestamp, live: Date.now() - f.timestamp < 5 * 60000 })) };
+          art: f.user?.imageUrl || '', time: f.timestamp, live: Date.now() - f.timestamp < 5 * 60000, friend: true })) };
       }
+      if (which === 'tracks' && arg) return await browse(arg);
+      if (which === 'search' && arg) return await search(arg);
     } catch (e) { return { items: [], error: `Couldn't load this (${String(e?.message || e).slice(0, 80)})` }; }
     return { items: [] };
+  }
+
+  async function browse(uri) {
+    const [, type, id] = uri.split(':');
+    if (uri === 'spotify:collection:tracks' || /^spotify:user:[^:]+:collection$/.test(uri)) {
+      let items;
+      try { const r = await Spicetify.Platform.LibraryAPI.getTracks({ limit: 500, offset: 0 }); items = (r?.items ?? []).map(t => trackRow(t)); }
+      catch { const r = await web('/me/tracks?limit=50'); items = (r?.items ?? []).map(x => trackRow(x.track)); }
+      return { head: { title: 'Liked Songs', sub: `${items.length} songs`, art: 'liked', uri: 'spotify:collection:tracks' }, ctx: 'spotify:collection:tracks', items: items.map(x => ({ ...x, liked: true })) };
+    }
+    if (type === 'playlist') {
+      const A = Spicetify.Platform.PlaylistAPI;
+      const [meta, c] = await Promise.all([A.getMetadata(uri).catch(() => null), A.getContents(uri, { limit: 500 })]);
+      const items = (c?.items ?? []).filter(t => t?.uri).map(t => trackRow(t));
+      return { head: { uri, title: meta?.name ?? 'Playlist', sub: [meta?.owner?.displayName ?? meta?.owner?.name, `${c?.totalLength ?? items.length} songs`].filter(Boolean).join(' · '), art: pickImg(meta?.images) }, ctx: uri, items: await withLiked(items) };
+    }
+    if (type === 'album') {
+      let head, items;
+      try {
+        const a = (await gql('getAlbum', { uri, locale: '', offset: 0, limit: 300 }))?.data?.albumUnion;
+        const art = pickImg(a?.coverArt?.sources);
+        items = ((a?.tracksV2 ?? a?.tracks)?.items ?? []).map(x => trackRow(x.track, art));
+        head = { uri, title: a?.name, sub: [names(a?.artists?.items), (a?.date?.isoString || '').slice(0, 4)].filter(Boolean).join(' · '), art };
+      } catch {
+        const a = await web(`/albums/${id}`), art = pickImg(a?.images);
+        items = (a?.tracks?.items ?? []).map(t => trackRow(t, art));
+        head = { uri, title: a?.name, sub: [names(a?.artists), (a?.release_date || '').slice(0, 4)].filter(Boolean).join(' · '), art };
+      }
+      return { head, ctx: uri, items: await withLiked(items) };
+    }
+    if (type === 'artist') {
+      let head, items = [];
+      try {
+        const u = (await gql('queryArtistOverview', { uri, locale: '', includePrerelease: false }))?.data?.artistUnion, d = u?.discography;
+        head = { uri, title: u?.profile?.name, sub: 'Artist', art: pickImg(u?.visuals?.avatarImage?.sources), round: true };
+        items = (d?.topTracks?.items ?? []).map(x => ({ ...trackRow(x.track), section: 'Popular' }));
+        const rel = [...(d?.popularReleasesAlbums?.items ?? []), ...(d?.albums?.items ?? []).flatMap(x => x?.releases?.items ?? [x]), ...(d?.singles?.items ?? []).flatMap(x => x?.releases?.items ?? [x])];
+        const seen = new Set();
+        for (const r of rel) if (r?.uri && !seen.has(r.uri)) { seen.add(r.uri); items.push({ ...boxRow(r.uri, r.name, [r.type ? r.type[0] + r.type.slice(1).toLowerCase() : 'Album', r.date?.year].filter(Boolean).join(' · '), pickImg(r.coverArt?.sources)), section: 'Releases' }); }
+      } catch {
+        const [a, t, al] = await Promise.all([web(`/artists/${id}`), web(`/artists/${id}/top-tracks?market=from_token`).catch(() => null), web(`/artists/${id}/albums?limit=40`).catch(() => null)]);
+        head = { uri, title: a?.name, sub: 'Artist', art: pickImg(a?.images), round: true };
+        items = [...(t?.tracks ?? []).map(x => ({ ...trackRow(x), section: 'Popular' })),
+          ...(al?.items ?? []).map(x => ({ ...boxRow(x.uri, x.name, [x.album_type, (x.release_date || '').slice(0, 4)].join(' · '), pickImg(x.images)), section: 'Releases' }))];
+      }
+      return { head, ctx: uri, items: await withLiked(items) };
+    }
+    throw new Error('Not browsable');
+  }
+
+  async function search(q) {
+    let items = [];
+    try {
+      const s = (await gql('searchDesktop', { searchTerm: q, offset: 0, limit: 10, numberOfTopResults: 5, includeAudiobooks: false,
+        includeArtistHasConcertsField: false, includePreReleases: false, includeLocalConcertsField: false, includeAuthors: false }))?.data?.searchV2;
+      if (!s) throw new Error('no results');
+      const d = x => x?.item?.data ?? x?.data ?? x;
+      items = [
+        ...(s.tracksV2?.items ?? []).map(d).filter(t => t?.uri).map(t => ({ ...trackRow(t), section: 'Songs' })),
+        ...(s.artists?.items ?? []).map(d).filter(a => a?.uri).map(a => ({ ...boxRow(a.uri, a.profile?.name, 'Artist', pickImg(a.visuals?.avatarImage?.sources)), round: true, section: 'Artists' })),
+        ...(s.albumsV2?.items ?? s.albums?.items ?? []).map(d).filter(a => a?.uri).map(a => ({ ...boxRow(a.uri, a.name, `Album · ${names(a.artists?.items)}`, pickImg(a.coverArt?.sources)), section: 'Albums' })),
+        ...(s.playlists?.items ?? []).map(d).filter(p => p?.uri).map(p => ({ ...boxRow(p.uri, p.name, `Playlist · ${p.ownerV2?.data?.name ?? ''}`, pickImg(p.images?.items?.[0]?.sources)), section: 'Playlists' })),
+      ];
+    } catch {
+      const r = await web(`/search?q=${encodeURIComponent(q)}&type=track,artist,album,playlist&limit=8`);
+      items = [
+        ...(r?.tracks?.items ?? []).map(t => ({ ...trackRow(t), section: 'Songs' })),
+        ...(r?.artists?.items ?? []).map(a => ({ ...boxRow(a.uri, a.name, 'Artist', pickImg(a.images)), round: true, section: 'Artists' })),
+        ...(r?.albums?.items ?? []).map(a => ({ ...boxRow(a.uri, a.name, `Album · ${names(a.artists)}`, pickImg(a.images)), section: 'Albums' })),
+        ...(r?.playlists?.items ?? []).filter(Boolean).map(p => ({ ...boxRow(p.uri, p.name, `Playlist · ${p.owner?.display_name ?? ''}`, pickImg(p.images)), section: 'Playlists' })),
+      ];
+    }
+    return { items: await withLiked(items) };
   }
 
   // ---- lyrics, fastest local source first, never blocking on the network:
@@ -351,14 +590,6 @@
   // Never call api.spicylyrics.org's internal client API: it is Spicy's own (418 to others) and extra requests
   // on the same account trip Spicy's rate limit on the desktop.
   const NONE = { kind: 'none', lines: [], writers: [], source: null };
-
-  async function token() {
-    try {
-      const s = await Spicetify.Platform.AuthorizationAPI?.getState?.();
-      if (s?.token?.accessToken) return s.token.accessToken;
-    } catch {}
-    return Spicetify.Platform.Session?.accessToken;
-  }
 
   // Spicy Lyrics' ExpireStore (Cache Storage). 'none' = Spicy looked and found nothing.
   async function spicyCache(id) {
@@ -416,11 +647,10 @@
   }
 
   // ---- track info
-  const img = u => (u || '').replace('spotify:image:', 'https://i.scdn.co/image/');
   const item = () => P.data?.item ?? P.data?.track;
   const artists = (it, m) => {
-    const names = (it?.artists ?? []).map(a => a?.name).filter(Boolean);
-    if (names.length) return names.join(', ');
+    const n = (it?.artists ?? []).map(a => a?.name).filter(Boolean);
+    if (n.length) return n.join(', ');
     return Object.keys(m).filter(k => /^artist_name(:\d+)?$/.test(k))
       .sort((a, b) => (+a.split(':')[1] || 0) - (+b.split(':')[1] || 0)).map(k => m[k]).join(', ');
   };
@@ -443,8 +673,7 @@
     track = { type: 'track', ...base, dir, lyrics: await fromSpicyCache(base.id) }; // cache read: a few ms
     send(track);
     beat();
-    send({ type: 'diag', quality: quality(), pd: Object.keys(P.data || {}),
-      pq: safe(() => JSON.stringify([P.data?.playbackQuality, Spicetify.Platform.PlayerAPI._state?.playbackQuality]).slice(0, 400), '') });
+    if (base.uri.startsWith('spotify:track:')) remember_(base, it);
     preloadNext();
     setTimeout(preloadNext, 3000); // Spotify's queue can lag the song change by a moment
     extras(it, base.id);
@@ -458,53 +687,43 @@
     upgradeFromSpicy(it.uri, base, dir);
   }
 
-  // Extras for the phone's background: the artist's picture ('Artist image' background) and tempo + loudness
-  // from Spotify's audio analysis ('Move with the music'), loudness as 0..1 every 0.5s. Kept for reconnects.
+  // Extras for the phone: the artist's picture ('Artist image' background), album + year, the Spotify Canvas
+  // (looping video) and tempo + loudness from Spotify's audio analysis. Kept for reconnects.
   let extraMsgs = [];
   async function extras(it, id) {
     extraMsgs = [];
     const keep = m => { if (item()?.uri === it.uri) { extraMsgs.push(m); send(m); } };
     const artistUri = it.artists?.[0]?.uri || it.metadata?.artist_uri || '';
-    const errs = [];
-    // Artist picture: Spotify's own GraphQL artist page query first (what Spicy Lyrics uses for its artist
-    // visuals: the header image, else the avatar), then the Web API.
     (async () => {
       let url = null;
       try {
-        const q = Spicetify.GraphQL?.Definitions?.queryArtistOverview;
-        if (q) {
-          const r = await Spicetify.GraphQL.Request(q, { uri: artistUri, locale: '', includePrerelease: false });
-          const v = r?.data?.artistUnion?.visuals;
-          const pick = s => [...(s ?? [])].sort((x, y) => (y.width || 0) - (x.width || 0))[0]?.url;
-          url = pick(v?.headerImage?.sources) || pick(v?.avatarImage?.sources) || null;
-        } else errs.push('artist: no GraphQL definition');
-      } catch (e) { errs.push('artist gql: ' + (e?.message || e)); }
-      if (!url && artistUri) {
-        try {
-          const a = await Spicetify.CosmosAsync.get(`https://api.spotify.com/v1/artists/${artistUri.split(':')[2]}`);
-          url = [...(a?.images ?? [])].sort((x, y) => y.width - x.width)[0]?.url || null;
-        } catch (e) { errs.push('artist web: ' + (e?.message || e)); }
-      }
+        const v = (await gql('queryArtistOverview', { uri: artistUri, locale: '', includePrerelease: false }))?.data?.artistUnion?.visuals;
+        url = pickImg(v?.headerImage?.sources) || pickImg(v?.avatarImage?.sources) || null;
+      } catch {}
+      if (!url && artistUri) url = pickImg((await web(`/artists/${artistUri.split(':')[2]}`).catch(() => null))?.images) || null;
       if (url) keep({ type: 'artist', id, img: url });
-      else send({ type: 'diag', extras: errs.slice(0, 4) });
-      // Album + release year for the phone's album line.
       try {
         const albumUri = it.album?.uri || it.metadata?.album_uri;
-        const q = Spicetify.GraphQL?.Definitions?.getAlbum;
-        const r = q && albumUri ? await Spicetify.GraphQL.Request(q, { uri: albumUri, locale: '', offset: 0, limit: 1 }) : null;
-        const a = r?.data?.albumUnion;
+        const a = albumUri ? (await gql('getAlbum', { uri: albumUri, locale: '', offset: 0, limit: 1 }))?.data?.albumUnion : null;
         keep({ type: 'album', id, album: a?.name || it.metadata?.album_title || '', year: (a?.date?.isoString || '').slice(0, 4) });
       } catch { keep({ type: 'album', id, album: it.metadata?.album_title || '', year: '' }); }
+    })();
+    // Spotify Canvas: the short looping video some songs have.
+    (async () => {
+      try {
+        const c = (await gql('canvas', { uri: it.uri }))?.data?.trackUnion?.canvas;
+        if (c?.url && /\.mp4(\?|$)/.test(c.url)) keep({ type: 'canvas', id, url: c.url });
+      } catch {}
     })();
     try {
       const d = await Spicetify.getAudioData(it.uri);
       const segs = d?.segments ?? [], tempo = d?.track?.tempo;
-      if (!segs.length || !Number.isFinite(tempo)) { send({ type: 'diag', audio: 'no analysis data' }); return; }
+      if (!segs.length || !Number.isFinite(tempo)) return;
       const n = Math.ceil((d.track.duration || segs[segs.length - 1].start + 1) * 2), loud = new Array(n).fill(0);
       for (const g of segs) { const i = Math.floor(g.start * 2); if (i < n) loud[i] = Math.max(loud[i], Math.min(1, Math.max(0, (g.loudness_max + 35) / 30))); }
       for (let i = 1; i < n; i++) if (!loud[i]) loud[i] = loud[i - 1]; // fill 0.5s slots between segments
       keep({ type: 'audio', id, tempo, loud: loud.map(v => Math.round(v * 100) / 100) });
-    } catch (e) { send({ type: 'diag', audio: String(e?.message || e).slice(0, 200) }); } // no audio analysis: the background keeps its set speed
+    } catch {} // no audio analysis: the background keeps its set speed
   }
 
   // Spicy fetches the playing track itself; its word-synced lyrics replace the fallback as soon as they land.
@@ -529,6 +748,32 @@
     send(preload);
   }
 
+  // ---- right-click menu: "Show on LyricDock" (browse a playlist / album / artist on the phone) and
+  // "Play with lyrics on LyricDock" (play a song and wake the phone's screen).
+  safe(() => {
+    const CM = Spicetify.ContextMenu;
+    new CM.Item('Show on LyricDock', ([u]) => { send({ type: 'browse', uri: u }); send({ type: 'wake' }); },
+      ([u]) => connected() && (/^spotify:(playlist|album|artist|collection)/.test(u ?? '') || /^spotify:user:[^:]+:collection$/.test(u ?? ''))).register();
+    new CM.Item('Play with lyrics on LyricDock', ([u]) => { P.playUri(u); send({ type: 'wake' }); },
+      ([u]) => connected() && /^spotify:track:/.test(u ?? '')).register();
+  });
+
+  // ---- keyboard shortcuts: Ctrl+Alt+L settings panel, Ctrl+Alt+W wake the phone, Ctrl+Alt+Y next phone layout.
+  function cycleLayout() {
+    const x = readJson(SCHEMA_KEY, []).find(s => s.k === 'layout');
+    if (!x?.opts?.length) return;
+    const S = settingsFor(panelPhone), i = x.opts.findIndex(([v]) => v === S.layout);
+    const v = x.opts[(i + 1) % x.opts.length][0];
+    change('layout', v);
+    safe(() => Spicetify.showNotification(`LyricDock layout: ${x.opts.find(([k]) => k === v)[1]}`));
+  }
+  const SHORTCUTS = { l: () => openPanel(), w: () => send({ type: 'wake' }), y: cycleLayout };
+  addEventListener('keydown', e => {
+    if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey) return;
+    const f = SHORTCUTS[e.key.toLowerCase()];
+    if (f) { e.preventDefault(); f(); }
+  }, true);
+
   // ---- Spotify top bar: LyricDock button -> settings panel. The phone sends its settings schema, so the panel
   // always matches the app. Connected: changes apply instantly. Offline: saved, pushed when the phone connects.
   const ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
@@ -537,7 +782,8 @@
   // Panel look: Spotify's own - its font stack, neutral greys, pill buttons, green only where Spotify uses it (switches).
   const FONT = 'var(--encore-body-font-stack, SpotifyMixUI, CircularSp, "Helvetica Neue", system-ui, sans-serif)';
   const CSS = `.ld-panel{--hair:rgba(255,255,255,.07);--sub:rgba(255,255,255,.62);font-family:${FONT};font-size:14px;display:flex;flex-direction:column;gap:1px;padding-bottom:12px}
-    .ld-panel h3{font-size:15px;font-weight:700;letter-spacing:-.01em;margin:22px 4px 6px;color:#fff}
+    .ld-panel h3{display:flex;align-items:baseline;justify-content:space-between;font-size:15px;font-weight:700;letter-spacing:-.01em;margin:22px 4px 6px;color:#fff}
+    .ld-panel h3 a{font-size:12px;font-weight:600;color:var(--sub);cursor:pointer;text-decoration:none} .ld-panel h3 a:hover{color:#fff;text-decoration:underline}
     .ld-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:10px 12px;border-radius:6px}
     .ld-row>:first-child{min-width:0;flex:1} .ld-row>:last-child{flex-shrink:0}
     .ld-row:hover{background:rgba(255,255,255,.04)}
@@ -551,24 +797,27 @@
       background:#282828;box-shadow:0 16px 24px rgba(0,0,0,.5),0 6px 8px rgba(0,0,0,.3);
       opacity:0;transform:translateY(-3px);pointer-events:none;transition:opacity .12s,transform .12s}
     .ld-help:hover::after,.ld-help:focus::after{opacity:1;transform:none;transition-delay:.25s}
-    .ld-panel select,.ld-panel input[type=text]{background:#2a2a2a;color:#fff;border:0;border-radius:4px;padding:8px 12px;font:inherit;font-size:13px;
+    .ld-panel select,.ld-panel input[type=text],.ld-panel input[type=search]{background:#2a2a2a;color:#fff;border:0;border-radius:4px;padding:8px 12px;font:inherit;font-size:13px;
       box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);transition:box-shadow .15s}
-    .ld-panel select:hover,.ld-panel input[type=text]:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
-    .ld-panel select:focus,.ld-panel input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 1.5px #fff}
+    .ld-panel select:hover,.ld-panel input[type=text]:hover,.ld-panel input[type=search]:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+    .ld-panel select:focus,.ld-panel input[type=text]:focus,.ld-panel input[type=search]:focus{outline:none;box-shadow:inset 0 0 0 1.5px #fff}
     .ld-panel button{cursor:pointer;font:700 13px/1 ${FONT};color:#fff;background:transparent;border:0;border-radius:999px;padding:9px 16px;
       box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);transition:transform .1s,box-shadow .15s,background .15s}
     .ld-panel button:hover{box-shadow:inset 0 0 0 1px #fff;transform:scale(1.03)} .ld-panel button:active{transform:scale(.97)}
     .ld-panel button.ld-primary{background:#fff;color:#000;box-shadow:none} .ld-panel button.ld-primary:hover{background:#f0f0f0}
     .ld-panel option,.ld-panel optgroup{background:#282828;color:#fff}
     .ld-panel input[type=range]{width:210px;accent-color:#fff;cursor:pointer} .ld-panel input[type=text]{width:240px}
+    .ld-search{position:sticky;top:149px;z-index:4;padding:8px 0;background:var(--background-elevated-base,#282828)} .ld-search input{width:100%!important;box-sizing:border-box}
     .ld-switch{-webkit-appearance:none;appearance:none;width:40px;height:22px;border-radius:11px;background:#535353;position:relative;cursor:pointer;margin:0;transition:background .2s}
     .ld-switch::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s cubic-bezier(.3,1.3,.6,1)}
     .ld-switch:hover{background:#6a6a6a} .ld-switch:checked{background:#1ed760} .ld-switch:checked::after{transform:translateX(18px)}
     .ld-val{min-width:58px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:rgba(255,255,255,.85)}
     .ld-status{display:flex;align-items:center;gap:10px;padding:4px 12px 10px;font-size:13px;color:var(--sub)}
-    .ld-status i{flex:none;width:8px;height:8px;border-radius:50%;background:#f15e6c}
-    .ld-status.on{color:#fff} .ld-status.on i{background:#1ed760}
+    .ld-status i,.ld-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#f15e6c;display:inline-block}
+    .ld-status.on{color:#fff} .ld-status.on i,.ld-dot.on{background:#1ed760}
     .ld-presets{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .ld-log{font-size:12px;color:var(--sub);padding:4px 12px;font-variant-numeric:tabular-nums;line-height:1.7}
+    .ld-kbd{font:600 11px/1 ${FONT};padding:3px 6px;border-radius:4px;background:#3e3e3e;color:#fff;margin:0 2px}
     .ld-preview{position:sticky;top:-1px;z-index:5;margin:0 0 8px;height:150px;border-radius:8px;overflow:hidden;background:#181818 center/cover;
       box-shadow:0 8px 24px rgba(0,0,0,.5)}
     .ld-preview-bg{position:absolute;inset:-30px;background:inherit;background-size:cover;filter:blur(28px) saturate(1.4)}
@@ -579,18 +828,27 @@
     .ld-topbar{position:relative}
     .ld-topbar::after{content:'';position:absolute;right:6px;top:6px;width:7px;height:7px;border-radius:50%;background:#e5534b;
       box-shadow:0 0 0 2px var(--background-base,#000);pointer-events:none}
-    .ld-topbar.ld-on::after{background:#3ddc97}`;  safe(() => { const st = document.createElement('style'); st.textContent = CSS; document.head.append(st); });
+    .ld-topbar.ld-on::after{background:#3ddc97}`;
+  safe(() => { const st = document.createElement('style'); st.textContent = CSS; document.head.append(st); });
 
-  let panel = null;
+  let panel = null, panelPhone = null, filter = '';
   const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 
   // Every change is saved and sent at once (sliders while dragging), and shown in the live preview.
   function change(k, v) {
-    const S = readJson(SETTINGS_KEY, {});
+    const S = settingsFor(panelPhone);
     S[k] = v;
-    LS.set(SETTINGS_KEY, JSON.stringify(S));
-    if (ws?.readyState === 1) send({ type: 'set', k, v }); else LS.set(DIRTY_KEY, '1');
+    saveSettings(panelPhone, S);
+    const l = panelPhone ? linkFor(panelPhone) : openLinks()[0];
+    if (l) sendTo(l, { type: 'set', k, v }); else if (panelPhone) dirty(panelPhone, true);
     preview(S);
+  }
+  function loadAll(patch) {
+    const S = { ...settingsFor(panelPhone), ...patch };
+    saveSettings(panelPhone, S);
+    const l = panelPhone ? linkFor(panelPhone) : openLinks()[0];
+    if (l) sendTo(l, { type: 'load', S: patch }); else if (panelPhone) dirty(panelPhone, true);
+    renderPanel();
   }
 
   function control(x, S) {
@@ -609,6 +867,7 @@
       r.dataset.k = x.k; out.dataset.out = x.k;
       return h('div', { className: 'ld-presets' }, r, out);
     }
+    if (x.type === 'action') return '';
     const t = h('input', { type: 'text', value: v ?? '', placeholder: x.placeholder ?? '', spellcheck: false });
     t.onchange = () => change(x.k, t.value.trim());
     return t;
@@ -660,55 +919,159 @@
       });
     });
   }
+
+  // Export / import the selected phone's settings as a JSON file (API keys left out of exports).
+  function exportSettings() {
+    const { apiKey, videoKey, spClientId, ...S } = settingsFor(panelPhone);
+    const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' })), download: 'lyricdock-settings.json' });
+    document.body.append(a); a.click(); a.remove();
+  }
+  function importSettings() {
+    const f = h('input', { type: 'file', accept: '.json,application/json' });
+    f.onchange = async () => {
+      const S = await f.files[0]?.text().then(t => safe(() => JSON.parse(t), null));
+      if (!okSettings(S)) return safe(() => Spicetify.showNotification('That file is not a LyricDock settings file', true));
+      loadAll(S);
+      safe(() => Spicetify.showNotification('Settings imported'));
+    };
+    f.click();
+  }
+
+  // Versions: stable / beta channel and pinning an older build (rollback). Read by the loader (lyricdock.js v2+).
+  let releases = null;
+  async function loadReleases() {
+    if (releases) return releases;
+    releases = (await fetch('https://api.github.com/repos/DhakadG/lyricdock/releases?per_page=12').then(r => r.json()).catch(() => []))
+      .filter(r => /^v\d+\.\d+\.\d+$/.test(r?.tag_name ?? '')).map(r => ({ v: r.tag_name.slice(1), pre: r.prerelease }));
+    return releases;
+  }
+  async function useBuild(v) {
+    const r = await fetch(`https://cdn.jsdelivr.net/gh/DhakadG/lyricdock@v${v}/extension/dock-bridge.js`);
+    const code = await r.text();
+    if (!r.ok || !code.includes('function dockBridge')) throw new Error('download failed');
+    localStorage.setItem('lyricdock:build', code);
+    localStorage.setItem('lyricdock:build-version', v);
+    location.reload();
+  }
+
   function renderPanel() {
     if (!panel?.isConnected) return;
-    const schema = readJson(SCHEMA_KEY, []), S = readJson(SETTINGS_KEY, {}), presets = readJson(PRESETS_KEY, {});
-    const on = ws?.readyState === 1;
+    const schema = readJson(SCHEMA_KEY, []), presets = readJson(PRESETS_KEY, {}), ps = pairs();
+    if (panelPhone && !ps.some(p => p.code === panelPhone)) panelPhone = null;
+    panelPhone ??= openLinks().find(l => l.code)?.code ?? ps[0]?.code ?? null;
+    const S = settingsFor(panelPhone), on = connected(), target = panelPhone ? linkFor(panelPhone) : openLinks()[0];
     const kids = [h('div', { className: 'ld-status' + (on ? ' on' : '') }, h('i'),
-      on ? 'Phone connected - changes apply instantly' : 'Phone not connected - changes are saved and applied when it connects')];
-    const latest = window.__lyricdock?.latest;
+      on ? `${openLinks().length > 1 ? `${openLinks().length} phones` : 'Phone'} connected - changes apply instantly` : 'No phone connected - changes are saved and applied when it connects')];
+
+    // version, channel, rollback
+    const latest = window.__lyricdock?.latest, loaderV2 = (window.__lyricdock?.loader ?? 0) >= 2;
     kids.push(h('div', { className: 'ld-row' }, h('div', {}, `LyricDock ${VERSION === 'dev' ? '(development build)' : 'v' + VERSION}`,
-      h('div', { className: 'ld-desc' }, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : latest && latest !== VERSION ? `v${latest} downloaded` : 'Up to date - updates install automatically')),
+      h('div', { className: 'ld-desc' }, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : LS.get('lyricdock:pin') ? `Pinned to v${LS.get('lyricdock:pin')} - updates paused` : latest && latest !== VERSION ? `v${latest} downloaded` : 'Up to date - updates install automatically')),
       VERSION === 'dev' ? '' : latest && latest !== VERSION ? h('button', { className: 'ld-primary', onclick: () => location.reload() }, 'Update now')
         : h('button', { onclick: e => checkUpdate(e.target) }, 'Check for updates')));
-    // pairing (no-adb link): the code the phone shows under its waiting screen / Settings -> Connection
-    const pc = pairCode(), codeIn = h('input', { type: 'text', placeholder: 'e.g. K7QX-9MP-2F', value: pc ? `${pc.slice(0, 4)}-${pc.slice(4, 7)}-${pc.slice(7)}` : '' });
-    kids.push(h('h3', {}, 'Pair phone'), h('div', { className: 'ld-row' },
-      h('div', {}, h('div', {}, pc ? `Paired${on ? ` - connected via ${ws.kind === 'rtc' ? 'direct Wi-Fi (WebRTC)' : 'adb'}` : ''}` : 'Not paired'),
-        h('div', { className: 'ld-desc' }, 'Enter the code shown on the phone. No cable or adb needed after this.')),
+    if (VERSION !== 'dev') {
+      const chan = h('select', {}, h('option', { value: 'stable' }, 'Stable'), h('option', { value: 'beta' }, 'Beta (pre-releases)'));
+      chan.value = LS.get('lyricdock:channel') === 'beta' ? 'beta' : 'stable';
+      chan.onchange = () => { LS.set('lyricdock:channel', chan.value); checkUpdate(null); };
+      const ver = h('select', {}, h('option', { value: '' }, 'Latest (auto-update)'));
+      loadReleases().then(rs => { rs.forEach(r => ver.append(h('option', { value: r.v, selected: LS.get('lyricdock:pin') === r.v }, `v${r.v}${r.pre ? ' (beta)' : ''}`))); });
+      ver.onchange = () => {
+        if (!ver.value) { LS.set('lyricdock:pin', ''); checkUpdate(null); return; }
+        LS.set('lyricdock:pin', ver.value);
+        useBuild(ver.value).catch(() => safe(() => Spicetify.showNotification('Could not download that version', true)));
+      };
+      kids.push(h('div', { className: 'ld-row' }, h('div', {}, h('div', { className: 'ld-label' }, 'Update channel and version'),
+        h('div', { className: 'ld-desc' }, loaderV2 ? 'Beta gets pre-releases first. Pick an older version to roll back (updates pause until you choose Latest).' : 'Run the updater once (Update popup → Run updater) to enable channels and rollback.')),
+        h('div', { className: 'ld-presets' }, chan, ver)));
+      chan.disabled = ver.disabled = !loaderV2;
+    }
+
+    // phones
+    kids.push(h('h3', {}, 'Phones', h('a', { onclick: () => { autoPair(true); safe(() => Spicetify.showNotification('Looking for phones on your Spotify account…')); } }, 'Find phones on my account')));
+    for (const p of ps) {
+      const l = linkFor(p.code) || (links.get('adb')?.code === p.code ? links.get('adb') : null);
+      const nameIn = h('input', { type: 'text', value: p.name, style: 'width:150px' });
+      nameIn.onchange = () => { const all = pairs(); const x = all.find(y => y.code === p.code); if (x) { x.name = nameIn.value.trim().slice(0, 40) || x.name; writeJson(PAIRS_KEY, all); renderPanel(); } };
+      kids.push(h('div', { className: 'ld-row' },
+        h('div', {}, h('div', { className: 'ld-label' }, h('span', { className: 'ld-dot' + (l ? ' on' : '') }), nameIn),
+          h('div', { className: 'ld-desc' }, `${p.code.slice(0, 4)}-${p.code.slice(4, 7)}-${p.code.slice(7)} · ${l ? `connected via ${l.kind === 'rtc' ? 'direct network (WebRTC)' : 'adb'}${l.ip ? ` · ${l.ip}` : ''}` : 'offline'}`)),
+        h('div', { className: 'ld-presets' },
+          ...(ps.length > 1 ? [h('button', { className: panelPhone === p.code ? 'ld-primary' : '', onclick: () => { panelPhone = p.code; renderPanel(); } }, panelPhone === p.code ? 'Editing' : 'Edit settings')] : []),
+          h('button', { onclick: () => { if (confirm(`Unpair ${p.name}?`)) { removePair(p.code); renderPanel(); } } }, 'Unpair'))));
+    }
+    const codeIn = h('input', { type: 'text', placeholder: 'Code on the phone, e.g. K7QX-9MP-2F2' });
+    kids.push(h('div', { className: 'ld-row' },
+      h('div', {}, h('div', {}, ps.length ? 'Add another phone' : 'Pair a phone'), h('div', { className: 'ld-desc' }, 'Enter the code the phone shows under its waiting screen (Settings → Connection). Several phones can be paired, each with its own settings.')),
       h('div', { className: 'ld-presets' }, codeIn, h('button', { onclick: () => {
-        const c = codeIn.value.toUpperCase().replace(/[^A-Z2-9]/g, '');
+        const c = cleanCode(codeIn.value);
         if (c.length !== 10) return safe(() => Spicetify.showNotification('That code should be 10 characters', true));
-        LS.set(PAIR_KEY, c); drop(); ensureLink(); renderPanel();
+        addPair(c); panelPhone = c; ensureLink(); renderPanel();
       } }, 'Pair'))));
+
     // presets
-    const names = Object.keys(presets).sort();
+    const names_ = Object.keys(presets).sort();
     // Built-in presets come from the phone (its shipped default config and variants); yours are stored here.
     const builtins = readJson('lyricdock:builtins', {}), defs = readJson('lyricdock:defaults', {});
-    const grp = (label, list, pre) => { const g = h('optgroup', { label }); list.forEach(n => g.append(h('option', { value: pre + n }, n))); return g; };
+    const grp = (lab, list, pre) => { const g = h('optgroup', { label: lab }); list.forEach(n => g.append(h('option', { value: pre + n }, n))); return g; };
     const sel = h('select', {}, ...(Object.keys(builtins).length ? [grp('Built-in', Object.keys(builtins), 'b:')] : []),
-      ...(names.length ? [grp('Yours', names, 'u:')] : [h('option', { value: '' }, 'No presets of yours yet - save one')]));
+      ...(names_.length ? [grp('Yours', names_, 'u:')] : [h('option', { value: '' }, 'No presets of yours yet - save one')]));
     const chosen = () => sel.value.startsWith('b:') ? { ...defs, ...builtins[sel.value.slice(2)] } : presets[sel.value.slice(2)];
     const name = h('input', { type: 'text', placeholder: 'New preset name' });
-    const savePresets = p => { LS.set(PRESETS_KEY, JSON.stringify(p)); send({ type: 'presets', presets: p }); renderPanel(); };
-    kids.push(h('h3', {}, 'Presets'), h('div', { className: 'ld-row' }, h('div', { className: 'ld-presets' },
+    const savePresets = p => { writeJson(PRESETS_KEY, p); send({ type: 'presets', presets: p }); renderPanel(); };
+    kids.push(h('h3', {}, `Presets${ps.length > 1 ? ` · ${phoneName(panelPhone)}` : ''}`, h('span', { className: 'ld-presets' },
+      h('a', { onclick: exportSettings }, 'Export'), h('a', { onclick: importSettings }, 'Import'))),
+    h('div', { className: 'ld-row' }, h('div', { className: 'ld-presets' },
       sel,
-      h('button', { onclick: () => { const p = chosen(); if (!p) return; LS.set(SETTINGS_KEY, JSON.stringify({ ...S, ...p }));
-        if (on) send({ type: 'load', S: p }); else LS.set(DIRTY_KEY, '1'); renderPanel(); } }, 'Apply'),
+      h('button', { onclick: () => { const p = chosen(); if (p) loadAll(p); } }, 'Apply'),
       h('button', { onclick: () => { if (!sel.value.startsWith('u:')) return; const p = { ...presets }; delete p[sel.value.slice(2)]; savePresets(p); } }, 'Delete'),
       name,
-      h('button', { onclick: () => { const n = name.value.trim().slice(0, 40); if (!n) return; const { apiKey, ...rest } = S; savePresets({ ...presets, [n]: rest }); } }, 'Save current'))));
+      h('button', { onclick: () => { const n = name.value.trim().slice(0, 40); if (!n) return; const { apiKey, videoKey, ...rest } = S; savePresets({ ...presets, [n]: rest }); } }, 'Save current'))));
+
+    // settings, with search and per-group reset
+    const search = h('input', { type: 'search', placeholder: 'Search settings', value: filter });
+    search.oninput = () => { filter = search.value; applyFilter(); };
+    kids.push(h('div', { className: 'ld-search' }, search));
     if (!schema.length) kids.push(h('div', { className: 'ld-desc' }, 'Connect the phone once so its settings can load here.'));
+    let group = null;
     for (const x of schema) {
-      if (x.group) { kids.push(h('h3', {}, x.group)); continue; }
-      kids.push(h('div', { className: 'ld-row' },
-        h('div', {}, label(x), ...(x.desc ? [h('div', { className: 'ld-desc' }, x.desc)] : [])), control(x, S)));
+      if (x.group) {
+        group = x.group;
+        const keys = [];
+        for (let i = schema.indexOf(x) + 1; i < schema.length && !schema[i].group; i++) if (schema[i].k && schema[i].type !== 'action') keys.push(schema[i].k);
+        const g = h('h3', {}, x.group, keys.length ? h('a', { onclick: () => { if (!confirm(`Reset "${x.group}" to defaults?`)) return;
+          loadAll(Object.fromEntries(keys.filter(k => k in defs).map(k => [k, defs[k]]))); } }, 'Reset') : '');
+        g.dataset.group = group;
+        kids.push(g);
+        continue;
+      }
+      if (x.type === 'action') continue; // phone-only actions (leave kiosk...)
+      const row = h('div', { className: 'ld-row' }, h('div', {}, label(x), ...(x.desc ? [h('div', { className: 'ld-desc' }, x.desc)] : [])), control(x, S));
+      row.dataset.find = `${x.label} ${x.help ?? ''} ${x.desc ?? ''} ${group ?? ''}`.toLowerCase();
+      row.dataset.inGroup = group;
+      kids.push(row);
     }
+
+    // connection log + shortcuts
+    kids.push(h('h3', {}, 'Connection log'), h('div', { className: 'ld-log' }, ...(events.length ? events.slice(0, 12).map(e =>
+      h('div', {}, `${new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}  ${e.text}`)) : ['Nothing yet'])));
+    const kbd = t => h('span', { className: 'ld-kbd' }, t);
+    kids.push(h('h3', {}, 'Shortcuts'), h('div', { className: 'ld-log' },
+      h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('L'), ' this panel'), h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('W'), ' wake the phone'),
+      h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('Y'), ' next phone layout'), h('div', {}, 'Right-click a song, playlist, album or artist for LyricDock actions.')));
+    if (!target && on) kids.splice(1, 0, h('div', { className: 'ld-desc', style: 'padding:0 12px 8px' }, `${phoneName(panelPhone)} is offline - its settings are saved and sent when it connects.`));
+
     // Keep the scroll position: rebuilding must never throw you back to the top.
     const sc = scroller(), top = sc?.scrollTop ?? 0;
     panel.replaceChildren(previewBox, ...kids);
     if (sc) sc.scrollTop = top;
+    applyFilter();
     preview(S);
+  }
+  function applyFilter() {
+    if (!panel) return;
+    const q = filter.trim().toLowerCase(), hit = new Set();
+    for (const r of panel.querySelectorAll('[data-find]')) { const ok = !q || r.dataset.find.includes(q); r.style.display = ok ? '' : 'none'; if (ok) hit.add(r.dataset.inGroup); }
+    for (const g of panel.querySelectorAll('h3[data-group]')) g.style.display = !q || hit.has(g.dataset.group) ? '' : 'none';
   }
 
   function openPanel() {
@@ -719,15 +1082,23 @@
   // isRight: Spicetify gives right-side buttons the class of Spotify's own round action buttons (left ones sit
   // small among the back/forward arrows), so this matches the native top-bar buttons.
   safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel, false, true).element.classList.add('ld-topbar'));
-  // Manual "Check for updates": same as the loader's 30-minute check - download the new build into the loader's
-  // cache (so it's used even if Update isn't clicked), then show the update popup.
+
+  // Which build should run: a pinned version, else the channel's newest (version.json: {version, beta}).
+  const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+  async function wanted() {
+    const pin = LS.get('lyricdock:pin');
+    if (/^\d+\.\d+\.\d+$/.test(pin || '')) return pin;
+    const j = await (await fetch(`https://raw.githubusercontent.com/DhakadG/lyricdock/main/extension/version.json?t=${Date.now()}`, { cache: 'no-store' })).json();
+    return LS.get('lyricdock:channel') === 'beta' && /^\d+\.\d+\.\d+$/.test(j.beta ?? '') && newer(j.beta, j.version) ? j.beta : j.version;
+  }
+  // Manual "Check for updates": download the new build into the loader's cache (so it's used even if Update isn't
+  // clicked), then show the update popup.
   async function checkUpdate(btn) {
     const say = t => { if (btn) btn.textContent = t; };
     say('Checking…');
     try {
-      const v = (await (await fetch(`https://raw.githubusercontent.com/DhakadG/lyricdock/main/extension/version.json?t=${Date.now()}`, { cache: 'no-store' })).json()).version;
-      const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
-      if (!/^\d+\.\d+\.\d+$/.test(v) || !newer(v, VERSION)) { say('Up to date'); setTimeout(() => say('Check for updates'), 3000); return; }
+      const v = await wanted();
+      if (!/^\d+\.\d+\.\d+$/.test(v) || v === VERSION) { say('Up to date'); setTimeout(() => say('Check for updates'), 3000); return; }
       say('Downloading…');
       const r = await fetch(`https://cdn.jsdelivr.net/gh/DhakadG/lyricdock@v${v}/extension/dock-bridge.js`);
       const code = await r.text();

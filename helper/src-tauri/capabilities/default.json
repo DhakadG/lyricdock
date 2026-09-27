@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Capabilities for the helper window",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:default", "core:tray:default"]
+  "permissions": ["core:default", "core:window:default", "core:tray:default", "notification:default"]
 }

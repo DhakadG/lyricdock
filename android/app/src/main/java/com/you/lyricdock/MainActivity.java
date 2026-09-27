@@ -10,6 +10,7 @@ import android.content.pm.ActivityInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.DisplayCutout;
+import android.view.KeyEvent;
 import android.view.RoundedCorner;
 import android.view.WindowInsets;
 import android.provider.Settings;
@@ -35,6 +36,8 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     FrameLayout root;
     DockServer server;
     final ConcurrentLinkedQueue<String> inbox = new ConcurrentLinkedQueue<>();
+    static volatile MainActivity current; // for MediaReceiver (notification buttons)
+    static volatile boolean volKeys = true;
 
     // Called on the server thread.
     void deliver(String msg) { inbox.add(msg); web.post(this); }
@@ -47,6 +50,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        current = this;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         // Draw into the camera-notch strip too (it showed as a black bar in landscape).
         if (Build.VERSION.SDK_INT >= 28) getWindow().getAttributes().layoutInDisplayCutoutMode =
@@ -71,6 +75,53 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
 
     @JavascriptInterface
     public void send(String json) { if (server != null) server.broadcast(json); }
+
+    // Device name for the desktop's phone list ("Galaxy M01"), else the model.
+    @JavascriptInterface
+    public String model() {
+        String n = Settings.Global.getString(getContentResolver(), "device_name");
+        return n != null && !n.isEmpty() ? n : Build.MODEL;
+    }
+
+    // Settings -> Screen: brightness (-1 = follow Android), volume keys -> Spotify, media notification, wake.
+    @JavascriptInterface
+    public void brightness(float v) { runOnUiThread(new UiOp(this, UiOp.BRIGHTNESS, v, null)); }
+
+    @JavascriptInterface
+    public void setVolKeys(boolean on) { volKeys = on; }
+
+    @JavascriptInterface
+    public void wake() { runOnUiThread(new UiOp(this, UiOp.WAKE, 0, null)); }
+
+    @JavascriptInterface
+    public void media(String title, String artist, String art, boolean playing) {
+        if (Build.VERSION.SDK_INT >= 33 && title != null && !title.isEmpty()
+                && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED && !askedNotif) {
+            askedNotif = true;
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
+        }
+        new Thread(new MediaNotif(this, title, artist, art, playing)).start();
+    }
+    private boolean askedNotif;
+
+    // Notification / lock-screen / headset buttons -> the page. Only the three known commands pass.
+    void mediaCmd(String cmd) {
+        if ("toggle".equals(cmd) || "next".equals(cmd) || "prev".equals(cmd))
+            runOnUiThread(new UiOp(this, UiOp.JS, 0, "window.mediaCmd&&mediaCmd('" + cmd + "')"));
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        int k = e.getKeyCode();
+        if (volKeys && (k == KeyEvent.KEYCODE_VOLUME_UP || k == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) web.evaluateJavascript("window.volKey&&volKey(" + (k == KeyEvent.KEYCODE_VOLUME_UP ? 1 : -1) + ")", null);
+            return true;
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    @JavascriptInterface
+    public void setChannel(String ch) { Updater.beta = "beta".equals(ch); }
 
     // Optional Spicy Lyrics API request with the user's own key (see LyricsFetch). Inputs are checked here, at the
     // boundary: a Spotify track id is 22 base62 chars, a publishable key is sl_pk_ + [A-Za-z0-9_-].
@@ -158,6 +209,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     @Override
     protected void onDestroy() {
         try { server.stop(500); } catch (Exception ignored) {}
+        if (current == this) current = null;
         super.onDestroy();
     }
 

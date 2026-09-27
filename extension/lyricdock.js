@@ -11,9 +11,13 @@
   const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
   const withTimeout = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('timeout')), ms))]);
 
+  // The build to run: a version pinned in the LyricDock panel (rollback), else the newest on the chosen channel
+  // (version.json: { version, beta }).
   async function latest() {
+    const pin = ls.getItem('lyricdock:pin');
+    if (isVer(pin)) return pin;
     const r = await withTimeout(fetch(`https://raw.githubusercontent.com/${REPO}/main/extension/version.json?t=${Date.now()}`, { cache: 'no-store' }), 6000);
-    const v = (await r.json()).version;
+    const j = await r.json(), v = ls.getItem('lyricdock:channel') === 'beta' && isVer(j.beta) && newer(j.beta, j.version) ? j.beta : j.version;
     if (!isVer(v)) throw new Error('bad version.json');
     return v;
   }
@@ -30,7 +34,7 @@
   }
   // Run a build: as a module from a blob (no network needed), falling back to an inline script.
   async function run(code, v, source) {
-    window.__lyricdock = { version: v, source, loader: true, latest: v };
+    window.__lyricdock = { version: v, source, loader: 2, latest: v };
     try { await import(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))); }
     catch { const s = document.createElement('script'); s.textContent = code; document.head.append(s); }
     console.log(`[LyricDock] v${v} loaded (${source})`);
@@ -51,7 +55,7 @@
   setInterval(async () => {
     try {
       const v = await latest();
-      if (!newer(v, window.__lyricdock.version) || v === window.__lyricdock.latest) return;
+      if (v === window.__lyricdock.version || v === window.__lyricdock.latest) return;
       const code = await download(v);
       ls.setItem(CODE, code); ls.setItem(VER, v); // next start uses it even if the user ignores the notice
       window.__lyricdock.latest = v;

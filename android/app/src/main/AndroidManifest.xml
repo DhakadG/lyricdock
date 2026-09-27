@@ -3,6 +3,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- self-update from GitHub Releases (silent when device owner, otherwise the user confirms) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- wake the screen from Spotify (Ctrl+Alt+W), media notification (Android 13+ asks) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="LyricDock"
@@ -35,6 +38,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity-alias>
+        <receiver android:name=".MediaReceiver" android:exported="false" />
         <receiver android:name=".InstallReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

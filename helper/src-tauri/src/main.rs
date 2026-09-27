@@ -4,6 +4,8 @@
 // Same UI stack as Ethernet Guardian: Tauri 2 + plain HTML/CSS/JS in ../src.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod relay;
+
 use serde::Serialize;
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
@@ -167,6 +169,19 @@ fn b64(data: &[u8]) -> String {
     s
 }
 
+// ---- local signalling relay (relay.rs). The on/off choice survives restarts (a flag file).
+#[derive(Serialize)]
+struct RelayInfo { running: bool, ip: Option<String>, port: u16 }
+fn relay_flag() -> PathBuf { local_dir().join("helper").join("relay.on") }
+#[tauri::command]
+fn relay_status() -> RelayInfo { RelayInfo { running: relay::running(), ip: relay::lan_ip(), port: relay::PORT } }
+#[tauri::command]
+fn relay_set(on: bool) -> Result<RelayInfo, String> {
+    let _ = std::fs::create_dir_all(local_dir().join("helper"));
+    if on { relay::start()?; let _ = std::fs::write(relay_flag(), "1"); } else { relay::stop(); let _ = std::fs::remove_file(relay_flag()); }
+    Ok(relay_status())
+}
+
 #[tauri::command]
 fn quit(app: AppHandle) { app.exit(0); }
 
@@ -182,7 +197,9 @@ fn main() {
     let tray_only = std::env::args().any(|a| a == "--tray");
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show(app)))
+        .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
+            if relay_flag().exists() { let _ = relay::start(); }
             let open = MenuItem::with_id(app, "open", "Open LyricDock Helper", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit_i])?;
@@ -201,7 +218,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![status, install_extension, setup_phone, set_autostart, open_url, link, phone, quit])
+        .invoke_handler(tauri::generate_handler![status, install_extension, setup_phone, set_autostart, open_url, link, phone, relay_status, relay_set, quit])
         .build(tauri::generate_context!())
         .expect("error while building LyricDock Helper")
         .run(|_app, event| {

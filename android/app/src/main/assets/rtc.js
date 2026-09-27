@@ -6,7 +6,22 @@
 // relay, no account) as a dumb mailbox: the topic and an AES-GCM key are both derived from the pairing code this
 // phone shows, so the relay only ever sees ciphertext. The extension carries the same code (dock-bridge.js).
 const Rtc = (() => {
-  const RELAY = 'https://ntfy.sh', CHUNK = 16000;
+  const CHUNK = 16000;
+  // Signalling server + STUN/TURN from Settings -> Connection (the bridge reads the same settings from this phone).
+  const relay = () => {
+    const S = window.Settings?.S || {};
+    if (S.relay === 'helper' && /^\d+\.\d+\.\d+\.\d+$/.test(S.relayUrl || '')) return `http://${S.relayUrl}:8977`;
+    if (S.relay === 'custom' && /^https?:\/\/\S+$/.test(S.relayUrl || '')) return S.relayUrl.replace(/\/+$/, '');
+    return 'https://ntfy.sh';
+  };
+  const wsOf = u => u.replace(/^http/, 'ws');
+  const ice = () => ({ iceServers: String(window.Settings?.S.ice || '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
+    const [urls, username, credential] = e.split('|');
+    return /^(stun|turns?):/.test(urls) ? { urls, ...(username ? { username, credential } : {}) } : null;
+  }).filter(Boolean) });
+  // Connection log (Settings -> Connection), newest first.
+  const events = [];
+  const note = t => { events.unshift(`${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${t}`); events.length = Math.min(events.length, 20); };
   const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
   let code = localStorage.getItem('dock:pair');
   if (!/^[A-Z2-9]{10}$/.test(code || '')) {
@@ -37,11 +52,13 @@ const Rtc = (() => {
       return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)));
     } catch (e) { return null; } // not ours / tampered: ignore
   }
-  const publish = async obj => fetch(`${RELAY}/${topic}`, { method: 'POST', body: await seal(obj), headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
+  const publish = async obj => fetch(`${relay()}/${topic}`, { method: 'POST', body: await seal(obj), headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
 
   // ---- relay subscription: always listening for offers from the desktop
   function listen() {
-    sub = new WebSocket(`${RELAY.replace('https', 'wss')}/${topic}/ws`);
+    const r = relay();
+    sub = new WebSocket(`${wsOf(r)}/${topic}/ws`);
+    sub.relay = r;
     sub.onmessage = async e => {
       const ev = JSON.parse(e.data);
       if (ev.event !== 'message') return;
@@ -74,9 +91,9 @@ const Rtc = (() => {
 
   async function answer(m) {
     try { pc?.close(); } catch (e) {}
-    pc = new RTCPeerConnection();
+    pc = new RTCPeerConnection(ice());
     pc.ondatachannel = e => wire(e.channel);
-    pc.onconnectionstatechange = () => { status = pc?.connectionState || 'closed'; };
+    pc.onconnectionstatechange = () => { const s = pc?.connectionState || 'closed'; if (s !== status && ['connected', 'failed', 'disconnected'].includes(s)) note({ connected: 'Connected', failed: 'Connection failed', disconnected: 'Connection lost' }[s]); status = s; };
     await pc.setRemoteDescription(m.sdp);
     await pc.setLocalDescription(await pc.createAnswer());
     await gathered(pc);
@@ -119,13 +136,13 @@ const Rtc = (() => {
   const hex = u8 => Array.from(u8, b => b.toString(16).padStart(2, '0')).join('');
   const EC = { name: 'ECDH', namedCurve: 'P-256' };
   async function acctTopic(uid) { return 'lda' + hex(new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('lyricdock-account:' + uid)))).slice(0, 24); }
-  const post = (t, body) => fetch(`${RELAY}/${t}`, { method: 'POST', body, headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
+  const post = (t, body) => fetch(`${relay()}/${t}`, { method: 'POST', body, headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
 
   async function watchAccount(uid) {
     if (!uid || acct?.uid === uid) return;
     try { acct?.ws.close(); } catch (e) {}
-    const topic = await acctTopic(uid), ws = new WebSocket(`${RELAY.replace('https', 'wss')}/${topic}/ws`);
-    acct = { uid, topic, ws };
+    const topic = await acctTopic(uid), ws = new WebSocket(`${wsOf(relay())}/${topic}/ws`);
+    acct = { uid, topic, ws, relay: relay() };
     ws.onmessage = e => {
       const ev = JSON.parse(e.data);
       if (ev.event !== 'message') return;
@@ -168,6 +185,11 @@ const Rtc = (() => {
   setInterval(refreshPath, 5000);
 
   init().then(listen);
+  // A changed signalling server: resubscribe there (the old socket's onclose listens again).
+  setInterval(() => {
+    if (sub && sub.relay !== relay()) { note('Signalling server changed'); try { sub.close(); } catch (e) {} }
+    if (acct && acct.relay !== relay()) { const u = acct.uid, w = acct.ws; acct = null; try { w.close(); } catch (e) {} watchAccount(u); }
+  }, 3000);
   return {
     code: pretty,
     send,
@@ -176,6 +198,7 @@ const Rtc = (() => {
     onMessage: f => { onMsg = f; },
     open: () => dc?.readyState === 'open',
     path: () => path,
+    log: () => events,
     refreshPath,
     status: () => dc?.readyState === 'open' ? 'connected' : ['failed', 'closed', 'disconnected'].includes(status) ? 'standby' : status, // desktop moved to USB / will re-offer
   };

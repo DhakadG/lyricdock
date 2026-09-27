@@ -50,8 +50,10 @@ const Settings = (() => {
 
     { group: 'Background' },
     { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
-      ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['video', 'Music video (YouTube)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']],
-      help: 'Dynamic: the cover slowly warped and blurred (Spicy Lyrics\' look, uses the GPU). Artist image: the same effect with the artist\'s photo. Blurred art: a still blurred cover. Colour gradient: slow gradient from the cover\'s colours. Black: nothing (OLED, lowest power).' },
+      ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['canvas', 'Spotify Canvas (looping video)'], ['video', 'Music video (YouTube)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']],
+      help: 'Dynamic: the cover slowly warped and blurred (Spicy Lyrics\' look, uses the GPU). Artist image: the same effect with the artist\'s photo. Spotify Canvas: the short looping video some songs have in Spotify (desktop mode) - great in portrait; songs without one show the blurred cover. Blurred art: a blurred cover. Colour gradient: slow gradient from the cover\'s colours. Black: nothing (OLED, lowest power).' },
+    { k: 'bgDrift', label: 'Drift the still cover', type: 'toggle', def: true, when: s => s.bg === 'blur' || s.bg === 'canvas',
+      help: 'The blurred cover slowly pans and zooms instead of standing still (Ken Burns effect). Cheap: one layer moved by the GPU.' },
     { k: 'bgSpeed', label: 'Motion speed', type: 'range', min: 0, max: 1.5, step: 0.05, def: 0.35, when: dyn, help: 'How fast the dynamic background drifts. 0 freezes it.' },
     { k: 'bgBeat', label: 'Move with the music', desc: 'Livelier while words are sung, calm in instrumental parts', type: 'toggle', def: true, when: dyn,
       help: 'Speeds the background up while vocals are busy (read from the lyric timing) and slows it in instrumental parts.' },
@@ -129,6 +131,12 @@ const Settings = (() => {
     { k: 'nightDim', label: 'Night dimming', type: 'range', min: 0, max: 0.85, step: 0.05, def: 0.5, when: s => s.night, help: 'How much darker everything gets at night.' },
     { k: 'nightWarm', label: 'Night warmth', type: 'range', min: 0, max: 1, step: 0.05, def: 0.4, when: s => s.night, help: 'Amber tint at night (less blue light).' },
     { k: 'burnIn', label: 'Burn-in protection', type: 'toggle', def: true, help: 'AMOLED screens can keep a ghost of things that never move. This shifts the layout by a few pixels every few minutes: invisible, but it spreads the wear.' },
+    { k: 'bright', label: 'Brightness', type: 'choice', def: 'system', opts: [['system', 'Follow Android'], ['fixed', 'Fixed'], ['schedule', 'Day / night schedule']],
+      help: 'Fixed: always the level below. Day / night: the day level, and the night level between the night hours (Night starts / ends at). Only LyricDock\'s window changes, not the system setting.' },
+    { k: 'brightDay', label: 'Day brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.8, when: s => s.bright !== 'system', help: 'Screen brightness while LyricDock is open (Fixed), or during the day (schedule).' },
+    { k: 'brightNight', label: 'Night brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.15, when: s => s.bright === 'schedule', help: 'Screen brightness between the night hours.' },
+    { k: 'volKeys', label: 'Volume buttons control Spotify', type: 'toggle', def: true, help: 'The phone\'s volume buttons change Spotify\'s volume (5% per press) instead of the phone\'s.' },
+    { k: 'mediaNotif', label: 'Media notification', type: 'toggle', def: true, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
     { k: 'battery', label: 'Battery indicator', type: 'toggle', def: false, help: 'Shows the phone\'s battery level and whether it is charging, in a corner (handy for a kiosk dock).' },
 
     { group: 'Performance' },
@@ -152,17 +160,28 @@ const Settings = (() => {
       help: 'Signs in on this phone (you type your password into Spotify\'s own page). Also lets Spotify on your computer find this phone without a code.' },
 
     { group: 'Presets', desc: 'Built-in presets, plus your own (saved on the desktop, so another phone can reuse them)' },
+    { label: 'Export / import', type: 'io', help: 'Export copies all settings (without API keys) as text you can paste into another phone. Import applies settings pasted here. Spotify\'s LyricDock panel can export and import files too.' },
     { label: 'Presets', type: 'presets', help: 'Built-in: Default (the shipped config), Smooth (for slow phones) and Full Spicy (every effect up). Your own presets are stored in Spotify on the computer.' },
 
     { group: 'Updates' },
+    { k: 'channel', label: 'Update channel', type: 'choice', def: 'stable', opts: [['stable', 'Stable'], ['beta', 'Beta (pre-releases)']],
+      help: 'Beta installs pre-releases as soon as they are published (they may have rough edges). Android cannot install an older version over a newer one, so going back from beta to stable waits for the next stable release.' },
     { k: 'autoUpdate', label: 'Update automatically', desc: 'New versions from GitHub Releases install on their own', type: 'toggle', def: true,
       help: 'Checks GitHub Releases shortly after start and every 6 hours. In kiosk mode updates install silently; otherwise Android asks once.' },
     { label: 'LyricDock app', type: 'action', text: () => 'Check now', run: () => window.checkUpdate?.(true), info: () => window.updateStatus?.() ?? '',
       help: 'Check for a new version now and install it if there is one.' },
+    { label: 'Changelog', type: 'action', text: () => 'What\'s new', run: () => window.showChangelog?.(), help: 'Release notes for this and earlier versions, from GitHub.' },
 
     { group: 'Connection' },
     { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
-      help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable uses USB tethering (turn on USB tethering on the phone with the cable connected) - useful when Wi-Fi blocks devices from talking to each other. Takes effect on the next connection (reconnect or restart).' },
+      help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer\'s internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection.' },
+    { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'ntfy.sh (public)'], ['custom', 'My own ntfy server'], ['helper', 'LyricDock Helper on my PC']],
+      help: 'Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). ntfy.sh is free and public. My own ntfy server: any self-hosted ntfy (https address). LyricDock Helper: the helper app runs a tiny relay on your PC and nothing leaves your network - type your PC\'s IP address below. Spotify takes this setting from the phone.' },
+    { k: 'relayUrl', label: 'Server address', type: 'text', def: '', placeholder: 'https://ntfy.example.com  or  192.168.1.20', when: s => s.relay !== 'ntfy',
+      help: 'My own ntfy server: its https:// address (Spotify only allows https). LyricDock Helper: the IPv4 address of the PC running the helper (shown on its Dashboard).' },
+    { k: 'ice', label: 'STUN / TURN servers (away from home)', type: 'text', def: '', placeholder: 'turn:host:3478|user|password, stun:host:3478',
+      help: 'Only for using LyricDock on a different network from your computer (e.g. phone on mobile data). Add a TURN relay you control as url|username|password; several separated by commas. Options: a Metered.ca or Cloudflare TURN account, or coturn on a VPS. Leave empty at home.' },
+    { label: 'Connection log', type: 'info', value: () => (window.connLog?.() ?? []).slice(0, 6).join('  ·  ') || 'Nothing yet', help: 'The last connection events on this phone (connected, lost, reconnected), newest first.' },
     { label: 'Link', type: 'info', value: () => window.dockStatus?.() ?? '', help: 'How this phone is currently getting playback: from the computer (direct Wi-Fi / WebRTC, or USB for developers) or from your Spotify account.' },
     { label: 'Pairing code', desc: 'Enter once in Spotify → LyricDock (top bar) → Pair phone', type: 'info', value: () => window.Rtc?.code ?? '',
       help: 'Type this into Spotify on your computer once: click the LyricDock button in the top bar → Pair phone. It also encrypts the connection setup.' },
@@ -272,6 +291,24 @@ const Settings = (() => {
       box.append(b, el('span', 'sl-sp-description', x.info?.() ?? '')); // info is optional
       return box;
     }
+    if (x.type === 'io') {
+      const box = el('div', 'sl-presets sl-io'), ta = el('textarea', 'sl-input');
+      ta.placeholder = 'Settings JSON';
+      ta.rows = 3;
+      const btn = (label, fn) => { const b = el('button', 'sl-text-btn', label); b.onclick = fn; return b; };
+      box.append(ta, btn('Export', () => {
+        const { apiKey, videoKey, spClientId, ...rest } = S;
+        ta.value = JSON.stringify(rest);
+        ta.select();
+        try { document.execCommand('copy'); window.notice?.('Settings copied'); } catch (e) {}
+      }), btn('Import', () => {
+        let o = null;
+        try { o = JSON.parse(ta.value); } catch (e) {}
+        if (!o || typeof o !== 'object' || Array.isArray(o)) return window.notice?.('That is not LyricDock settings JSON');
+        load(o); window.notice?.('Settings imported');
+      }));
+      return box;
+    }
     if (x.type === 'text') {
       const i = el('input', 'sl-input');
       Object.assign(i, { value: S[x.k] || '', placeholder: x.placeholder || '', spellcheck: false, autocomplete: 'off' });
@@ -324,7 +361,16 @@ const Settings = (() => {
     const cols = el('div', 'sl-cols');
     body.replaceChildren(cols);
     cols.append(...SCHEMA.filter(x => !x.when || x.when(S)).map(x => {
-      if (x.group) return el('div', 'sl-sp-section-title', x.group);
+      if (x.group) {
+        const t = el('div', 'sl-sp-section-title', x.group), keys = groupKeys(x.group);
+        if (keys.length) {
+          const r = el('button', 'sl-group-reset', 'Reset');
+          r.onclick = () => { for (const k of keys) if (k !== 'apiKey') S[k] = defaults[k]; save(); notify('*'); render(); window.notice?.(`${x.group} reset to defaults`); };
+          t.append(r);
+        }
+        t.dataset.group = x.group;
+        return t;
+      }
       const row = el('div', 'sl-sp-row' + (['range', 'text', 'presets', 'action'].includes(x.type) ? ' sl-sp-row--stacked' : ''));
       const lw = el('div', 'sl-sp-label-wrap');
       const lab = el('div', 'sl-sp-label', x.label);
@@ -341,10 +387,30 @@ const Settings = (() => {
       c.append(control(x));
       row.append(lw, c);
       if (x.help) row.append(el('div', 'sl-sp-help', x.help)); // full row width, under the label + control
+      row.dataset.find = `${x.label} ${x.desc || ''} ${x.help || ''}`.toLowerCase();
       return row;
     }));
+    filterRows();
     body.scrollTop = top;
   }
+
+  // Search: hide rows that don't match, and section titles left with no matching rows.
+  let query = '';
+  function filterRows() {
+    const q = query.trim().toLowerCase();
+    let title = null, any = false;
+    const done = () => { if (title) title.style.display = !q || any ? '' : 'none'; };
+    for (const r of document.querySelectorAll('#settings .sl-cols > *')) {
+      if (r.dataset.group !== undefined) { done(); title = r; any = false; continue; }
+      const ok = !q || (r.dataset.find || '').includes(q);
+      r.style.display = ok ? '' : 'none';
+      any = any || ok;
+    }
+    done();
+  }
+  const groupKeys = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (SCHEMA[j].k) out.push(SCHEMA[j].k); return out; };
+  const findInput = document.getElementById('sfind');
+  if (findInput) findInput.oninput = () => { query = findInput.value; filterRows(); };
 
   const open = () => { render(); document.body.classList.add('settings-open'); };
   const close = () => document.body.classList.remove('settings-open');

@@ -88,7 +88,7 @@ function background(url, im) {
   paint(url, im);
 }
 function paint(url, im) {
-  const root = document.documentElement.style, dyn = S.bg === 'dynamic' || S.bg === 'artist';
+  const root = document.documentElement.style, dyn = S.bg === 'dynamic' || S.bg === 'artist'; // canvas / video: blurred cover under the video
   // Image still downloading (swap only waits ~0.9s): finish it, then update - otherwise the old song's colours stick.
   if (!im && url) art(url).then(i => { if (i && (P.art === url || P.artistImg === url)) paint(url, i); });
   $('bg').style.backgroundImage = url ? `url("${url}")` : 'none';
@@ -324,7 +324,9 @@ function handle(m) {
   else if (m.type === 'presets') Settings.setPresets(m.presets);
   else if (m.type === 'diag') window.lastDiag = m; // inspected over CDP while developing
   else if (m.type === 'auth') Web.onAuth(m);
-  else if (m.type === 'list' || m.type === 'album') window.onExtra?.(m);
+  else if (['list', 'album', 'acted', 'canvas'].includes(m.type)) window.onExtra?.(m);
+  else if (m.type === 'browse') window.dockBrowse?.(m.uri);
+  else if (m.type === 'wake') window.dockWake?.();
   else if (m.type === 'update') { P.update = m; Settings.render(); if (m.state === 'installing') notice(`Updating LyricDock to v${m.version}…`, 6000); }
 }
 
@@ -344,7 +346,7 @@ setInterval(() => { Web.refreshUserId(); const uid = Web.userId(); if (uid) Rtc.
 let appVersion = '';
 try { appVersion = Dock.version(); } catch (e) {}
 // Native call first: a broken settings render must never stop the app from updating (that's how fixes arrive).
-window.checkUpdate = install => { P.update = { state: 'checking' }; try { Dock.checkUpdate(!!install); } catch (e) {} try { Settings.render(); } catch (e) {} };
+window.checkUpdate = install => { P.update = { state: 'checking' }; try { Dock.setChannel(S.channel); } catch (e) {} try { Dock.checkUpdate(!!install); } catch (e) {} try { Settings.render(); } catch (e) {} };
 window.updateStatus = () => {
   const u = P.update, v = `v${appVersion || '?'}`;
   if (!u) return v;
@@ -403,12 +405,13 @@ window.dockStatus = () => {
 };
 // Spotify reaches the phone through adb (USB, or wireless adb when the cable is out - see scripts/link.ps1),
 // always via localhost on the PC: Chromium refuses ws:// from Spotify's https page to a LAN address.
-let myIp = '';
+let myIp = '', phoneModel = '';
+try { phoneModel = Dock.model(); } catch (e) {}
 const refreshIp = () => { try { myIp = Dock.ip(); } catch (e) {} };
 refreshIp();
 setInterval(refreshIp, 10000);
 setInterval(() => {
-  send({ type: 'alive', ip: myIp });
+  send({ type: 'alive', ip: myIp, code: Rtc.code, name: phoneModel });
   if (!P.id) $('artist').textContent = `Pair code ${Rtc.code} · enter it in Spotify → LyricDock (top bar)`;
 }, 1000);
 

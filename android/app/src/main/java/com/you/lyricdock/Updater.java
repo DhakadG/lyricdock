@@ -23,6 +23,8 @@ import java.net.URL;
 // Reports {"type":"update","state":current|available|installing|error,"version"} to the page.
 class Updater implements Runnable {
     static final String LATEST = "https://api.github.com/repos/DhakadG/lyricdock/releases/latest";
+    static final String NEWEST = "https://api.github.com/repos/DhakadG/lyricdock/releases?per_page=1"; // includes pre-releases
+    static volatile boolean beta;
     private final MainActivity app;
     private final boolean install;
 
@@ -31,7 +33,7 @@ class Updater implements Runnable {
     @Override public void run() {
         try {
             String cur = app.getPackageManager().getPackageInfo(app.getPackageName(), 0).versionName;
-            JSONObject rel = new JSONObject(new String(get(LATEST), "UTF-8"));
+            JSONObject rel = beta ? new JSONArray(new String(get(NEWEST), "UTF-8")).getJSONObject(0) : new JSONObject(new String(get(LATEST), "UTF-8"));
             String tag = rel.getString("tag_name").replaceFirst("^v", "");
             String apk = null;
             JSONArray assets = rel.getJSONArray("assets");

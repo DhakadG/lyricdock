@@ -24,6 +24,7 @@
           <div id="lists">
             <button data-list="queue" aria-label="Queue"><svg viewBox="0 0 24 24"><path d="M3 6h13v2H3zm0 5h13v2H3zm0 5h9v2H3zm15-2v-4l5 5-5 5v-4z"/></svg></button>
             <button data-list="recent" aria-label="Recently played"><svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l4 4 4-4H6a7 7 0 1 1 2.05 4.95l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8z"/></svg></button>
+            <button data-list="search" aria-label="Search"><svg viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.8 4.8-1.4 1.4-4.8-4.8A7.5 7.5 0 1 1 10.5 3zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z"/></svg></button>
             <button data-list="library" aria-label="Your library"><svg viewBox="0 0 24 24"><path d="M4 3h2v18H4zm5 0h2v18H9zm4.9 1.3 1.9-.6 5 16.9-1.9.6z"/></svg></button>
             <button data-list="friends" aria-label="Friend activity"><svg viewBox="0 0 24 24"><path d="M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-7 1.7-7 4v2h14v-2c0-2.3-3.7-4-7-4zm7.5-2a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm1 2.1c1.6.6 3.5 1.7 3.5 3.9v2h2v-2c0-2.3-3-3.6-5.5-3.9z"/></svg></button>
           </div>
@@ -49,10 +50,11 @@
 <div id="nightTint"></div>
 <div id="clockScreen"><div id="clkTime"></div><div id="clkDate"></div><div id="clkNext"></div></div>
 <aside id="listPanel">
-  <header><nav id="listTabs"><button data-tab="queue">Queue</button><button data-tab="recent">Recently played</button><button data-tab="library">Library</button><button data-tab="friends">Friends</button></nav>
+  <header><button id="listBack" aria-label="Back"><svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7 1.4-1.4-5.6-5.6 5.6-5.6z"/></svg></button><div id="listCrumb"></div><nav id="listTabs"><button data-tab="queue">Queue</button><button data-tab="recent">Recent</button><button data-tab="library">Library</button><button data-tab="search">Search</button><button data-tab="friends">Friends</button></nav>
     <button id="listClose" aria-label="Close"><svg viewBox="0 0 16 16"><path d="M2.47 2.47a.75.75 0 0 1 1.06 0L8 6.94l4.47-4.47a.75.75 0 1 1 1.06 1.06L9.06 8l4.47 4.47a.75.75 0 1 1-1.06 1.06L8 9.06l-4.47 4.47a.75.75 0 0 1-1.06-1.06L6.94 8 2.47 3.53a.75.75 0 0 1 0-1.06z"/></svg></button></header>
   <div id="listBody"></div>
 </aside>
+<div id="news"><div class="nw-card"><header>What's new<button id="newsClose">Done</button></header><div id="newsBody"></div></div></div>
 <div id="dot">Reconnecting…</div>
 <div id="toast"></div>
 <div id="pairAsk"><div class="pa-card"><div class="pa-title">Connect <b id="pairName"></b>?</div><div class="pa-sub">Allow only if Spotify on your computer shows the same code:</div><div id="pairDigits" class="pa-digits"></div><div class="pa-btns"><button id="pairDeny">Deny</button><button id="pairAllow" class="pa-ok">Allow</button></div></div></div>
@@ -61,6 +63,7 @@
     <div class="sl-modal-container">
       <div class="sl-modal-header">
         <h1>Settings</h1>
+        <input id="sfind" type="search" placeholder="Search settings" aria-label="Search settings">
         <button id="speek" class="sl-text-btn" aria-pressed="false">Preview</button>
         <button id="sreset" class="sl-text-btn">Reset all</button>
         <button id="sclose" class="sl-modal-close-btn" aria-label="Close"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.47 2.47a.75.75 0 0 1 1.06 0L8 6.94l4.47-4.47a.75.75 0 1 1 1.06 1.06L9.06 8l4.47 4.47a.75.75 0 1 1-1.06 1.06L8 9.06l-4.47 4.47a.75.75 0 0 1-1.06-1.06L6.94 8 2.47 3.53a.75.75 0 0 1 0-1.06z"/></svg></button>

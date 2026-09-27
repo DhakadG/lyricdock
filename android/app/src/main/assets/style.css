@@ -420,6 +420,23 @@ body.hide-shuffle #shuf, body.hide-shuffle #rep { display: none; }
 #lists button { width: 8vmin; height: 8vmin; opacity: .7; }
 #lists svg { width: 4.6vmin; height: 4.6vmin; }
 body.hide-lists #lists { display: none; }
+/* Inside the cover the row has to fit five buttons on one line (the cover is ~68vmin wide in split view). */
+#art > #ctl { gap: .6vmin; padding: 1.4vmin 1.6vmin; justify-content: space-evenly; width: 90%; }
+#art > #ctl button { width: 9.4vmin; height: 9.4vmin; }
+#art > #ctl button svg { width: 5.4vmin; height: 5.4vmin; }
+#art > #ctl #pp { width: 11.6vmin; height: 11.6vmin; }
+#art > #ctl #pp svg { width: 6.4vmin; height: 6.4vmin; }
+#art > #ctl button.small { width: 7.6vmin; height: 7.6vmin; }
+#art > #ctl button.small svg { width: 4.4vmin; height: 4.4vmin; }
+#art > #ctl #lists button { width: 7.6vmin; height: 7.6vmin; }
+#art > #ctl #lists svg { width: 4.2vmin; height: 4.2vmin; }
+/* Audio quality as a small vertical tag on the cover's right edge (no row of its own). */
+#quality.vert { position: absolute; right: 1.4vmin; bottom: 1.4vmin; margin: 0; z-index: 2; writing-mode: vertical-rl; transform: rotate(180deg);
+  padding: 1.2vmin .45vmin; font-size: 1.6vmin; letter-spacing: .2em; color: rgba(255, 255, 255, .9); background: rgba(0, 0, 0, .42);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); border-radius: 1vmin; }
+body.ui #quality.vert { opacity: 0; transition: opacity .3s; }
+#quality.inline { display: none; margin: 0 0 0 1.4vmin; flex: none; align-self: center; }
+body.show-quality #quality.inline:not(:empty) { display: inline-block; }
 #deckbar { display: none; }
 
 /* ---- Player card layout: an always-visible player beside the lyrics (Wave Player's expanded card). */
@@ -451,44 +468,84 @@ body.layout-player #vol { margin: .4vmin 0; }
   body.layout-player #lists, body.layout-player #vol { display: none; }
 }
 
-/* ---- queue / recently played / library / friends (slide-over) */
-#listPanel { position: fixed; top: 0; bottom: 0; right: 0; z-index: 9; width: min(62vw, 520px); display: flex; flex-direction: column;
-  background: rgba(18, 18, 20, .97); box-shadow: -2vmin 0 6vmin rgba(0, 0, 0, .5); transform: translateX(105%); visibility: hidden;
+/* ---- queue / recent / library / search / friends (slide-over), with browsing into playlists, albums, artists */
+#listPanel { position: fixed; top: 0; bottom: 0; right: 0; z-index: 9; width: min(64vw, 540px); display: flex; flex-direction: column;
+  background: #121214; box-shadow: -2vmin 0 6vmin rgba(0, 0, 0, .5); transform: translateX(105%); visibility: hidden;
   transition: transform .4s var(--ease), visibility 0s .4s; font-size: 15px; }
 body.lists-open #listPanel { transform: none; visibility: visible; transition: transform .45s var(--spring), visibility 0s; }
 @media (orientation: portrait) { #listPanel { width: 100vw; } }
-#listPanel header { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 6px 18px; }
-#listTabs { display: flex; gap: 18px; overflow-x: auto; }
-#listTabs button { border: 0; background: none; padding: 8px 0; font-weight: 700; font-size: 15px; color: rgba(255, 255, 255, .55); position: relative; white-space: nowrap; }
-#listTabs button.on { color: #fff; }
-#listTabs button.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 1px; background: #fff; }
-#listClose { border: 0; background: none; width: 36px; height: 36px; display: grid; place-items: center; }
+#listPanel header { display: flex; align-items: center; gap: 6px; padding: 10px 8px 4px 14px; min-height: 48px; }
+#listBack { display: none; flex: none; border: 0; background: none; width: 36px; height: 36px; margin-left: -8px; border-radius: 50%; place-items: center; }
+#listBack svg { width: 22px; height: 22px; fill: #fff; }
+#listBack:active { background: rgba(255, 255, 255, .1); }
+#listCrumb { display: none; flex: 1; min-width: 0; font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#listPanel.deep #listBack { display: grid; } #listPanel.deep #listCrumb { display: block; } #listPanel.deep #listTabs { display: none; }
+#listTabs { flex: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+#listTabs::-webkit-scrollbar { display: none; }
+#listTabs button { flex: none; border: 0; padding: 7px 13px; border-radius: 16px; font-weight: 600; font-size: 13.5px; white-space: nowrap;
+  color: #fff; background: rgba(255, 255, 255, .08); transition: background .2s, color .2s; }
+#listTabs button.on { background: #fff; color: #000; }
+#listClose { flex: none; border: 0; background: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; }
 #listClose svg { width: 16px; height: 16px; fill: rgba(255, 255, 255, .7); }
-#listBody { flex: 1; overflow-y: auto; padding: 4px 8px 20px; }
-#listBody h4 { margin: 14px 10px 6px; font-size: 15px; }
-.li { display: flex; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 8px; }
-.li:active { background: rgba(255, 255, 255, .07); }
+#listBody { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 6px 24px; }
+#listBody h4 { margin: 16px 10px 6px; font-size: 14px; font-weight: 700; color: rgba(255, 255, 255, .9); }
+.li { position: relative; border-radius: 8px; overflow: hidden; transition: height .3s var(--ease), opacity .3s; }
+.li.gone { opacity: 0; pointer-events: none; }
+.li-main { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; padding: 7px 8px 7px 10px; background: #121214; touch-action: pan-y;
+  transition: transform .35s var(--spring), background .15s; }
+.li.dragging .li-main { transition: none; }
+.li-main:active { background: #1d1d20; }
+.li-swipe { position: absolute; top: 0; bottom: 0; width: 50%; display: flex; align-items: center; padding: 0 22px; background: #1d1d20; }
+.li-swipe svg { width: 22px; height: 22px; fill: rgba(255, 255, 255, .5); transition: transform .2s var(--spring), fill .2s; }
+.li-swipe.r { left: 0; } .li-swipe.l { right: 0; justify-content: flex-end; }
+.li.arm-r .li-swipe.r { background: #1e3a2a; } .li.arm-l .li-swipe.l { background: #3a1e26; }
+.li.arm-r .li-swipe.r svg, .li.arm-l .li-swipe.l svg { fill: #fff; transform: scale(1.2); }
 .li.now .li-t { color: rgb(var(--acc)); }
 .li-art { position: relative; flex: none; width: 46px; height: 46px; border-radius: 5px; background: #2a2a2e center/cover; }
 .li-art.round { border-radius: 50%; }
+.li-art.liked, .li-hart.liked { background: linear-gradient(135deg, #4527d8, #8ec9b5); }
+.li-art.liked::after, .li-hart.liked::after { content: ''; position: absolute; inset: 30%; background: #fff;
+  -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/></svg>') center/contain no-repeat; }
 .li-art b { position: absolute; top: 0; right: 0; width: 11px; height: 11px; border-radius: 50%; background: #3d91f4; box-shadow: 0 0 0 2px #121214; }
 .li-txt { flex: 1; min-width: 0; }
 .li-t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .li-s, .li-c { font-size: 13px; color: rgba(255, 255, 255, .6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .li-c { font-size: 12px; color: rgba(255, 255, 255, .45); }
-.li-r { flex: none; font-size: 12px; color: rgba(255, 255, 255, .5); }
-.li-empty { padding: 40px 20px; text-align: center; color: rgba(255, 255, 255, .5); }
-.eq { display: inline-flex; gap: 2px; align-items: flex-end; height: 14px; }
+.li-r { flex: none; display: flex; align-items: center; gap: 2px; font-size: 12px; color: rgba(255, 255, 255, .5); }
+.li-r button { border: 0; background: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; }
+.li-r button svg { width: 20px; height: 20px; fill: rgba(255, 255, 255, .55); transition: fill .2s; }
+.li-r button:active { background: rgba(255, 255, 255, .1); }
+.li-r button[data-a=like].on svg { fill: #1ed760; }
+.li-go svg { width: 20px; height: 20px; fill: rgba(255, 255, 255, .4); }
+.li-time { margin-right: 6px; font-variant-numeric: tabular-nums; }
+.li-empty { padding: 40px 20px; text-align: center; color: rgba(255, 255, 255, .5); text-wrap: balance; }
+.li-head { display: flex; gap: 16px; align-items: flex-end; padding: 10px 10px 8px; }
+.li-hart { position: relative; flex: none; width: 112px; height: 112px; border-radius: 6px; background: #2a2a2e center/cover; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+.li-hart.round { border-radius: 50%; }
+.li-htxt { min-width: 0; flex: 1; }
+.li-ht { font-size: 22px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.li-hs { font-size: 13px; color: rgba(255, 255, 255, .6); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.li-hbtns { display: flex; gap: 8px; margin-top: 12px; }
+.li-hbtns button { border: 0; border-radius: 18px; padding: 8px 18px; font-weight: 700; font-size: 13.5px; color: #fff; background: rgba(255, 255, 255, .1); }
+.li-hbtns .li-play { background: #1ed760; color: #000; }
+.li-hbtns button:active { transform: scale(.96); }
+.li-search { position: sticky; top: -4px; z-index: 2; padding: 6px 4px 8px; background: #121214; }
+.li-search input { width: 100%; box-sizing: border-box; border: 0; border-radius: 6px; padding: 11px 14px; font: 500 15px var(--font), system-ui; color: #000; background: #fff; }
+.li-search input:focus { outline: 2px solid rgba(255, 255, 255, .5); }
+.li-skel .li-art, .li-skel i { background: linear-gradient(90deg, #1f1f23 30%, #2a2a2f 50%, #1f1f23 70%) 0 0 / 300% 100%; animation: skel 1.3s linear infinite; }
+.li-skel i { display: block; height: 11px; border-radius: 4px; width: 60%; margin: 5px 0; } .li-skel i + i { width: 38%; }
+@keyframes skel { to { background-position: -150% 0; } }
+.eq { display: inline-flex; gap: 2px; align-items: flex-end; height: 14px; margin-right: 8px; }
 .eq i { width: 3px; background: rgba(255, 255, 255, .7); animation: eq 1s ease-in-out infinite alternate; }
 .eq i:nth-child(2) { animation-delay: -.4s; } .eq i:nth-child(3) { animation-delay: -.7s; }
 @keyframes eq { from { height: 30%; } to { height: 100%; } }
-
 /* ---- chips, badges */
 #nextChip { position: fixed; right: calc(var(--sa-r) + var(--bar-bx) + 3vmin); bottom: calc(var(--sa-b) + var(--bar-by) + 4vmin); z-index: 4; max-width: 48vw;
   display: flex; gap: 1.2vmin; align-items: baseline; padding: 1.1vmin 2.4vmin; border-radius: 3vmin; background: rgba(12, 12, 14, .7);
   font-size: 2.4vmin; opacity: 0; transform: translateY(2vmin); transition: opacity .4s, transform .5s var(--spring); pointer-events: none; }
 #nextChip span { opacity: .55; font-weight: 600; flex: none; } #nextChip b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #nextChip.show { opacity: 1; transform: none; }
+body.times #nextChip { bottom: calc(var(--sa-b) + var(--bar-by) + 8.5vmin); }
 #srcBadge { position: fixed; top: calc(var(--sa-t) + 3vmin); left: calc(var(--sa-l) + 3vmin); z-index: 4; font-size: 1.9vmin; font-weight: 700;
   letter-spacing: .04em; padding: .5vmin 1.4vmin; border-radius: 1vmin; background: rgba(0, 0, 0, .35); color: rgba(255, 255, 255, .7); display: none; }
 #srcBadge.show { display: block; }
@@ -532,6 +589,29 @@ body.settings-peek .sl-cols { columns: 1; }
 
 /* ---- music-video background: 16:9 iframe scaled to cover, the blurred cover underneath while it loads */
 #yt { position: fixed; left: 50%; top: 50%; width: max(100vw, 177.78vh); height: max(100vh, 56.25vw); transform: translate(-50%, -50%) scale(1.02); border: 0; pointer-events: none; z-index: 0; }
-body.bg-video #bg { display: block; }
+body.bg-video #bg, body.bg-canvas #bg { display: block; }
+/* Spotify Canvas: the looping video, cover-scaled; the blurred cover shows under it until it plays. */
+#cv { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; opacity: 0; transition: opacity .8s; pointer-events: none; }
+#cv.on { opacity: 1; }
+body:not(.bg-canvas) #cv { display: none; }
+/* Drift: the still blurred cover slowly pans and zooms (one GPU-composited layer). */
+body.drift #bg { animation: drift 38s ease-in-out infinite alternate; }
+@keyframes drift { 0% { transform: scale(1.4) translate(0, 0); } 33% { transform: scale(1.55) translate(-4%, 3%); } 66% { transform: scale(1.48) translate(4%, -2%); } 100% { transform: scale(1.6) translate(-2%, -4%); } }
+/* Settings search + group reset + export/import box */
+#sfind { flex: 0 1 190px; min-width: 0; border: 0; border-radius: 16px; padding: 7px 12px; font: 500 13px var(--font), system-ui; color: #fff; background: rgba(255, 255, 255, .08); }
+#sfind:focus { outline: 1.5px solid rgba(255, 255, 255, .45); }
+.sl-sp-section-title { display: flex; align-items: baseline; justify-content: space-between; }
+.sl-group-reset { border: 0; background: none; padding: 2px 4px; font: 600 12px var(--font), system-ui; color: var(--t3, rgba(255, 255, 255, .5)); }
+.sl-group-reset:active { color: #fff; }
+.sl-io textarea { flex: 1 1 100%; min-height: 54px; font: 12px ui-monospace, monospace; resize: vertical; }
+/* What's new */
+#news { position: fixed; inset: 0; z-index: 12; display: none; place-items: center; background: rgba(0, 0, 0, .6); }
+body.news-open #news { display: grid; }
+#news .nw-card { width: min(86vw, 560px); max-height: 82vh; display: flex; flex-direction: column; border-radius: 14px; background: #1a1a1d; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
+#news header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 8px; font-weight: 800; font-size: 18px; }
+#news header button { border: 0; background: rgba(255, 255, 255, .1); color: #fff; border-radius: 16px; padding: 7px 14px; font-weight: 700; }
+#newsBody { overflow-y: auto; padding: 0 18px 18px; font-size: 14px; line-height: 1.55; color: rgba(255, 255, 255, .8); }
+#newsBody h5 { margin: 16px 0 4px; font-size: 15px; color: #fff; } #newsBody h5 small { font-weight: 500; color: rgba(255, 255, 255, .45); margin-left: 6px; }
+#newsBody ul { margin: 4px 0; padding-left: 18px; } #newsBody li { margin: 2px 0; }
 body:not(.bg-video) #yt { display: none; }
 #bgc, #bg, #bgGrad { z-index: 0; } #dim { z-index: 0; }

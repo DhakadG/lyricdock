@@ -58,6 +58,7 @@ It works **with** Spotify on your computer (through a small Spicetify extension)
 | **Desktop · wired (USB tethering)** | Spotify on your PC, over a USB cable | yes | yes | none | no |
 | **Standalone** | your Spotify account, any device | **no** | **no** | Spotify Client ID (+ optional Spicy key) | **yes** (internet) |
 | **Auto** (desktop + standalone) | PC while it plays, account otherwise | optional | optional | as above | partly |
+| **Desktop · away from home** | Spotify on your PC, phone elsewhere | yes | yes | a TURN server ([setup](#h-away-from-home-turn)) | **yes** |
 | **Developer · adb** | Spotify on your PC, via adb port forward | yes | yes | none | no |
 
 ### Every combination
@@ -69,10 +70,11 @@ The display app is the same everywhere; these are independent choices you can mi
 | Playback source | **Auto** · Desktop only · Spotify account only | Phone: Settings → Playback source |
 | Connection to the PC | **Wireless** (Wi-Fi/LAN) · Wired (USB tethering) · adb (developers) | automatic; see [guides](#setup-guides) |
 | How the app runs | **Normal app** · **Kiosk** (dedicated dock: full screen, boots into it, silent updates) | Install method; leave kiosk in Settings → Connection |
-| Pairing with the PC | **Pairing code** (once) · **Automatic via your Spotify account** | Spotify: LyricDock button → Pair phone |
+| Pairing with the PC | **Pairing code** (once) · **Automatic via your Spotify account** · several phones per PC | Spotify: LyricDock button → Phones |
+| Signalling (connection setup) | **ntfy.sh** · your own ntfy server · the Helper's local relay | Phone: Settings → Connection → Signalling server |
 | Lyrics source | Desktop Spicy cache → Spotify → LRCLIB · Spicy Lyrics API (your key) → LRCLIB | automatic; add a key in Settings → Lyrics |
 | Device | Phone · tablet · Android TV box · custom Android build (e.g. Raspberry Pi + LineageOS) | see [What you need](#what-you-need) |
-| Look | 6 layouts × 5 backgrounds × all settings, or a preset | Settings (phone) or the LyricDock panel in Spotify |
+| Look | 7 layouts × 7 backgrounds (incl. Spotify Canvas and music video) × all settings, or a preset | Settings (phone) or the LyricDock panel in Spotify |
 
 Common recipes:
 
@@ -82,6 +84,8 @@ Common recipes:
   Spicy Lyrics key.
 - **"Both"** → Auto: the PC when it plays, your account otherwise. Pair once and sign in once.
 - **"My Wi-Fi blocks devices from talking to each other"** → Desktop · wired (USB tethering) or Standalone.
+- **"A screen in two rooms"** → pair both phones with the same Spotify; each keeps its own settings.
+- **"Nothing should leave my network"** → turn on the Helper's local relay and point the phones at it.
 
 ---
 
@@ -199,9 +203,10 @@ For networks that block device-to-device traffic, or if you prefer a cable. No a
 3. Phone: **Settings → Connections → Mobile Hotspot and Tethering → USB tethering** (wording varies by brand).
 4. The PC and phone now share a private network over the cable; LyricDock's direct connection uses it like Wi-Fi.
 
-5. On the phone: **Settings → Connection → Connection path → Prefer USB cable**. Settings → Connection → Link then
-   shows *USB cable (192.168.x.x)* and the round-trip time. (Auto uses whichever network works best; with both
-   available it usually picks Wi-Fi.)
+5. Auto uses whichever network works. To force the cable: **Settings → Connection → Connection path → Prefer USB
+   cable**. This only works when the PC's own network goes through the phone (the PC has no other network, or Windows
+   prefers the tethered adapter): Spotify's WebRTC offers only the PC's main network interface. Settings → Connection
+   → Link shows which path is in use (*USB cable (192.168.x.x)* or *direct Wi-Fi*) and the round-trip time.
 
 > The phone still needs internet (Wi-Fi or mobile data) for the few-hundred-byte connection setup; the music data then
 > flows over the cable.
@@ -256,7 +261,35 @@ Anything that runs Android 8+ with Google's Android System WebView:
 - No touchscreen (TV box): the display works; use a mouse or the Spotify app to control playback, and the LyricDock
   panel in Spotify (desktop mode) to change settings.
 
-### G. Developer · adb (development only)
+### G. Away from home (TURN)
+
+<a id="h-away-from-home-turn"></a>Desktop mode normally needs the phone and PC on the same network. To use it from
+elsewhere (phone on mobile data, PC at home), both ends need a TURN relay you control:
+
+1. Get TURN credentials: a free [Metered.ca](https://www.metered.ca/tools/openrelay/) or
+   [Cloudflare Calls TURN](https://developers.cloudflare.com/calls/turn/) account, or run
+   [coturn](https://github.com/coturn/coturn) on a VPS.
+2. Phone: **Settings → Connection → STUN / TURN servers** → `turn:your.host:3478|username|password` (several
+   separated by commas). Spotify takes the same setting from the phone the next time they connect at home.
+3. Music data then flows through that relay (encrypted by WebRTC, DTLS).
+
+### H. Several phones on one PC
+
+Pair each phone (Spotify → LyricDock → **Phones** → *Add another phone*, or *Find phones on my account*). All of
+them follow the same Spotify; each keeps its **own settings** (click *Edit settings* next to a phone), and presets are
+shared. Commands (play, skip, like) from any phone control Spotify.
+
+### I. Signalling without ntfy.sh
+
+The one-time connection setup normally goes through [ntfy.sh](https://ntfy.sh) (encrypted). Two alternatives, set on
+the phone under **Settings → Connection → Signalling server**:
+
+- **LyricDock Helper on my PC:** Helper → Settings → **Local signalling relay** on; type the address it shows
+  (e.g. `192.168.1.20`) into the phone. Allow the Windows firewall prompt for private networks.
+- **My own ntfy server:** any self-hosted [ntfy](https://docs.ntfy.sh/install/) over **https** (Spotify only allows
+  secure addresses).
+
+### J. Developer · adb (development only)
 
 Users never need this. For developing, a USB/wireless-adb path exists alongside WebRTC: `scripts/link.ps1` points
 Spotify's `localhost:8975` at the phone via `adb forward` (Chromium blocks `ws://` from Spotify's https page to LAN
@@ -267,9 +300,10 @@ addresses, which is why the product uses WebRTC). See [Development](#development
 ## LyricDock Helper (optional, Windows)
 
 A small tray app (download `LyricDock-Helper-vX.Y.Z.exe` from [Releases](https://github.com/DhakadG/lyricdock/releases/latest)):
-shows whether the Spotify extension is installed and enabled, installs or repairs it, runs the one-time phone setup,
-starts with Windows if you like, and has an optional Developer page (adb link, live phone screen). Nothing needs it
-day to day.
+shows whether the Spotify extension is installed and enabled, installs or repairs it, walks you through the one-time
+kiosk setup (step-by-step wizard), can run a **local signalling relay** (so nothing goes through ntfy.sh), notifies you
+of new versions, has a Help page, starts with Windows if you like, and has an optional Developer page (adb link, live
+phone screen). Nothing needs it day to day.
 
 ## Using it
 
@@ -282,9 +316,20 @@ day to day.
   **Smooth (slow phones)** and **Full Spicy**; save your own from either panel (stored in Spotify on the PC, so a new
   phone picks them up). **Reset all** returns to Default.
 - **Gestures:** swipe left/right to skip, double-tap to like, long-press the progress bar to scrub.
-- **Lists:** the controls have buttons for the **queue**, **recently played**, your **library** (playlists, Liked Songs,
-  albums) and **friends' listening activity** (desktop mode). Tap anything to play it.
+- **Lists:** the controls have buttons for the **queue**, **recently played**, **search**, your **library** (playlists,
+  Liked Songs, albums, artists) and **friends' listening activity** (desktop mode). Tap a playlist, album or artist to
+  **browse** it (Play / Shuffle at the top, Back to return); tap a song to play it in that list. Every song row has
+  **add to queue** and **like** buttons; swipe a row right to queue it, left to like it. In the queue, queued songs
+  have **move to top** and **remove** (swipe right / left).
+- **Hardware:** the phone's **volume buttons** change Spotify's volume; a **media notification** (and lock-screen
+  controls) shows the song with previous / play-pause / next; **brightness** can be fixed or follow a day/night
+  schedule.
+- **From Spotify:** right-click a playlist / album / artist → **Show on LyricDock** (the phone opens it), or a song →
+  **Play with lyrics on LyricDock**. Shortcuts: **Ctrl+Alt+L** the LyricDock panel, **Ctrl+Alt+W** wake the phone,
+  **Ctrl+Alt+Y** next layout.
 - **Player card layout:** an always-visible player (progress, shuffle, repeat, volume) beside the lyrics.
+- **Spotify Canvas background:** Settings → Background → *Spotify Canvas* plays the song's looping video (desktop
+  mode) over the blurred cover; songs without one show the cover, which can slowly drift.
 - **Music video background:** Settings → Background → *Music video (YouTube)* plays the song's video muted behind the
   lyrics, in sync. Optional: your own [YouTube Data API key](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
   for more reliable matches (Google Cloud Console → enable *YouTube Data API v3* → Credentials → API key).
@@ -292,6 +337,11 @@ day to day.
   keep-awake modes.
 - **Settings preview:** phone ⚙ → **Preview** moves the sheet aside so the player shows every change live; Spotify's
   panel has a live preview card at the top.
+- **Settings tools:** search box at the top of the settings (phone and Spotify), **Reset** per section, and
+  **export / import** (a JSON file in Spotify's panel; copy/paste text on the phone).
+- **Versions:** Spotify's panel → *Update channel and version*: **Beta** gets pre-releases first; pick an older version
+  to **roll back** (updates pause until you choose Latest). The phone has a **Beta** channel too (Settings → Updates)
+  and shows **What's new** after it updates. Android cannot install an older app version over a newer one.
 - **Updates:** automatic. The Spotify extension checks every 30 minutes (Spotify's panel also has **Check for
   updates**; the popup's **Update** switches in a second). The phone checks at start and every 6 hours
   (Settings → Updates → **Check now**); kiosk phones install silently, normal installs ask once.
@@ -350,7 +400,8 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 
 | Setting | Default | What it does |
 |---|---|---|
-| Background | Dynamic | Dynamic: the cover slowly warped and blurred (Spicy Lyrics' look, uses the GPU). Artist image: the same effect with the artist's photo. Blurred art: a still blurred cover. Colour gradient: slow gradient from the cover's colours. Black: nothing (OLED, lowest power). Options: Dynamic / Artist image (dynamic) / Music video (YouTube) / Blurred art / Colour gradient / Black. |
+| Background | Dynamic | Dynamic: the cover slowly warped and blurred (Spicy Lyrics' look, uses the GPU). Artist image: the same effect with the artist's photo. Spotify Canvas: the short looping video some songs have in Spotify (desktop mode) - great in portrait; songs without one show the blurred cover. Blurred art: a blurred cover. Colour gradient: slow gradient from the cover's colours. Black: nothing (OLED, lowest power). Options: Dynamic / Artist image (dynamic) / Spotify Canvas (looping video) / Music video (YouTube) / Blurred art / Colour gradient / Black. |
+| Drift the still cover | On | The blurred cover slowly pans and zooms instead of standing still (Ken Burns effect). Cheap: one layer moved by the GPU. |
 | Motion speed | 0.35 | How fast the dynamic background drifts. 0 freezes it. Range 0–1.5. |
 | Move with the music | On | Speeds the background up while vocals are busy (read from the lyric timing) and slows it in instrumental parts. |
 | Warp | 1 | How much the image is swirled. 0 = just a blurred, slowly moving cover. Range 0–1. |
@@ -416,6 +467,11 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 | Night dimming | 0.5 | How much darker everything gets at night. Range 0–0.85. |
 | Night warmth | 0.4 | Amber tint at night (less blue light). Range 0–1. |
 | Burn-in protection | On | AMOLED screens can keep a ghost of things that never move. This shifts the layout by a few pixels every few minutes: invisible, but it spreads the wear. |
+| Brightness | Follow Android | Fixed: always the level below. Day / night: the day level, and the night level between the night hours (Night starts / ends at). Only LyricDock's window changes, not the system setting. Options: Follow Android / Fixed / Day / night schedule. |
+| Day brightness | 0.8 | Screen brightness while LyricDock is open (Fixed), or during the day (schedule). Range 0.02–1. |
+| Night brightness | 0.15 | Screen brightness between the night hours. Range 0.02–1. |
+| Volume buttons control Spotify | On | The phone's volume buttons change Spotify's volume (5% per press) instead of the phone's. |
+| Media notification | On | Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use). |
 | Battery indicator | Off | Shows the phone's battery level and whether it is charging, in a corner (handy for a kiosk dock). |
 
 **Performance**
@@ -439,26 +495,30 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 
 | Setting | Default | What it does |
 |---|---|---|
+| Export / import | — | Export copies all settings (without API keys) as text you can paste into another phone. Import applies settings pasted here. Spotify's LyricDock panel can export and import files too. |
 | Presets | — | Built-in: Default (the shipped config), Smooth (for slow phones) and Full Spicy (every effect up). Your own presets are stored in Spotify on the computer. |
 
 **Updates**
 
 | Setting | Default | What it does |
 |---|---|---|
+| Update channel | Stable | Beta installs pre-releases as soon as they are published (they may have rough edges). Android cannot install an older version over a newer one, so going back from beta to stable waits for the next stable release. Options: Stable / Beta (pre-releases). |
 | Update automatically | On | Checks GitHub Releases shortly after start and every 6 hours. In kiosk mode updates install silently; otherwise Android asks once. |
 | LyricDock app | — | Check for a new version now and install it if there is one. |
+| Changelog | — | Release notes for this and earlier versions, from GitHub. |
 
 **Connection**
 
 | Setting | Default | What it does |
 |---|---|---|
-| Connection path | Auto (fastest) | How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable uses USB tethering (turn on USB tethering on the phone with the cable connected) - useful when Wi-Fi blocks devices from talking to each other. Takes effect on the next connection (reconnect or restart). Options: Auto (fastest) / Prefer USB cable / Wi-Fi only. |
+| Connection path | Auto (fastest) | How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer's internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection. Options: Auto (fastest) / Prefer USB cable / Wi-Fi only. |
+| Signalling server | ntfy.sh (public) | Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). ntfy.sh is free and public. My own ntfy server: any self-hosted ntfy (https address). LyricDock Helper: the helper app runs a tiny relay on your PC and nothing leaves your network - type your PC's IP address below. Spotify takes this setting from the phone. Options: ntfy.sh (public) / My own ntfy server / LyricDock Helper on my PC. |
+| Server address | (empty) | My own ntfy server: its https:// address (Spotify only allows https). LyricDock Helper: the IPv4 address of the PC running the helper (shown on its Dashboard). |
+| STUN / TURN servers (away from home) | (empty) | Only for using LyricDock on a different network from your computer (e.g. phone on mobile data). Add a TURN relay you control as url\|username\|password; several separated by commas. Options: a Metered.ca or Cloudflare TURN account, or coturn on a VPS. Leave empty at home. |
+| Connection log | — | The last connection events on this phone (connected, lost, reconnected), newest first. |
 | Link | — | How this phone is currently getting playback: from the computer (direct Wi-Fi / WebRTC, or USB for developers) or from your Spotify account. |
 | Pairing code | — | Type this into Spotify on your computer once: click the LyricDock button in the top bar → Pair phone. It also encrypts the connection setup. |
 | Kiosk mode | — | Kiosk mode was turned on by setup-phone.ps1. Leaving it gives the phone back its normal home screen, status bar and lock screen. |
-
-**Performance tip:** on budget phones the word glow is the most expensive effect (on a Snapdragon 439: ~46 fps with
-glow, ~60 without). Try the **Smooth** preset, or just turn off *Glow on sung words*.
 
 ---
 
@@ -474,6 +534,8 @@ glow, ~60 without). Try the **Smooth** preset, or just turn off *Glow on sung wo
 | Lyrics missing or only line-synced | Desktop: install Spicy Lyrics in Spotify. Standalone: add a Spicy Lyrics key. Some songs simply have no synced lyrics. |
 | Notice **"Spicy Lyrics API is rate-limiting"** | Temporary; LyricDock uses other sources meanwhile. |
 | Lyrics early/late (e.g. Bluetooth speaker) | Settings → Lyrics → **Sync offset** (try +150 to +300 ms). |
+| Queue / friends / recently played show an error | Update Spotify's LyricDock (Check for updates). Friends activity needs desktop mode; the Web API has no friends feed. |
+| Several phones: one keeps disconnecting | Each phone needs its own pairing; check Spotify → LyricDock → Phones and the Connection log. |
 | Choppy animation | **Smooth** preset, or turn off glow; Performance → background resolution 0.35×. |
 | Phone didn't update | Settings → Updates → **Check now**. Versions 1.1.0–1.1.3 in kiosk mode could not self-update: reinstall once with `setup-phone.ps1` or the APK. |
 
@@ -482,8 +544,9 @@ glow, ~60 without). Try the **Smooth** preset, or just turn off *Glow on sung wo
 ## Privacy and security
 
 - **Desktop ↔ phone** traffic goes directly over your local network (WebRTC). Setting up that connection needs one
-  small offer/answer exchange; it goes through [ntfy.sh](https://ntfy.sh) (a public message relay) **encrypted with
-  AES-GCM** using a key derived from your pairing code — the relay only sees ciphertext. Automatic pairing by account
+  small offer/answer exchange; it goes through [ntfy.sh](https://ntfy.sh) (a public message relay), your own ntfy
+  server or the Helper's local relay, **encrypted with AES-GCM** using a key derived from your pairing code — the relay
+  only sees ciphertext. Automatic pairing by account
   uses an ECDH key exchange plus your confirmation of matching digits on both screens.
 - **Standalone mode** talks to Spotify's Web API with your own Client ID (PKCE, no secret). Tokens stay on the phone.
 - **Keys** (Client ID, Spicy key) are stored only on the phone (and in Spotify's local storage when synced from the
@@ -518,11 +581,13 @@ here for development only.
 | Drive the phone's WebView (after `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`) | `node scripts/cdp.mjs eval "<js>"` / `shot out.png` |
 | Browser preview with a fake bridge (760×360) | `./scripts/preview.ps1` |
 | Romanizer tests | `node tests/roman.test.js` |
-| Release (bump version, build APK, tag, push, GitHub release) | `./scripts/release.ps1 -Version X.Y.Z` |
+| Release (bump version, build APK, tag, push, GitHub release) | `./scripts/release.ps1 -Version X.Y.Z` (add `-Beta` for a pre-release) |
+| Sign with your own release key instead of the debug key | set `LYRICDOCK_KEYSTORE`, `LYRICDOCK_KS_PASS`, `LYRICDOCK_KEY_ALIAS` before building (switching keys needs a reinstall on existing phones) |
+| CI | `.github/workflows/build.yml` checks the JavaScript and builds the APK on every push |
 
 Layout: `extension/` (Spicetify loader + bridge), `android/` (app: Java shell + `assets/` web UI — `style.css`,
 `settings.js` holds the settings schema and defaults), `updater/` (installer, phone setup), `config/` (generated
-default config), `helper/` (Windows helper app) and `scripts/` (tooling). `docs/ROADMAP.md` lists 200 rated features and their status.
+default config), `helper/` (Windows helper app) and `scripts/` (tooling). `docs/ROADMAP.md` lists 200 rated features and their status. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

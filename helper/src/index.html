@@ -11,6 +11,13 @@
   .steps { margin: 8px 0 0; padding-left: 20px; color: var(--text-2); } .steps li { margin: 6px 0; }
   .shot { width: 100%; aspect-ratio: 1520 / 720; border-radius: var(--radius-s); background: #111 center/contain no-repeat; box-shadow: 0 0 0 1px var(--stroke); }
   .kv { display: grid; grid-template-columns: 180px 1fr; gap: 8px 16px; } .kv code { text-align: left; }
+  .wz-steps { display: flex; gap: 6px; margin: 10px 0 14px; } .wz-steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--stroke); transition: background .3s; } .wz-steps i.on { background: var(--accent); }
+  .wz-body { min-height: 92px; } .wz-body p { margin: 6px 0 0; line-height: 1.55; max-width: 62ch; }
+  .wz-nav { display: flex; gap: 8px; margin-top: 12px; } .wz-nav .spacer { flex: 1; }
+  .faq details { border-bottom: 1px solid var(--stroke); padding: 12px 2px; } .faq details:last-child { border-bottom: 0; }
+  .faq summary { cursor: pointer; font-weight: 600; list-style: none; } .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; float: right; color: var(--text-2); } .faq details[open] summary::after { content: "–"; }
+  .faq p { margin: 8px 0 0; color: var(--text-2); line-height: 1.55; max-width: 70ch; }
   .linkish { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 </style>
 </head>
@@ -20,6 +27,7 @@
     <div class="brand"><img src="logo.png" width="22" height="22" alt=""><span class="label">LyricDock Helper</span></div>
     <button class="nav-item" data-page="dashboard" aria-current="page"><span class="icon" aria-hidden="true" data-fb="&#x2302;">&#xE80F;</span><span class="label">Dashboard</span></button>
     <button class="nav-item" data-page="phone"><span class="icon" aria-hidden="true" data-fb="&#x260E;">&#xE8EA;</span><span class="label">Phone</span></button>
+    <button class="nav-item" data-page="faq"><span class="icon" aria-hidden="true" data-fb="?">&#xE897;</span><span class="label">Help</span></button>
     <button class="nav-item" data-page="settings"><span class="icon" aria-hidden="true" data-fb="&#x2699;">&#xE713;</span><span class="label">Settings</span></button>
     <button class="nav-item" data-page="developer" id="nav-dev" hidden><span class="icon" aria-hidden="true" data-fb="&#x2692;">&#xE90F;</span><span class="label">Developer</span></button>
     <div class="spacer"></div>
@@ -54,7 +62,7 @@
         <div class="card stat"><div class="muted small">Latest release</div><div class="stat-v" id="st-latest">—</div></div>
         <div class="card stat"><div class="muted small">This helper</div><div class="stat-v" id="st-helper">—</div></div>
         <div class="card stat"><div class="muted small">Starts with Windows</div><div class="stat-v" id="st-auto">—</div></div>
-        <div class="card stat"><div class="muted small">adb (developers)</div><div class="stat-v" id="st-adb">—</div></div>
+        <div class="card stat"><div class="muted small">Local relay</div><div class="stat-v" id="st-relay">Off</div></div>
       </div>
     </section>
 
@@ -65,12 +73,11 @@
           <button class="btn" data-url="https://github.com/DhakadG/lyricdock/releases/latest">Open releases</button></div>
         <div class="row"><span class="row-l"><b>Dedicated dock (kiosk)</b><small>Full screen, starts on boot, updates silently. One time, over USB.</small></span>
           <button class="btn primary" id="btn-kiosk">Run phone setup</button></div>
-        <ol class="steps">
-          <li>Remove all accounts from the phone (Settings → Accounts) or use a factory-reset phone.</li>
-          <li>Settings → About phone → Software information → tap <b>Build number</b> 7 times.</li>
-          <li>Settings → Developer options → turn on <b>USB debugging</b>, connect the cable.</li>
-          <li>Click <b>Run phone setup</b> and tap <b>Allow</b> on the phone when asked. adb is downloaded temporarily and deleted afterwards.</li>
-        </ol>
+      </div>
+      <div class="card group" id="wizard"><h2>Kiosk setup, step by step <span class="muted small" id="wz-count"></span></h2>
+        <div class="wz-steps" id="wz-dots"></div>
+        <div class="wz-body"><b id="wz-title"></b><p class="muted" id="wz-text"></p></div>
+        <div class="wz-nav"><button class="btn" id="wz-back">Back</button><span class="spacer"></span><button class="btn primary" id="wz-next">Next</button></div>
       </div>
       <div class="card group"><h2>Pair</h2>
         <p class="muted">The phone shows a code like <code>K7QX-9MP-2F2</code>. In Spotify click the LyricDock button in the top bar → <b>Pair phone</b>, type it, click Pair. Once per phone.</p>
@@ -80,11 +87,21 @@
       </div>
     </section>
 
+    <section class="page" id="page-faq" hidden aria-labelledby="h-faq">
+      <h1 id="h-faq">Help</h1>
+      <div class="card faq" id="faq"></div>
+      <div class="card"><p class="muted"><span class="linkish" data-url="https://github.com/DhakadG/lyricdock#readme">Full guide (README)</span> · <span class="linkish" data-url="https://github.com/DhakadG/lyricdock/issues">Ask or report a problem</span></p></div>
+    </section>
+
     <section class="page" id="page-settings" hidden aria-labelledby="h-settings">
       <h1 id="h-settings">Settings</h1>
       <div class="card group"><h2>Helper</h2>
         <label class="row"><span class="row-l"><b>Start with Windows</b><small>Starts minimised in the tray</small></span>
           <input type="checkbox" class="toggle" id="set-auto" role="switch"></label>
+        <label class="row"><span class="row-l"><b>Local signalling relay</b><small id="relay-sub">Pairing and connection setup stay on your network instead of ntfy.sh. On the phone: Settings → Connection → Signalling server → LyricDock Helper, and type this PC's address.</small></span>
+          <input type="checkbox" class="toggle" id="set-relay" role="switch"></label>
+        <label class="row"><span class="row-l"><b>Update notifications</b><small>A Windows notification when a new LyricDock version is out</small></span>
+          <input type="checkbox" class="toggle" id="set-notify" role="switch"></label>
         <label class="row"><span class="row-l"><b>Developer tools</b><small>Shows the Developer page (adb link, live phone screen). Not needed for normal use.</small></span>
           <input type="checkbox" class="toggle" id="set-dev" role="switch"></label>
       </div>
