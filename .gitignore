@@ -19,3 +19,7 @@ Thumbs.db
 .env
 *.secret
 secrets/
+
+# local tools (not part of LyricDock)
+New-RepoTreemap.ps1
+repo-treemap.html
