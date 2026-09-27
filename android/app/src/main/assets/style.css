@@ -709,3 +709,5 @@ body.art-dragging #art { transition: none; }
 body.art-dragging #left { position: relative; z-index: 3; }
 .art-x { position: absolute; inset: 0; border-radius: inherit; background: center/cover; pointer-events: none; z-index: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.fc-cell.gone { display: none; }

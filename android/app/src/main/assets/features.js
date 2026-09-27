@@ -463,7 +463,7 @@
     // Cover + clock: the flip clock (HH:MM) lives where the lyrics would be.
     if (!k || k === '*' || k === 'layout') {
       if (S.layout === 'clocksplit') { Flip.mount($('clockPane'), { secs: false }); Flip.show(); }
-      else { Flip.mount($('clockScreen')); clockOn = false; document.body.classList.remove('clock'); }
+      else { Flip.hide(); Flip.mount($('clockScreen')); clockOn = false; document.body.classList.remove('clock'); }
       setTimeout(() => Flip.layout(), 60);
     }
   };

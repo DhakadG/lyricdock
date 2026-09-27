@@ -116,9 +116,10 @@ const Flip = (() => {
     groups = [...wrap.querySelectorAll('.fc-group')].map(el => ({ el, u: el.dataset.u, cells: [...el.querySelectorAll('.fc-cell')].map((c, i) => {
       const L = [...c.children].map(x => ({ el: x, num: x.querySelector('.fc-num'), ap: x.querySelector('.fc-ap') }));
       const cell = { el: c, top: L[0], bot: L[1], ft: L[2], fb: L[3], d: blank ? ' ' : v[el.dataset.u][i], label: '' };
-      const lab = el.dataset.u === 'h' && i === 0 ? v.ampm : '';
+      const lab = el.dataset.u === 'h' && i === (v.h[0] === ' ' ? 1 : 0) ? v.ampm : ''; // AM / PM on the first visible hours card
       cell.label = blank ? '' : lab;
       for (const x of L) paint(x, cell.d, cell.label);
+      if (el.dataset.u === 'h' && i === 0 && v.h[0] === ' ') c.classList.add('gone');
       return cell;
     }) }));
     layout();
@@ -176,10 +177,12 @@ const Flip = (() => {
   }
 
   // 4x a second: flip whatever changed (flips land on the second, not up to 1s late).
+  const onScreen = () => !!root?.isConnected && (root.id === 'clockScreen' ? document.body.classList.contains('clock') : root.offsetParent !== null);
   // Skipped while hidden (no stray sound on return) and while the clock is entering or leaving (one owner per card).
   let leaving = false;
   function tick() {
     if (!shown || !groups.length || leaving || document.hidden) return;
+    if (!onScreen()) { shown = false; return; } // left the screen without leave(): stop for good, no invisible ticking
     const v = parts(), key = `${v.h}${v.m}${showSecs() ? v.s : ''}${v.ampm}`;
     if (key === lastKey) return;
     if (key.slice(0, 4) !== lastKey.slice(0, 4)) announce(v);
@@ -189,9 +192,11 @@ const Flip = (() => {
   // Flip every card that differs from v (right to left, the order a real clock turns); target ' ' = blank.
   function turn(v, stagger, withSound, speed, anims = []) {
     let landAt = -1, fallAt = 0, n = 0, big = false;
+    const tens = groups.find(g => g.u === 'h')?.cells[0];
+    if (tens && v) tens.el.classList.toggle('gone', v.h[0] === ' ');
     for (const g of [...groups].reverse()) {
       for (let i = g.cells.length - 1; i >= 0; i--) {
-        const cell = g.cells[i], d = v ? v[g.u][i] : ' ', label = v && g.u === 'h' && i === 0 ? v.ampm : '';
+        const cell = g.cells[i], d = v ? v[g.u][i] : ' ', label = v && g.u === 'h' && i === (v.h[0] === ' ' ? 1 : 0) ? v.ampm : '';
         if (d === undefined || (d === cell.d && label === cell.label)) continue;
         const delay = n * stagger;
         if (g.u !== 's') big = true;
@@ -201,7 +206,7 @@ const Flip = (() => {
         n++;
       }
     }
-    if (withSound && landAt >= 0 && (!showSecs() || S().clockSoundEvery === 'all' || big)) { sound(fallAt, landAt); haptic(landAt); }
+    if (withSound && landAt >= 0 && onScreen() && (!showSecs() || S().clockSoundEvery === 'all' || big)) { sound(fallAt, landAt); haptic(landAt); }
     return Math.max(0, landAt);
   }
 
