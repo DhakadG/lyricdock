@@ -238,7 +238,7 @@
     send({ type: 'hello', last: readJson(SETTINGS_KEY, null), presets: readJson(PRESETS_KEY, {}), paired: pairCode().length === 10, version: VERSION });
     if (dirty) { send({ type: 'load', S: readJson(SETTINGS_KEY, {}) }); LS.set(DIRTY_KEY, '0'); }
     renderPanel();
-    if (track) send(track);
+    if (track) send(track); else sendTrack();
     if (preload) send(preload);
     extraMsgs.forEach(send);
     beat();
@@ -456,6 +456,7 @@
   const CSS = `.ld-panel{--hair:rgba(255,255,255,.08);display:flex;flex-direction:column;gap:2px;font-size:14px}
     .ld-panel h3{font-size:15px;font-weight:600;margin:12px 2px 2px;padding-top:12px;border-top:1px solid var(--hair)}
     .ld-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 12px;border-radius:12px}
+    .ld-row>:first-child{min-width:0;flex:1} .ld-row>:last-child{flex-shrink:0} /* long text wraps; buttons stay visible */
     .ld-row:hover{background:rgba(255,255,255,.06)} .ld-desc{font-size:12px;opacity:.6;margin-top:2px}
     .ld-panel select,.ld-panel input[type=text],.ld-panel button{background:rgba(255,255,255,.06);color:inherit;border:0;
       box-shadow:inset 0 0 0 1px var(--hair);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px}
@@ -555,11 +556,11 @@
     const to = window.__lyricdock?.latest;
     if (!to || to === VERSION || VERSION === 'dev') return;
     const cmd = 'iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex';
-    const box = h('div', { className: 'ld-panel' },
+    const box = h('div', { className: 'ld-panel', style: 'overflow-x:hidden' },
       h('div', { className: 'ld-row' }, h('div', {}, h('div', {}, h('b', {}, `v${VERSION}`), '  →  ', h('b', { style: 'color:#3ddc97' }, `v${to}`)),
         h('div', { className: 'ld-desc' }, 'Already downloaded. Update reloads Spotify\'s window (about a second) to switch to it; otherwise it loads next time Spotify starts.'))),
       h('div', { className: 'ld-row' }, h('div', {}, h('div', {}, 'Something broken after a Spotify update?'),
-        h('div', { className: 'ld-desc' }, 'Run updater (needs the installer run once), or paste this into PowerShell:'), h('code', { style: 'font-size:11px;opacity:.8;user-select:all' }, cmd)),
+        h('div', { className: 'ld-desc' }, 'Run updater (needs the installer run once), or paste this into PowerShell:'), h('code', { style: 'display:block;font-size:11px;opacity:.8;user-select:all;word-break:break-all;margin-top:4px' }, cmd)),
         h('div', { className: 'ld-presets' },
           h('button', { onclick: () => window.open('lyricdock-updater://update') }, 'Run updater'),
           h('button', { onclick: () => { Spicetify.Platform?.ClipboardAPI?.copy(cmd); Spicetify.showNotification('Copied'); } }, 'Copy'))),
@@ -582,5 +583,6 @@
     if (tick % 10 === 0) ensureLink();
   });
   ensureLink();
-  sendTrack();
+  // At startup (and after Update reloads the page) the player may not have the current song yet: retry until it does.
+  (async () => { for (let i = 0; i < 30 && !track; i++) { await sendTrack(); if (!track) await sleep(1000); } })();
 })();
