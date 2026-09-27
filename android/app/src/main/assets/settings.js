@@ -70,6 +70,13 @@ const Settings = (() => {
     { group: 'Connection' },
     { label: 'Link', type: 'info', value: () => window.dockStatus?.() ?? '' },
     { label: 'Pairing code', desc: 'Enter once in Spotify → LyricDock (top bar) → Pair phone', type: 'info', value: () => window.Rtc?.code ?? '' },
+    { label: 'Kiosk mode', desc: 'Full screen, starts on boot, silent updates. Leave it to use the phone normally (tap twice).',
+      type: 'action', when: () => { try { return Dock.kioskOn(); } catch (e) { return false; } }, text: () => 'Leave',
+      run: () => {
+        if (window.kioskArmed) { try { Dock.leaveKiosk(); } catch (e) {} window.notice?.('Kiosk mode is off'); return; }
+        window.kioskArmed = true; setTimeout(() => { window.kioskArmed = false; }, 4000);
+        window.notice?.('Tap Leave again to turn kiosk mode off');
+      } },
   ];
 
   const KEY = 'dock:settings';

@@ -3,6 +3,9 @@ package com.you.lyricdock;
 import android.app.Activity;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
+import android.content.IntentFilter;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ActivityInfo;
 import android.os.Build;
 import android.os.Bundle;
@@ -170,6 +173,38 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         dpm.setKeyguardDisabled(admin, true);
         dpm.setStatusBarDisabled(admin, true);
         dpm.setGlobalSetting(admin, Settings.Global.STAY_ON_WHILE_PLUGGED_IN, "7");
+        // Be the home screen only in kiosk mode (a normally installed app shouldn't hijack the Home button).
+        getPackageManager().setComponentEnabledSetting(new ComponentName(this, getPackageName() + ".Home"),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+        IntentFilter home = new IntentFilter(Intent.ACTION_MAIN);
+        home.addCategory(Intent.CATEGORY_HOME);
+        home.addCategory(Intent.CATEGORY_DEFAULT);
+        dpm.addPersistentPreferredActivity(admin, home, new ComponentName(this, getPackageName() + ".Home"));
+    }
+
+    @JavascriptInterface
+    public boolean kioskOn() { return isOwner(); }
+
+    // Settings -> Leave kiosk mode: undo everything kiosk() did and give up device owner, from the phone itself
+    // (no adb needed). Reinstall / setup-phone.ps1 turns it back on.
+    @JavascriptInterface
+    @SuppressWarnings("deprecation")
+    public void leaveKiosk() {
+        runOnUiThread(new KioskExit(this));
+    }
+
+    void exitKiosk() {
+        if (!isOwner()) return;
+        DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+        ComponentName admin = new ComponentName(this, AdminReceiver.class);
+        try { stopLockTask(); } catch (Exception ignored) {}
+        dpm.clearPackagePersistentPreferredActivities(admin, getPackageName());
+        dpm.setKeyguardDisabled(admin, false);
+        dpm.setStatusBarDisabled(admin, false);
+        dpm.setLockTaskPackages(admin, new String[0]);
+        getPackageManager().setComponentEnabledSetting(new ComponentName(this, getPackageName() + ".Home"),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+        dpm.clearDeviceOwnerApp(getPackageName());
     }
 
     @SuppressWarnings("deprecation")

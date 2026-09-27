@@ -1,15 +1,15 @@
-# LyricDock installer / updater for Windows. Safe to run any time: it installs or repairs, never loses settings.
+# LyricDock installer / updater for Windows (the Spotify side). Safe to run any time: installs or repairs.
 #   iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex
 # Puts the auto-updating LyricDock loader into Spicetify, re-applies Spicetify (needed after Spotify updates
-# itself and wipes it), registers lyricdock-updater:// (the Update button in Spotify opens it), and updates the
-# phone app if one is plugged in with adb.
+# itself and wipes it) and registers lyricdock-updater:// (the Update button in Spotify opens it).
+# No adb: the phone is set up once (updater/setup-phone.ps1 or the APK) and then updates itself.
 # Works on Windows PowerShell 5.1 (no ?? / ternaries).
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue' # Invoke-WebRequest's own progress bar is slow and draws over our output
 $Repo = 'DhakadG/lyricdock'
 $Raw = "https://raw.githubusercontent.com/$Repo/main"
 $Self = "$Raw/updater/install.ps1"
-$Steps = 8
+$Steps = 7
 
 function Banner {
     Write-Host ''
@@ -79,20 +79,8 @@ Copy-Item $tmp (Join-Path $ext 'lyricdock.js') -Force
 Remove-Item $tmp -ErrorAction SilentlyContinue
 Ok "Loader installed (loads LyricDock v$latest and keeps it updated)"
 
-Step 6 'Installing the PC companion (tray app: adb link, phone controls, updates)...'
-$app = "$env:LOCALAPPDATA\LyricDock\app"
-New-Item -ItemType Directory -Force $app | Out-Null
-foreach ($p in 'companion/LyricDock.ps1', 'scripts/link.ps1', 'scripts/find-adb.ps1') {
-    Invoke-WebRequest -UseBasicParsing "$Raw/$p" -OutFile (Join-Path $app (Split-Path $p -Leaf))
-}
-$psExe = (Get-Process -Id $PID).Path
-$lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$([Environment]::GetFolderPath('Programs'))\LyricDock.lnk")
-$lnk.TargetPath = $psExe; $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$app\LyricDock.ps1`""
-$lnk.WorkingDirectory = $app; $lnk.WindowStyle = 7; $lnk.Description = 'LyricDock companion'; $lnk.Save()
-Ok 'Companion installed (Start menu: LyricDock)'
-
 Section 'CONFIGURING'
-Step 7 'Registering updater protocol...'
+Step 6 'Registering updater protocol...'
 # lyricdock-updater:// -> this script, so "Update" inside Spotify can start it. It only runs this file from the repo.
 $key = 'HKCU:\Software\Classes\lyricdock-updater'
 New-Item -Force "$key\shell\open\command" | Out-Null
@@ -101,7 +89,7 @@ Set-ItemProperty $key 'URL Protocol' ''
 Set-ItemProperty "$key\shell\open\command" '(default)' "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"iwr -useb $Self | iex`""
 Ok 'Updater protocol registered'
 
-Step 8 'Applying Spicetify configuration...'
+Step 7 'Applying Spicetify configuration...'
 & $spicetify config extensions 'dock-bridge.js-' 2>&1 | Out-Null # a development copy must not run alongside
 & $spicetify config extensions lyricdock.js 2>&1 | Out-Null
 Info 'Extension enabled'
@@ -113,52 +101,27 @@ if ($LASTEXITCODE) {
 if ($LASTEXITCODE) { $out | ForEach-Object { Info "$_" }; Fail 'spicetify apply failed (output above).' }
 Ok 'Spicetify applied - Spotify is starting'
 
-# Phone app: it updates itself from GitHub Releases (Settings -> Updates). With a phone plugged in over adb,
-# install the latest APK now as well.
-Section 'PHONE APP'
-$adb = try { & "$app\find-adb.ps1" } catch { $null } # PATH, Android SDK, the companion's copy, a remembered one
-if (-not $adb -and (Test-Path "$PWD\.tools\sdk\platform-tools\adb.exe")) { $adb = "$PWD\.tools\sdk\platform-tools\adb.exe" } # run from a repo checkout
-if (-not $adb) {
-    Info 'adb is not installed. It is optional: it adds the USB link and the companion''s phone controls.'
-    $a = Read-Host '             Download Google''s Android platform-tools (about 7 MB)? [Y/n]'
-    if ($a -notmatch '^n') {
-        try {
-            Invoke-WebRequest -UseBasicParsing 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile "$env:TEMP\platform-tools.zip"
-            Expand-Archive "$env:TEMP\platform-tools.zip" "$env:LOCALAPPDATA\LyricDock" -Force
-            Remove-Item "$env:TEMP\platform-tools.zip" -ErrorAction SilentlyContinue
-            $adb = "$env:LOCALAPPDATA\LyricDock\platform-tools\adb.exe"
-            Ok 'adb installed'
-        } catch { Warn "adb download failed: $($_.Exception.Message)" }
+# v1.0.x installers also put an adb companion app here; LyricDock no longer uses adb, so take it out again.
+$oldApp = Join-Path $env:LOCALAPPDATA 'LyricDock\app'
+if (Test-Path $oldApp) {
+    Get-CimInstance Win32_Process -Filter "Name like 'p%sh%.exe'" |
+        Where-Object { $_.CommandLine -like '*LyricDock.ps1*' -or $_.CommandLine -like '*link.ps1*' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Remove-Item $oldApp -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($dir in [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Startup')) {
+        $lnk = Join-Path $dir 'LyricDock.lnk'
+        if (Test-Path $lnk) { Remove-Item $lnk -ErrorAction SilentlyContinue }
     }
+    Info 'Removed the old adb companion (no longer needed)'
 }
-if ($adb) { Set-Content "$env:LOCALAPPDATA\LyricDock\adb-path.txt" $adb; Info "Using adb: $adb" } # the companion uses the same one
-$phone = if ($adb) { (& $adb devices) -match "`tdevice$" | Select-Object -First 1 } else { $null }
-if ($phone) {
-    try {
-        $rel = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 15
-        $asset = $rel.assets | Where-Object name -like '*.apk' | Select-Object -First 1
-        if (-not $asset) { throw 'no APK on the latest release' }
-        $pv = ((& $adb -s ($phone -split '\s+')[0] shell dumpsys package com.you.lyricdock) | Select-String 'versionName=(\S+)' | Select-Object -First 1).Matches.Groups[1].Value
-        if ("v$pv" -eq $rel.tag_name) { Ok "Phone app is up to date ($($rel.tag_name))"; $asset = $null }
-    }
-    catch { Warn "Phone not checked: $($_.Exception.Message)"; $asset = $null }
-    if ($asset) { try {
-        $apk = Join-Path $env:TEMP $asset.name
-        Info "Downloading $($asset.name)..."
-        Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $apk
-        Info 'Installing on the phone...'
-        & $adb install -r -t $apk 2>&1 | Out-Null
-        if ($LASTEXITCODE) { throw 'adb install failed' }
-        & $adb shell am start -n com.you.lyricdock/.MainActivity 2>&1 | Out-Null
-        Remove-Item $apk -ErrorAction SilentlyContinue
-        Ok "Phone updated to $($rel.tag_name)"
-    } catch { Warn "Phone not updated: $($_.Exception.Message). It will update itself." } }
-} elseif (-not $adb) { Info 'adb not installed - fine: the phone app updates itself (Settings -> Updates).' }
-else { Info 'No phone on adb - the phone app updates itself (Settings -> Updates).' }
 
-Get-CimInstance Win32_Process -Filter "Name like 'p%sh%.exe'" | Where-Object { $_.CommandLine -like '*LyricDock.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } # restart it with the new files
-# Start the companion in the tray (single instance, so re-running the installer doesn't stack copies).
-Start-Process $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$app\LyricDock.ps1`" -Tray" -WindowStyle Hidden
+Section 'PHONE'
+Info 'Phone not set up yet? Do this once, either way:'
+Info '  - on the phone: install the APK from https://github.com/DhakadG/lyricdock/releases/latest'
+Info '  - or from this PC over USB (also turns on full-screen kiosk mode):'
+Info '      iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/setup-phone.ps1 | iex'
+Info 'Then pair once: type the code the phone shows into Spotify -> LyricDock (top-bar button) -> Pair.'
+Info 'After that the phone app updates itself.'
 
 Write-Host ''
 Write-Host "  LyricDock $latest is ready. Open the LyricDock button in Spotify's top bar." -ForegroundColor Green

@@ -4,12 +4,10 @@
     <!-- self-update from GitHub Releases (silent when device owner, otherwise the user confirms) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- testOnly lets `adb shell dpm remove-active-admin` undo device-owner (escape hatch) -->
     <application
         android:label="LyricDock"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:testOnly="true"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
 
@@ -23,13 +21,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <!-- Home screen only in kiosk mode: MainActivity.kiosk() enables this alias (a normal install leaves Home alone). -->
+        <activity-alias
+            android:name=".Home"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-        </activity>
-
+        </activity-alias>
         <receiver android:name=".InstallReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

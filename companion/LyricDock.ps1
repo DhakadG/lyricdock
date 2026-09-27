@@ -1,8 +1,8 @@
-# LyricDock companion for Windows: a tray app for everything the Spotify extension can't do from inside Spotify
-# (it can't start programs): the USB / wireless-adb link, phone controls over adb, installing and updating.
-# Optional - the phone and Spotify also connect without it (direct Wi-Fi / WebRTC after pairing).
+# LyricDock companion - a DEVELOPER tool (not part of the normal install): tray app with the USB / wireless-adb
+# link, phone controls over adb and a live phone screen. Users don't need it or adb: Spotify and the phone connect
+# directly over Wi-Fi (WebRTC) after pairing.
 #   powershell -ExecutionPolicy Bypass -File LyricDock.ps1 [-Tray]      (-Tray: start hidden in the tray)
-# Installed by updater/install.ps1 to %LOCALAPPDATA%\LyricDock\app with link.ps1 + find-adb.ps1 next to it.
+# Run it from a checkout (uses scripts/link.ps1 + scripts/find-adb.ps1).
 # Windows PowerShell 5.1 compatible (no ?? / ternaries).
 param([switch]$Tray)
 $ErrorActionPreference = 'Continue'
@@ -21,7 +21,7 @@ $Startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'LyricDock.lnk'
 $SettingsFile = "$State\companion.json"
 
 function Load-Settings {
-    $d = @{ link = $true }
+    $d = @{ link = $false }
     if (Test-Path $SettingsFile) { try { (Get-Content $SettingsFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $d[$_.Name] = $_.Value } } catch {} }
     $d
 }
