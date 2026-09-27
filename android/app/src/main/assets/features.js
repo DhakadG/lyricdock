@@ -459,7 +459,8 @@
     if (!k || k === '*' || ['marquee', 'layout', 'size'].includes(k)) setTimeout(remarquee, 50);
     if (k === 'albumLine') albumLine();
     if (k === 'hideExplicit') Lyrics.rebuild();
-    if (k && /^clock/.test(k)) { Flip.rebuild(); Flip.layout(); }
+    if (k === 'clockScale' || k === 'clockDim') Flip.layout(); // size / dim: CSS variables only, no rebuild while dragging
+    else if (k && /^clock/.test(k)) { Flip.rebuild(); Flip.layout(); }
     // Cover + clock: the flip clock (HH:MM) lives where the lyrics would be.
     if (!k || k === '*' || k === 'layout') {
       if (S.layout === 'clocksplit') { Flip.mount($('clockPane'), { secs: false }); Flip.show(); }

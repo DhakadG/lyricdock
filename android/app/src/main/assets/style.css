@@ -425,15 +425,21 @@ body.hide-shuffle #shuf, body.hide-shuffle #rep { display: none; }
 #lists svg { width: 4.6vmin; height: 4.6vmin; }
 body.hide-lists #lists { display: none; }
 /* Inside the cover the row has to fit five buttons on one line (the cover is ~68vmin wide in split view). */
-#art > #ctl { gap: .6vmin; padding: 1.4vmin 1.6vmin; justify-content: space-evenly; width: 90%; }
-#art > #ctl button { width: 9.4vmin; height: 9.4vmin; }
-#art > #ctl button svg { width: 5.4vmin; height: 5.4vmin; }
-#art > #ctl #pp { width: 11.6vmin; height: 11.6vmin; }
-#art > #ctl #pp svg { width: 6.4vmin; height: 6.4vmin; }
-#art > #ctl button.small { width: 7.6vmin; height: 7.6vmin; }
-#art > #ctl button.small svg { width: 4.4vmin; height: 4.4vmin; }
-#art > #ctl #lists button { width: 7.6vmin; height: 7.6vmin; }
-#art > #ctl #lists svg { width: 4.2vmin; height: 4.2vmin; }
+/* One compact button scale everywhere (over the cover, centred, in the deck): shuffle, prev, play, next, repeat
+   always fit on one row; volume and the list buttons take their own rows. */
+#ctl { gap: .6vmin; padding: 1.4vmin 1.8vmin; justify-content: space-evenly; }
+#art > #ctl { width: 90%; }
+body > #ctl { width: min(92vmin, 94vw); max-width: 520px; }
+#ctl button { width: 9.4vmin; height: 9.4vmin; }
+#ctl button svg { width: 5.4vmin; height: 5.4vmin; }
+#ctl #pp { width: 11.6vmin; height: 11.6vmin; }
+#ctl #pp svg { width: 6.4vmin; height: 6.4vmin; }
+#ctl button.small { width: 7.6vmin; height: 7.6vmin; }
+#ctl button.small svg { width: 4.4vmin; height: 4.4vmin; }
+#ctl #lists button { width: 7.6vmin; height: 7.6vmin; }
+#ctl #lists svg { width: 4.2vmin; height: 4.2vmin; }
+/* The Flip clock layout: a tap brings the settings button, not a player over the clock. */
+body.layout-clock > #ctl { display: none; }
 /* Audio quality as a small vertical tag on the cover's right edge (no row of its own). */
 #quality.vert { position: absolute; right: 1.4vmin; bottom: 1.4vmin; margin: 0; z-index: 2; writing-mode: vertical-rl; transform: rotate(180deg);
   padding: 1.2vmin .45vmin; font-size: 1.6vmin; letter-spacing: .2em; color: rgba(255, 255, 255, .9); background: rgba(0, 0, 0, .42);
@@ -694,7 +700,7 @@ body:not(.bg-video) #yt { display: none; }
 body.layout-clocksplit #lyrics { display: none; }
 body.layout-clocksplit #clockPane { display: flex; }
 body.layout-clocksplit #artbox { width: 62vmin; }
-body.layout-clock #gear, body.layout-clock > #ctl { z-index: 9; }
+body.layout-clock #gear { z-index: 9; }
 @media (orientation: portrait) {
   body.layout-clocksplit #wrap { flex-direction: column; gap: 2vmin;
     padding: calc(var(--sa-t) + 6vmin) calc(var(--sa-r) + 6vmin) calc(var(--sa-b) + var(--bar-by) + 4vmin) calc(var(--sa-l) + 6vmin); }

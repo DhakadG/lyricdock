@@ -279,8 +279,8 @@
       s.socks.push(ws);
       ws.onmessage = e => {
         const ev = safe(() => JSON.parse(e.data), {}), m = ev.event === 'message' ? safe(() => JSON.parse(ev.message), null) : null;
-        if (m?.desk !== desk || typeof m.id !== 'string') return;
-        if (m.t === 'here' && m.pub) {
+        if (m?.desk !== desk) return;
+        if (m.t === 'here' && m.pub && typeof m.id === 'string') {
           const old = s.found.get(m.id);
           s.found.set(m.id, { ...(old ?? { state: 'found', how: new Set() }), id: m.id, name: String(m.name || 'Phone').slice(0, 40), pub: m.pub, relay: old?.relay ?? r, topic: old?.topic ?? t, linked: !!m.linked });
           s.found.get(m.id).how.add(how);
@@ -627,28 +627,45 @@
 
   const lastErrors = [];
   const noteErr = (where, e) => { lastErrors.push(`${where}: ${String(e?.message || e).slice(0, 160)}`); if (lastErrors.length > 20) lastErrors.shift(); };
+  // Spotify renames its search query between versions (searchDesktop, then searchModalResults...): try what exists,
+  // and read the answer by walking it for anything with a track / album / artist / playlist URI - so a reshuffled
+  // response still works. The Web API (rate-limited for the client's token) is the last resort.
+  const SEARCH_VARS = q => ({ searchTerm: q, offset: 0, limit: 10, numberOfTopResults: 5, includeAudiobooks: false, includeArtistHasConcertsField: false,
+    includePreReleases: false, includeLocalConcertsField: false, includeAuthors: false, includeEpisodeContentRatingsV2: false });
+  function harvest(root) {
+    const out = new Map(), seen = new Set();
+    const imgOf = o => pickImg(o?.coverArt?.sources ?? o?.albumOfTrack?.coverArt?.sources ?? o?.visuals?.avatarImage?.sources ?? o?.images?.items?.[0]?.sources ?? o?.images);
+    const walk = (o, depth) => {
+      if (!o || typeof o !== 'object' || depth > 12 || seen.has(o)) return;
+      seen.add(o);
+      const uri = typeof o.uri === 'string' ? o.uri : '', kind = /^spotify:(track|album|artist|playlist):/.exec(uri)?.[1];
+      const name = o.name ?? o.profile?.name;
+      if (kind && name && !out.has(uri)) {
+        if (kind === 'track') out.set(uri, { ...trackRow(o, imgOf(o)), section: 'Songs' });
+        else if (kind === 'artist') out.set(uri, { ...boxRow(uri, name, 'Artist', imgOf(o)), round: true, section: 'Artists' });
+        else if (kind === 'album') out.set(uri, { ...boxRow(uri, name, ['Album', names(o.artists?.items ?? o.artists)].filter(Boolean).join(' · '), imgOf(o)), section: 'Albums' });
+        else out.set(uri, { ...boxRow(uri, name, ['Playlist', o.ownerV2?.data?.name ?? o.owner?.name].filter(Boolean).join(' · '), imgOf(o)), section: 'Playlists' });
+      }
+      for (const v of Array.isArray(o) ? o : Object.values(o)) walk(v, depth + 1);
+    };
+    walk(root, 0);
+    const order = { Songs: 0, Artists: 1, Albums: 2, Playlists: 3 };
+    return [...out.values()].sort((x, y) => order[x.section] - order[y.section]);
+  }
   async function search(q) {
     let items = [];
-    try {
-      const s = (await gql('searchDesktop', { searchTerm: q, offset: 0, limit: 10, numberOfTopResults: 5, includeAudiobooks: false,
-        includeArtistHasConcertsField: false, includePreReleases: false, includeLocalConcertsField: false, includeAuthors: false }))?.data?.searchV2;
-      if (!s) throw new Error('no results');
-      const d = x => x?.item?.data ?? x?.data ?? x;
-      items = [
-        ...(s.tracksV2?.items ?? []).map(d).filter(t => t?.uri).map(t => ({ ...trackRow(t), section: 'Songs' })),
-        ...(s.artists?.items ?? []).map(d).filter(a => a?.uri).map(a => ({ ...boxRow(a.uri, a.profile?.name, 'Artist', pickImg(a.visuals?.avatarImage?.sources)), round: true, section: 'Artists' })),
-        ...(s.albumsV2?.items ?? s.albums?.items ?? []).map(d).filter(a => a?.uri).map(a => ({ ...boxRow(a.uri, a.name, `Album · ${names(a.artists?.items)}`, pickImg(a.coverArt?.sources)), section: 'Albums' })),
-        ...(s.playlists?.items ?? []).map(d).filter(p => p?.uri).map(p => ({ ...boxRow(p.uri, p.name, `Playlist · ${p.ownerV2?.data?.name ?? ''}`, pickImg(p.images?.items?.[0]?.sources)), section: 'Playlists' })),
-      ];
-    } catch (e) {
-      noteErr('search gql', e);
+    for (const def of ['searchDesktop', 'searchModalResults', 'searchSuggestions']) {
+      if (!Spicetify.GraphQL?.Definitions?.[def]) continue;
+      try {
+        const r = await gql(def, SEARCH_VARS(q));
+        if (r?.errors?.length) throw new Error(r.errors[0]?.message || 'error');
+        items = harvest(r?.data);
+        if (items.length) break;
+      } catch (e) { noteErr(`search ${def}`, e); }
+    }
+    if (!items.length) {
       const r = await web(`/search?q=${encodeURIComponent(q)}&type=track,artist,album,playlist&limit=8`);
-      items = [
-        ...(r?.tracks?.items ?? []).map(t => ({ ...trackRow(t), section: 'Songs' })),
-        ...(r?.artists?.items ?? []).map(a => ({ ...boxRow(a.uri, a.name, 'Artist', pickImg(a.images)), round: true, section: 'Artists' })),
-        ...(r?.albums?.items ?? []).map(a => ({ ...boxRow(a.uri, a.name, `Album · ${names(a.artists)}`, pickImg(a.images)), section: 'Albums' })),
-        ...(r?.playlists?.items ?? []).filter(Boolean).map(p => ({ ...boxRow(p.uri, p.name, `Playlist · ${p.owner?.display_name ?? ''}`, pickImg(p.images)), section: 'Playlists' })),
-      ];
+      items = harvest(r);
     }
     return { items: await withLiked(items) };
   }
@@ -783,7 +800,7 @@
     // Spotify Canvas: the short looping video some songs have.
     (async () => {
       try {
-        const c = (await gql('canvas', { uri: it.uri }))?.data?.trackUnion?.canvas;
+        const c = (await gql('canvas', { trackUri: it.uri, uri: it.uri }))?.data?.trackUnion?.canvas;
         if (c?.url && /\.mp4(\?|$)/.test(c.url)) keep({ type: 'canvas', id, url: c.url });
       } catch (e) { noteErr('canvas', e); }
     })();
