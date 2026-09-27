@@ -38,6 +38,8 @@ adb shell dpm set-device-owner com.you.lyricdock/.AdminReceiver
 # 3. Install the Spicetify bridge (auto-updating). Same command repairs it after a Spotify update wipes Spicetify:
 iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex
 #    (from a checkout: ./scripts/install-extension.ps1, or -Dev to run this checkout's bridge directly)
+#    It also installs the optional PC companion (Start menu -> LyricDock, lives in the tray): keeps the USB /
+#    wireless-adb link running, phone brightness / keep-awake / restart / reboot / live screen, updates.
 
 # 4. Keep the link up: USB when plugged in, wireless adb when not, back to USB when it returns.
 #    Either run it in a terminal...

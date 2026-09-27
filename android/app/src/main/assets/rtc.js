@@ -145,6 +145,6 @@ const Rtc = (() => {
     onAsk: f => { onAsk = f; },
     onMessage: f => { onMsg = f; },
     open: () => dc?.readyState === 'open',
-    status: () => dc?.readyState === 'open' ? 'connected' : status,
+    status: () => dc?.readyState === 'open' ? 'connected' : ['failed', 'closed', 'disconnected'].includes(status) ? 'standby' : status, // desktop moved to USB / will re-offer
   };
 })();

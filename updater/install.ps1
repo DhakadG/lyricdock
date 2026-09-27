@@ -9,7 +9,7 @@ $ProgressPreference = 'SilentlyContinue' # Invoke-WebRequest's own progress bar 
 $Repo = 'DhakadG/lyricdock'
 $Raw = "https://raw.githubusercontent.com/$Repo/main"
 $Self = "$Raw/updater/install.ps1"
-$Steps = 7
+$Steps = 8
 
 function Banner {
     Write-Host ''
@@ -79,8 +79,20 @@ Copy-Item $tmp (Join-Path $ext 'lyricdock.js') -Force
 Remove-Item $tmp -ErrorAction SilentlyContinue
 Ok "Loader installed (loads LyricDock v$latest and keeps it updated)"
 
+Step 6 'Installing the PC companion (tray app: adb link, phone controls, updates)...'
+$app = "$env:LOCALAPPDATA\LyricDock\app"
+New-Item -ItemType Directory -Force $app | Out-Null
+foreach ($p in 'companion/LyricDock.ps1', 'scripts/link.ps1', 'scripts/find-adb.ps1') {
+    Invoke-WebRequest -UseBasicParsing "$Raw/$p" -OutFile (Join-Path $app (Split-Path $p -Leaf))
+}
+$psExe = (Get-Process -Id $PID).Path
+$lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$([Environment]::GetFolderPath('Programs'))\LyricDock.lnk")
+$lnk.TargetPath = $psExe; $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$app\LyricDock.ps1`""
+$lnk.WorkingDirectory = $app; $lnk.WindowStyle = 7; $lnk.Description = 'LyricDock companion'; $lnk.Save()
+Ok 'Companion installed (Start menu: LyricDock)'
+
 Section 'CONFIGURING'
-Step 6 'Registering updater protocol...'
+Step 7 'Registering updater protocol...'
 # lyricdock-updater:// -> this script, so "Update" inside Spotify can start it. It only runs this file from the repo.
 $key = 'HKCU:\Software\Classes\lyricdock-updater'
 New-Item -Force "$key\shell\open\command" | Out-Null
@@ -89,7 +101,7 @@ Set-ItemProperty $key 'URL Protocol' ''
 Set-ItemProperty "$key\shell\open\command" '(default)' "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"iwr -useb $Self | iex`""
 Ok 'Updater protocol registered'
 
-Step 7 'Applying Spicetify configuration...'
+Step 8 'Applying Spicetify configuration...'
 & $spicetify config extensions 'dock-bridge.js-' 2>&1 | Out-Null # a development copy must not run alongside
 & $spicetify config extensions lyricdock.js 2>&1 | Out-Null
 Info 'Extension enabled'
@@ -104,13 +116,18 @@ Ok 'Spicetify applied - Spotify is starting'
 # Phone app: it updates itself from GitHub Releases (Settings -> Updates). With a phone plugged in over adb,
 # install the latest APK now as well.
 Section 'PHONE APP'
-$adb = (Get-Command adb -ErrorAction SilentlyContinue).Source
+$adb = try { & "$app\find-adb.ps1" } catch { $null } # PATH, Android SDK, the companion's copy, or the one a repo checkout used
 $phone = if ($adb) { (& $adb devices) -match "`tdevice$" | Select-Object -First 1 } else { $null }
 if ($phone) {
     try {
         $rel = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 15
         $asset = $rel.assets | Where-Object name -like '*.apk' | Select-Object -First 1
         if (-not $asset) { throw 'no APK on the latest release' }
+        $pv = ((& $adb -s ($phone -split '\s+')[0] shell dumpsys package com.you.lyricdock) | Select-String 'versionName=(\S+)' | Select-Object -First 1).Matches.Groups[1].Value
+        if ("v$pv" -eq $rel.tag_name) { Ok "Phone app is up to date ($($rel.tag_name))"; $asset = $null }
+    }
+    catch { Warn "Phone not checked: $($_.Exception.Message)"; $asset = $null }
+    if ($asset) { try {
         $apk = Join-Path $env:TEMP $asset.name
         Info "Downloading $($asset.name)..."
         Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $apk
@@ -120,8 +137,12 @@ if ($phone) {
         & $adb shell am start -n com.you.lyricdock/.MainActivity 2>&1 | Out-Null
         Remove-Item $apk -ErrorAction SilentlyContinue
         Ok "Phone updated to $($rel.tag_name)"
-    } catch { Warn "Phone not updated: $($_.Exception.Message). It will update itself." }
-} else { Info 'No phone on adb - the phone app updates itself (Settings -> Updates).' }
+    } catch { Warn "Phone not updated: $($_.Exception.Message). It will update itself." } }
+} elseif (-not $adb) { Info 'adb not installed - fine: the phone app updates itself (Settings -> Updates).' }
+else { Info 'No phone on adb - the phone app updates itself (Settings -> Updates).' }
+
+# Start the companion in the tray (single instance, so re-running the installer doesn't stack copies).
+Start-Process $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$app\LyricDock.ps1`" -Tray" -WindowStyle Hidden
 
 Write-Host ''
 Write-Host "  LyricDock $latest is ready. Open the LyricDock button in Spotify's top bar." -ForegroundColor Green
