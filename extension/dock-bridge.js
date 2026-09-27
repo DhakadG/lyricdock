@@ -47,7 +47,23 @@
   });
 
   function drop() { const dead = ws; ws = null; if (dead) { dead.onclose = null; dead.close(); } }
+
+  // Connection feedback: a dot on the top-bar button, and a notice only when the state has held for 3s
+  // (a USB <-> Wi-Fi handoff shouldn't pop two toasts).
+  let shown = null, pendingState = null, pendingSince = 0;
+  function linkState() {
+    const on = ws?.readyState === 1;
+    document.querySelector('.ld-topbar')?.classList.toggle('ld-on', on);
+    if (on !== pendingState) { pendingState = on; pendingSince = Date.now(); }
+    if (on !== shown && Date.now() - pendingSince > 3000) {
+      if (shown !== null) safe(() => Spicetify.showNotification(on ? 'LyricDock connected' : 'LyricDock disconnected'));
+      shown = on;
+      renderPanel();
+    }
+  }
+
   async function ensureLink() {
+    linkState();
     if (ws?.readyState === 1 && Date.now() - lastRx > 2500) drop();
     if (busy || ws?.readyState === 1) return;
     busy = true;
@@ -215,8 +231,12 @@
     send({ type: 'diag', quality: quality(), pd: Object.keys(P.data || {}),
       pq: safe(() => JSON.stringify([P.data?.playbackQuality, Spicetify.Platform.PlayerAPI._state?.playbackQuality]).slice(0, 400), '') });
     preloadNext();
+    setTimeout(preloadNext, 3000); // Spotify's queue can lag the song change by a moment
     if (track.lyrics) return;
-    const lyrics = (await spotifyLyrics(base.id)) ?? (await lrclib(it.metadata || {})) ?? NONE;
+    // Ads have no lyrics; local files and podcasts can't use Spotify's lyrics endpoint (it wants a track id).
+    const kind = it.uri.split(':')[1];
+    const lyrics = kind === 'ad' ? NONE
+      : (kind === 'track' ? await spotifyLyrics(base.id) : null) ?? (kind !== 'episode' ? await lrclib(it.metadata || {}) : null) ?? NONE;
     if (item()?.uri !== it.uri) return; // skipped meanwhile
     if (!track.lyrics) { track = { ...track, lyrics }; send(track); }
     upgradeFromSpicy(it.uri, base, dir);
@@ -236,8 +256,9 @@
 
   // Preload: cover + whatever Spicy already has for the next track (no network).
   async function preloadNext() {
-    const n = (Spicetify.Queue?.nextTracks ?? []).map(t => t?.contextTrack).find(t => t?.uri?.startsWith('spotify:track:'));
-    if (!n) return;
+    const now = item()?.uri;
+    const n = (Spicetify.Queue?.nextTracks ?? []).map(t => t?.contextTrack).find(t => t?.uri?.startsWith('spotify:track:') && t.uri !== now);
+    if (!n || n.uri === preload?.uri) return;
     const base = info(n, n.metadata || {});
     preload = { type: 'preload', ...base, lyrics: await fromSpicyCache(base.id) };
     send(preload);
@@ -259,7 +280,11 @@
     .ld-val{min-width:64px;text-align:right;font-variant-numeric:tabular-nums;opacity:.8}
     .ld-status{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.06);font-size:13px}
     .ld-status i{width:8px;height:8px;border-radius:50%;background:#e5534b} .ld-status.on i{background:#3ddc97}
-    .ld-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}`;
+    .ld-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+    .ld-topbar{position:relative}
+    .ld-topbar::after{content:'';position:absolute;right:6px;top:6px;width:7px;height:7px;border-radius:50%;background:#e5534b;
+      box-shadow:0 0 0 2px var(--background-base,#000);pointer-events:none}
+    .ld-topbar.ld-on::after{background:#3ddc97}`;
   safe(() => { const st = document.createElement('style'); st.textContent = CSS; document.head.append(st); });
 
   let panel = null;
@@ -326,7 +351,7 @@
   }
   // isRight: Spicetify gives right-side buttons the class of Spotify's own round action buttons (left ones sit
   // small among the back/forward arrows), so this matches the native top-bar buttons.
-  safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel, false, true));
+  safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel, false, true).element.classList.add('ld-topbar'));
 
   // ---- sync: events + 500ms heartbeat + 100ms drift check (catches seeks instantly) + 1s link check.
   P.addEventListener('songchange', sendTrack);

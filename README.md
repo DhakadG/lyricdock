@@ -38,9 +38,17 @@ adb shell dpm set-device-owner com.you.lyricdock/.AdminReceiver
 # 3. Install the Spicetify bridge
 ./scripts/install-extension.ps1
 
-# 4. Keep the link up (leave running): USB when plugged in, wireless adb when not, back to USB when it returns
+# 4. Keep the link up: USB when plugged in, wireless adb when not, back to USB when it returns.
+#    Either run it in a terminal...
 ./scripts/link.ps1
+#    ...or have it start hidden at every login (log: %LOCALAPPDATA%\LyricDock\link.log; -Disable to undo)
+./scripts/autostart.ps1
 ```
+
+After that there is nothing to run day to day: the phone's Wi-Fi IP is remembered, the link recovers from cable
+pulls, adb restarts and Spotify restarts on its own, and the LyricDock button in Spotify's top bar shows a green /
+red dot for the phone connection and opens every app setting. The one manual case: after the **phone** reboots,
+plug USB in once (Android switches wireless adb off on boot).
 
 Play something in Spotify — the phone picks it up within a second.
 
