@@ -1,0 +1,393 @@
+/* LyricDock phone UI.
+   Sizes are in vmin so one design works in all four orientations (landscape: vmin = vh, portrait: vmin = vw).
+   --sa-* = camera-cutout safe insets and --bar-* = rounded-corner offsets, both pushed from Android (app.js).
+   --acc = accent colour (r, g, b) picked from the cover (app.js accentFrom); white when that's switched off.
+   Performance rules learnt on a Snapdragon 439: no backdrop-filter on anything that can sit invisible (it re-blurs
+   every frame), and nothing animates unless it is on screen. */
+
+:root {
+  --size: 1; --dim: .2; --as: 1; --lw: 700; --lgap: 1.5vmin; --lop: .5; --blur: 1.2px;
+  --acc: 255, 255, 255;
+  --ease: cubic-bezier(.2, .8, .2, 1); --spring: cubic-bezier(.34, 1.45, .64, 1);
+  --lsize: calc(9vmin * var(--size));
+  --sa-l: 0px; --sa-r: 0px; --sa-t: 0px; --sa-b: 0px; --bar-bx: 0px; --bar-by: 0px; --bar-tx: 0px; --bar-ty: 0px;
+  --pad: 3.5vmin;
+  --glass: rgba(16, 16, 20, .5); --glass-edge: rgba(255, 255, 255, .14); --glass-hi: rgba(255, 255, 255, .1);
+}
+body.no-accent { --acc: 255, 255, 255; }
+html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden;
+  font-family: system-ui, Roboto, sans-serif; user-select: none; -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* ======================================================================= backgrounds */
+#bgc, #bg, #bgGrad, #dim { position: fixed; inset: 0; }
+#bgc { width: 100%; height: 100%; display: none; }
+body.bg-dynamic #bgc, body.bg-artist #bgc { display: block; }
+#bg { display: none; background: #111 center/cover; transform: scale(1.4); filter: blur(60px) saturate(1.7) brightness(.7); }
+body.bg-blur #bg { display: block; }
+#bgGrad { display: none; background: linear-gradient(135deg, var(--c1, #333), var(--c2, #181818), var(--c3, #050505));
+  background-size: 300% 300%; animation: gradmove calc(18s / var(--as)) ease-in-out infinite alternate; }
+body.bg-gradient #bgGrad { display: block; }
+@keyframes gradmove { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+/* Dim + a soft vignette so edges never fight the lyrics. */
+#dim { background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0, 0, 0, .35)), #000;
+  background-blend-mode: normal; opacity: var(--dim); pointer-events: none; }
+body.bg-black #dim { opacity: 1; background: #000; }
+
+/* ======================================================================= default layout */
+#wrap { position: relative; display: flex; height: 100%; box-sizing: border-box; gap: 4vmin;
+  padding: var(--sa-t) calc(var(--sa-r) + var(--pad)) var(--sa-b) calc(var(--sa-l) + var(--pad) + 1.5vmin); }
+body.art-right #wrap { flex-direction: row-reverse; } /* Settings -> Cover side */
+#left { flex: 0 0 38%; display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 0; }
+#artbox { width: min(100%, 68vmin); }
+#art { position: relative; width: 100%; aspect-ratio: 1; border-radius: 2.4vmin; background: #1a1a1d center/cover;
+  box-shadow: 0 3vmin 8vmin -1vmin rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .06), 0 2vmin 9vmin -3vmin rgba(var(--acc), .35);
+  transition: transform calc(.6s / var(--as)) var(--ease), box-shadow .6s, border-radius .4s; }
+body.paused.pp-both #art, body.paused.pp-shrink #art { transform: scale(.88); box-shadow: 0 1vmin 3vmin rgba(0, 0, 0, .5); }
+#meta { width: 100%; text-align: center; margin-top: 4vmin; min-width: 0; }
+#title, #artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#titlerow { display: flex; align-items: center; justify-content: center; gap: 1.6vmin; min-width: 0; }
+#title { font-weight: 800; font-size: 5.6vmin; letter-spacing: -.02em; min-width: 0; }
+#artist { opacity: .72; font-size: 3.6vmin; font-weight: 500; margin-top: .7vmin; }
+#heart { display: none; flex: none; width: 5.2vmin; height: 5.2vmin; border: 0; padding: 0; background: none; opacity: .75;
+  transition: opacity .3s, color .3s, transform .3s var(--spring); color: #fff; }
+#heart svg { width: 100%; height: 100%; }
+#heart .fill { opacity: 0; transition: opacity .3s; }
+#heart.on { opacity: 1; color: #1ed760; filter: drop-shadow(0 0 1.2vmin rgba(30, 215, 96, .45)); }
+#heart.on .fill { opacity: 1; }
+body.show-liked #heart { display: block; }
+#quality { display: none; width: max-content; margin: 1.4vmin auto 0; padding: .45vmin 1.4vmin; border-radius: 2vmin;
+  font-size: 1.9vmin; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+  color: rgba(var(--acc), .95); background: rgba(var(--acc), .12); box-shadow: inset 0 0 0 1px rgba(var(--acc), .25); }
+body.show-quality #quality:not(:empty) { display: block; }
+#pulse { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; pointer-events: none; }
+#pulse div { width: 24vmin; height: 24vmin; border-radius: 50%; background: rgba(0, 0, 0, .55); display: grid; place-items: center;
+  box-shadow: 0 0 0 .5vmin rgba(255, 255, 255, .12); }
+#pulse svg { width: 12vmin; height: 12vmin; fill: #fff; }
+#ripple { position: absolute; left: 50%; top: 50%; width: 20vmin; height: 20vmin; margin: -10vmin; border-radius: 50%;
+  border: .6vmin solid rgba(var(--acc), .9); opacity: 0; pointer-events: none; }
+
+/* ======================================================================= lyrics
+   Spicy Lyrics look: not-sung / sung lines dim (Settings -> Other lines brightness), the active line full,
+   words fill with a gradient sweep + glow + lift (anim.js). */
+#lyrics { flex: 1; position: relative; overflow: hidden; min-width: 0; min-height: 0;
+  -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
+#lyrics.static { overflow-y: auto; -webkit-mask-image: none; }
+#lines { position: absolute; left: 0; right: 0; will-change: transform; }
+#lyrics.static #lines { position: static; padding: 12vmin 0; }
+body.scroll-smooth #lines { transition: transform calc(.75s / var(--as)) cubic-bezier(.2, .8, .2, 1); }
+body.scroll-spring #lines { transition: transform calc(.9s / var(--as)) var(--spring); }
+body.scroll-snappy #lines { transition: transform calc(.35s / var(--as)) cubic-bezier(.3, .9, .3, 1); }
+.ln { font-size: var(--lsize); font-weight: var(--lw); line-height: 1.18; letter-spacing: -.012em; padding: var(--lgap) 0;
+  opacity: var(--lop); transform-origin: left center; transform: scale(.95);
+  transition: opacity .35s, transform calc(.6s / var(--as)) var(--ease), filter .5s; }
+.ln.sung { opacity: calc(var(--lop) * .97); }
+.ln.on { opacity: 1; transform: scale(1); }
+body.align-center .ln { text-align: center; transform-origin: center; }
+.ln.opp { text-align: right; transform-origin: right center; }
+body.blurlines .ln[data-d="2"] { filter: blur(var(--blur)); }
+body.blurlines .ln[data-d="3"] { filter: blur(calc(var(--blur) * 2)); }
+/* Padding + equal negative margin: background-clip:text only paints inside the box, and Devanagari /
+   Gurmukhi vowel marks sit above and below it - without this they get cut off while a line is active. */
+.sy { display: inline-block; --gp: -20%; --tsr: 4px; --tso: 0%; padding: .25em .06em; margin: -.25em -.06em; }
+.ln.indic { line-height: 1.45; }
+.wg { white-space: nowrap; }
+.ln.on .sy { background-image: linear-gradient(90deg, rgba(255, 255, 255, .92) var(--gp), rgba(255, 255, 255, .48) calc(var(--gp) + 20%));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 var(--tsr) rgba(255, 255, 255, var(--tso)); }
+.bgv { font-size: .55em; opacity: .85; margin-top: .3vmin; font-style: italic; }
+.ln.on .bgv .sy { background-image: linear-gradient(90deg, rgba(255, 255, 255, .62) var(--gp), rgba(255, 255, 255, .3) calc(var(--gp) + 20%)); }
+.ln.rtl { text-align: right; transform-origin: right center; }
+body.align-center .ln.rtl { text-align: center; transform-origin: center; }
+.ln.rtl.on .sy { background-image: linear-gradient(270deg, rgba(255, 255, 255, .92) var(--gp), rgba(255, 255, 255, .48) calc(var(--gp) + 20%)); }
+.ln.far { visibility: hidden; } /* beyond Settings -> Lines kept drawn: never on screen, so don't paint it */
+/* Interlude dots (Spicy's musical-line): only there while the gap is playing; anim.js drives each dot + the group. */
+.ln.dots { display: none; opacity: 1; transform: none; padding: 2vmin 0; }
+.ln.dots.on { display: block; }
+.dotGroup { display: flex; gap: calc(var(--lsize) * .22); width: max-content; transform-origin: left center; scale: 0; opacity: 0; }
+body.align-center .dotGroup, body.layout-cinema .dotGroup { margin: 0 auto; transform-origin: center; }
+.dt { --tsr: 4px; --tso: 0%; width: calc(var(--lsize) * .42); height: calc(var(--lsize) * .42); border-radius: 50%;
+  background: #fff; scale: .75; opacity: .35; box-shadow: 0 0 var(--tsr) rgba(255, 255, 255, var(--tso)); }
+.ln.skel { height: calc(var(--lsize) * .78); border-radius: 1.4vmin; margin: 2.4vmin 0; opacity: 1; transform: none; padding: 0;
+  background: linear-gradient(100deg, rgba(255, 255, 255, .06) 30%, rgba(var(--acc), .22) 50%, rgba(255, 255, 255, .06) 70%);
+  background-size: 250% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { from { background-position: 125% 0; } to { background-position: -125% 0; } }
+.ln.empty { opacity: .6; transform: none; font-size: calc(var(--lsize) * .7); }
+.credits { padding: 5vmin 0 8vmin; font-weight: 700; }
+body.align-center .credits, body.layout-cinema .credits { text-align: center; }
+.writers { font-size: calc(var(--lsize) * .42); opacity: .85; }
+.provider { font-size: calc(var(--lsize) * .3); opacity: .6; margin-top: 1vmin; }
+.provider a { color: rgb(var(--acc)); text-decoration: underline; text-underline-offset: .15em; }
+
+/* ======================================================================= layouts */
+body.layout-lyrics #left { display: none; }
+
+body.layout-compact #wrap { flex-direction: column; gap: 1vmin; padding-top: calc(var(--sa-t) + 4vmin); }
+body.layout-compact #left { flex: 0 0 auto; flex-direction: row; justify-content: flex-start; gap: 3vmin; }
+body.layout-compact #artbox { width: 15vmin; flex: none; }
+body.layout-compact #art { border-radius: 1.4vmin; }
+body.layout-compact #meta, body.layout-cinema #meta, body.layout-nowbar #meta { text-align: left; margin: 0; }
+body.layout-compact #titlerow, body.layout-cinema #titlerow, body.layout-nowbar #titlerow { justify-content: flex-start; }
+body.layout-compact #quality, body.layout-cinema #quality { margin-left: 0; }
+body.layout-compact #title { font-size: 4.2vmin; }
+body.layout-compact #artist { font-size: 3vmin; }
+body.layout-compact .ln { font-size: calc(var(--lsize) * .82); }
+
+body.layout-tv #left { flex-basis: 42%; }
+body.layout-tv #artbox { width: min(100%, 66vmin); }
+body.layout-tv #meta { margin-top: 3vmin; }
+body.layout-tv #title { font-size: 6.2vmin; }
+body.layout-tv .ln { font-size: calc(var(--lsize) * 1.12); }
+
+body.layout-cinema #wrap { --pad: 8vmin; }
+body.layout-cinema #left { position: fixed; left: calc(var(--sa-l) + 5vmin); bottom: calc(var(--sa-b) + var(--bar-by) + 4vmin);
+  flex-direction: row; gap: 2vmin; z-index: 2; width: auto; max-width: 60vw; }
+body.layout-cinema #artbox { width: 10vmin; flex: none; }
+body.layout-cinema #art { border-radius: 1vmin; }
+body.layout-cinema #title { font-size: 3vmin; }
+body.layout-cinema #artist { font-size: 2.4vmin; }
+body.layout-cinema #quality { display: none !important; }
+/* Lines fade out before they reach the now-playing badge in the bottom corner. */
+body.layout-cinema #lyrics { -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 66%, transparent 84%); }
+body.layout-cinema .ln { text-align: center; transform-origin: center; font-size: calc(var(--lsize) * 1.2); }
+
+body.layout-nowbar #wrap { padding-bottom: calc(var(--sa-b) + 14vmin); }
+body.layout-nowbar #left { position: fixed; left: 50%; bottom: calc(var(--sa-b) + var(--bar-by) + 3.5vmin); transform: translateX(-50%);
+  flex-direction: row; gap: 2vmin; padding: 1.2vmin 3.2vmin 1.2vmin 1.2vmin; border-radius: 6vmin; z-index: 2; width: auto; max-width: 70vw;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .03)), rgba(12, 12, 16, .62);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), 0 2vmin 5vmin rgba(0, 0, 0, .45); }
+body.layout-nowbar #artbox { width: 8.5vmin; flex: none; }
+body.layout-nowbar #art { border-radius: 50%; }
+body.layout-nowbar #title { font-size: 3vmin; }
+body.layout-nowbar #artist { font-size: 2.3vmin; }
+body.layout-nowbar #quality { display: none !important; }
+body.layout-nowbar.paused #art { transform: scale(.9); }
+body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / var(--as)) linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- portrait: cover + title on top, lyrics below (compact/cinema/nowbar/lyrics-only keep their own shape) */
+@media (orientation: portrait) {
+  body.layout-split #wrap, body.layout-tv #wrap { flex-direction: column; gap: 2vmin;
+    padding: calc(var(--sa-t) + 6vmin) calc(var(--sa-r) + 6vmin) calc(var(--sa-b) + var(--bar-by) + 4vmin) calc(var(--sa-l) + 6vmin); }
+  body.layout-split #left, body.layout-tv #left { flex: 0 0 auto; }
+  body.layout-split #artbox { width: 62vmin; }
+  body.layout-tv #artbox { width: 78vmin; }
+  #meta { margin-top: 3vmin; }
+  body.layout-lyrics #wrap, body.layout-cinema #wrap { padding-top: calc(var(--sa-t) + 6vmin); }
+  body.layout-compact #wrap { padding-top: calc(var(--sa-t) + 7vmin); }
+  #lyrics { -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent); }
+}
+
+/* ======================================================================= controls
+   Glass pill: prev / big white play-pause / next, volume underneath. Over the cover in the cover layouts, centred on
+   screen otherwise. The blur only exists while it is visible (see the visibility rules below). */
+#ctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2vmin; box-sizing: border-box;
+  padding: 1.6vmin 2.6vmin; border-radius: 7vmin;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .02) 60%), var(--glass);
+  box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 0 0 1px var(--glass-edge), 0 3vmin 8vmin rgba(0, 0, 0, .5);
+  backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  opacity: 0; pointer-events: none; z-index: 5; }
+/* Inside the cover: explicit width - absolutely positioned at left:50% it otherwise only gets half the cover and
+   the buttons wrap into a lopsided stack. */
+#art > #ctl { position: absolute; left: 50%; bottom: 4%; width: 84%; transform: translate(-50%, 3vmin) scale(.94); }
+body > #ctl { position: fixed; left: 50%; top: 50%; width: min(64vmin, 80vw); transform: translate(-50%, -50%) scale(.9); }
+body.ui #ctl { opacity: 1; pointer-events: auto; }
+body.ui #art > #ctl { transform: translate(-50%, 0) scale(1); }
+body.ui > #ctl { transform: translate(-50%, -50%) scale(1); }
+#ctl button { flex: none; width: 11vmin; height: 11vmin; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center;
+  transition: transform .18s var(--ease), background .25s, box-shadow .25s; }
+#ctl button:active { transform: scale(.84); background: rgba(255, 255, 255, .16); }
+#ctl svg { width: 6vmin; height: 6vmin; fill: currentColor; }
+#ctl #pp { width: 13vmin; height: 13vmin; background: #fff; color: #0c0c0f;
+  box-shadow: 0 1.2vmin 3vmin rgba(0, 0, 0, .35), 0 0 4vmin rgba(var(--acc), .45); }
+#ctl #pp:active { background: #e8e8ec; }
+#ctl #pp svg { width: 7vmin; height: 7vmin; }
+#vol { display: none; flex: 0 0 100%; box-sizing: border-box; margin: .6vmin 0 .2vmin; height: 4vmin; accent-color: rgb(var(--acc)); }
+#ctl.has-vol #vol { display: block; }
+#gear { position: fixed; top: calc(var(--sa-t) + var(--bar-ty) + 4vmin); right: calc(var(--sa-r) + var(--bar-tx) + 4vmin);
+  width: 9vmin; height: 9vmin; border-radius: 50%; border: 0; z-index: 6; display: grid; place-items: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .02)), var(--glass);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), 0 1.5vmin 4vmin rgba(0, 0, 0, .4);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  opacity: 0; pointer-events: none; transform: scale(.8) rotate(-40deg); }
+#gear svg { width: 5vmin; height: 5vmin; fill: #fff; }
+#gear:active { transform: scale(.9) rotate(30deg); }
+body.ui #gear { opacity: 1; pointer-events: auto; transform: none; }
+/* Invisible (opacity 0) overlays with backdrop-filter still re-blur what's under them every frame - on this phone
+   that cost more CPU than everything else together. Once faded out they become visibility:hidden (no blur work). */
+#ctl, #gear { visibility: hidden; transition: opacity .35s, transform .5s var(--ease), visibility 0s .35s; }
+body.ui #ctl, body.ui #gear { visibility: visible; transition: opacity .35s, transform .5s var(--spring), visibility 0s; }
+
+/* Progress bar floats just above the edge; its ends stop where the rounded corner would cut it (flat screens:
+   --bar-* are 0, so it is a classic full-width edge bar). Fill: white into the cover's accent. */
+#bar { position: fixed; left: var(--bar-bx); right: var(--bar-bx); bottom: var(--bar-by); height: .8vmin; border-radius: 1vmin;
+  background: rgba(255, 255, 255, .16); z-index: 4; transition: height .3s var(--ease); }
+#bar::before { content: ''; position: absolute; left: 0; right: 0; top: -3vmin; bottom: -1vmin; }
+body.prog-top #bar { top: var(--bar-ty); bottom: auto; left: var(--bar-tx); right: var(--bar-tx); }
+body.prog-top #bar::before { top: -1vmin; bottom: -3vmin; }
+body.prog-off #bar { display: none; }
+body.ui #bar { height: 1.6vmin; }
+#fill { height: 100%; border-radius: inherit; transform-origin: left; transform: scaleX(0); will-change: transform;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .85), rgb(var(--acc)));
+  box-shadow: 0 0 2vmin rgba(var(--acc), .55); }
+#times { position: fixed; left: calc(var(--bar-bx) + 2vmin); right: calc(var(--bar-bx) + 2vmin); bottom: calc(var(--bar-by) + 2.4vmin);
+  display: none; justify-content: space-between; z-index: 4; font-size: 2.3vmin; font-weight: 700; opacity: .75; font-variant-numeric: tabular-nums; }
+body.times #times { display: flex; }
+body.prog-top #times { top: calc(var(--bar-ty) + 2.4vmin); bottom: auto; left: calc(var(--bar-tx) + 2vmin); right: calc(var(--bar-tx) + 2vmin); }
+
+/* ======================================================================= toasts, status, pairing */
+#toast { position: fixed; left: 50%; bottom: calc(var(--sa-b) + 9vmin); transform: translate(-50%, 2vmin) scale(.96); z-index: 7; max-width: 80vw;
+  display: flex; align-items: center; gap: 1.4vmin; padding: 1.2vmin 2.8vmin 1.2vmin 2vmin; border-radius: 5vmin;
+  background: rgba(14, 14, 18, .86); box-shadow: inset 0 0 0 1px var(--glass-edge), 0 2vmin 5vmin rgba(0, 0, 0, .45);
+  font-size: 2.5vmin; font-weight: 600; opacity: 0; pointer-events: none; }
+#toast::before { content: ''; flex: none; width: 1.3vmin; height: 1.3vmin; border-radius: 50%; background: rgb(var(--acc));
+  box-shadow: 0 0 1.5vmin rgba(var(--acc), .8); }
+#toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); transition: opacity .3s, transform .45s var(--spring), visibility 0s; }
+#toast:not(.show) { visibility: hidden; transition: opacity .3s, transform .3s var(--ease), visibility 0s .3s; }
+
+#dot { position: fixed; top: calc(var(--sa-t) + 4vmin); left: 50%; transform: translateX(-50%); z-index: 6;
+  display: flex; align-items: center; gap: 1.2vmin; padding: .9vmin 2.4vmin .9vmin 1.8vmin; border-radius: 5vmin;
+  background: rgba(14, 14, 18, .8); box-shadow: inset 0 0 0 1px var(--glass-edge);
+  font-size: 2.5vmin; font-weight: 600; opacity: 0; transition: opacity .4s; pointer-events: none; white-space: nowrap; }
+#dot::before { content: ''; width: 1.2vmin; height: 1.2vmin; border-radius: 50%; background: #ffb547; }
+body.stale #dot { opacity: 1; }
+body.stale #dot::before { animation: beacon 1.2s ease-out infinite; } /* only runs while it is shown */
+body:not(.stale) #dot { visibility: hidden; }
+@keyframes beacon { 0% { box-shadow: 0 0 0 0 rgba(255, 181, 71, .7); } 100% { box-shadow: 0 0 0 1.8vmin rgba(255, 181, 71, 0); } }
+
+#pairAsk { position: fixed; inset: 0; z-index: 20; display: none; place-items: center;
+  background: radial-gradient(80% 80% at 50% 50%, rgba(0, 0, 0, .55), rgba(0, 0, 0, .85));
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+body.pair-ask #pairAsk { display: grid; }
+.pa-card { background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .02)), rgba(22, 22, 27, .94);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), 0 30px 80px rgba(0, 0, 0, .6);
+  border-radius: 22px; padding: 26px 30px 22px; max-width: 86vw; text-align: center; animation: pop .45s var(--spring); }
+@keyframes pop { from { transform: scale(.9); opacity: 0; } }
+.pa-title { font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
+.pa-sub { font-size: 13px; opacity: .62; margin-top: 6px; }
+.pa-digits { margin: 18px 0 20px; font-size: 42px; font-weight: 800; letter-spacing: .32em; padding-left: .32em;
+  font-variant-numeric: tabular-nums; color: rgb(var(--acc)); text-shadow: 0 0 24px rgba(var(--acc), .45); }
+.pa-btns { display: flex; gap: 10px; justify-content: center; }
+.pa-btns button { border: 0; border-radius: 999px; padding: 11px 26px; font-size: 15px; font-weight: 700;
+  background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 1px var(--glass-edge); transition: transform .15s; }
+.pa-btns button:active { transform: scale(.95); }
+.pa-btns .pa-ok { background: #fff; color: #000; box-shadow: 0 6px 20px rgba(var(--acc), .35); }
+
+/* ======================================================================= settings sheet
+   Structure from Spicy Lyrics' settings panel (sl-sp-*, AGPL-3.0), restyled: accent-tinted controls, ⓘ help that
+   expands under the label (tap), two columns on a landscape phone. */
+#settings {
+  --t1: hsla(0, 0%, 100%, .94); --t2: hsla(0, 0%, 100%, .62); --t3: hsla(0, 0%, 100%, .38);
+  --hair: rgba(255, 255, 255, .08); --hair2: rgba(255, 255, 255, .15);
+  --tint: rgba(255, 255, 255, .06); --tint2: rgba(255, 255, 255, .13);
+  --r-sm: 9px; --r-md: 13px; --r-lg: 20px;
+  --modal-ease: cubic-bezier(.23, 1, .32, 1);
+  position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+  background-color: rgba(0, 0, 0, 0); pointer-events: none; transition: background-color .25s var(--modal-ease); font-size: 16px; }
+body.settings-open #settings { background-color: rgba(0, 0, 0, .5); pointer-events: auto; }
+.sl-modal { position: relative; width: min(94vw, 900px); height: 92vh; }
+body > #settings .sl-modal { margin: var(--sa-t) var(--sa-r) var(--sa-b) var(--sa-l); }
+.sl-modal::before { content: ""; position: absolute; inset: 0; border-radius: var(--r-lg); pointer-events: none;
+  background: linear-gradient(160deg, rgba(var(--acc), .12), transparent 40%), rgba(18, 18, 22, .72);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6); backdrop-filter: blur(40px) saturate(1.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), inset 0 0 0 1px var(--hair2), 0 30px 70px -12px rgba(0, 0, 0, .6);
+  transform: scale(.95) translateY(10px); transition: transform .3s var(--modal-ease); }
+.sl-modal-container { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; border-radius: var(--r-lg);
+  color: var(--t1); transform: scale(.95) translateY(10px); transition: transform .3s var(--modal-ease); }
+.sl-modal-container > * { opacity: 0; transition: opacity .25s var(--modal-ease); }
+/* Closed: no backdrop blur at all (see the performance note at the top). */
+body:not(.settings-open) .sl-modal::before { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+body:not(.settings-open) #settings { visibility: hidden; transition: background-color .25s, visibility 0s .25s; }
+body.settings-open .sl-modal::before, body.settings-open .sl-modal-container { transform: none; }
+body.settings-open .sl-modal-container > * { opacity: 1; }
+.sl-modal-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--hair); }
+.sl-modal-header h1 { font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em; margin: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
+.sl-modal-header h1::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: rgb(var(--acc));
+  box-shadow: 0 0 12px rgba(var(--acc), .8); }
+.sl-input { width: 100%; box-sizing: border-box; background: var(--tint); color: var(--t1); border: 0;
+  box-shadow: inset 0 0 0 1px var(--hair); border-radius: var(--r-sm); padding: 8px 11px; font: inherit;
+  font-size: .82rem; outline: none; user-select: text; transition: box-shadow .15s, background .15s; }
+.sl-input:focus { box-shadow: inset 0 0 0 1.5px rgba(var(--acc), .7); background: var(--tint2); }
+.sl-presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
+.sl-presets .sl-input { flex: 1 1 140px; width: auto; }
+.sl-text-btn { background: var(--tint); box-shadow: inset 0 0 0 1px var(--hair); border: 0; border-radius: var(--r-sm);
+  padding: 8px 13px; font-size: .82rem; font-weight: 600; color: var(--t1); transition: background .15s, transform .12s; }
+.sl-text-btn:active { background: var(--tint2); transform: scale(.97); }
+.sl-modal-close-btn { background: var(--tint); border: 0; width: 36px; height: 36px; border-radius: 50%; color: var(--t2);
+  display: flex; align-items: center; justify-content: center; transition: background .15s, transform .12s; }
+.sl-modal-close-btn:active { background: var(--tint2); transform: scale(.94) rotate(90deg); }
+.sl-modal-main-section { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 22px 24px; scrollbar-width: thin; }
+.sl-sp-section-title { display: flex; align-items: center; gap: 8px; font-size: .74rem; font-weight: 800; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--t2); padding: 18px 4px 8px; margin: 8px 0 2px; border-top: 1px solid var(--hair); }
+.sl-sp-section-title::before { content: ''; width: 14px; height: 3px; border-radius: 2px; background: rgb(var(--acc)); }
+.sl-sp-section-title:first-child { border-top: 0; padding-top: 8px; margin-top: 0; }
+.sl-sp-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; padding: 11px 12px;
+  border-radius: var(--r-md); transition: background .15s; }
+.sl-sp-row:active, .sl-sp-row.help-open { background: var(--tint); }
+.sl-sp-row--stacked { flex-direction: column; align-items: stretch; gap: 10px; }
+.sl-sp-row--stacked .sl-sp-control { width: 100%; }
+.sl-sp-label-wrap { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.sl-sp-label { display: flex; align-items: center; gap: 7px; font-size: .9rem; font-weight: 600; }
+.sl-sp-description { font-size: .78rem; color: var(--t2); line-height: 1.4; }
+/* ⓘ help: a small chip after the label; tap to expand the explanation. */
+.sl-help-btn { flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center;
+  font: italic 700 11px/1 Georgia, serif; color: var(--t2); background: var(--tint2); box-shadow: inset 0 0 0 1px var(--hair2);
+  transition: background .15s, color .15s, transform .2s; }
+.help-open .sl-help-btn { background: rgb(var(--acc)); color: #000; transform: rotate(360deg); }
+.sl-sp-help { display: none; flex: 0 0 100%; box-sizing: border-box; margin-top: 2px; padding: 9px 11px; border-radius: var(--r-sm); font-size: .78rem; line-height: 1.45;
+  color: var(--t1); background: rgba(var(--acc), .1); box-shadow: inset 3px 0 0 rgb(var(--acc)); user-select: text; }
+.help-open .sl-sp-help { display: block; animation: helpIn .25s var(--modal-ease); }
+@keyframes helpIn { from { opacity: 0; transform: translateY(-4px); } }
+.sl-sp-control { display: flex; align-items: center; flex-shrink: 0; }
+.sl-sp-toggle { position: relative; display: inline-flex; width: 44px; height: 26px; }
+.sl-sp-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.sl-sp-toggle-track { position: relative; width: 44px; height: 26px; border-radius: 13px; background: rgba(0, 0, 0, .45);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .08); transition: background .25s var(--modal-ease); }
+.sl-sp-toggle-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(245, 245, 245, .8); box-shadow: 0 2px 5px rgba(0, 0, 0, .5); transition: transform .3s var(--spring), background .25s; }
+.sl-sp-toggle input:checked + .sl-sp-toggle-track { background: rgba(var(--acc), .85);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2), 0 0 14px rgba(var(--acc), .35); }
+.sl-sp-toggle input:checked + .sl-sp-toggle-track::after { transform: translateX(18px); background: #fff; }
+.sl-sp-select { -webkit-appearance: none; appearance: none; background: var(--tint) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23fff' stroke-opacity='.6' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  color: var(--t1); box-shadow: inset 0 0 0 1px var(--hair); border: 0; border-radius: var(--r-sm); padding: 7px 30px 7px 11px;
+  font-size: .82rem; font-weight: 600; outline: none; }
+.sl-sp-select:focus { box-shadow: inset 0 0 0 1.5px rgba(var(--acc), .7); }
+.sl-sp-select option, .sl-sp-select optgroup { background: #1c1c21; color: #fff; }
+.sl-sp-slider { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.sl-sp-slider-track-wrap { position: relative; height: 28px; display: flex; align-items: center; touch-action: pan-y; }
+.sl-sp-slider-input { pointer-events: none; } /* driven by the gesture handler in settings.js */
+.sl-sp-slider.dragging .sl-sp-slider-input::-webkit-slider-thumb { transform: scale(1.3); box-shadow: 0 0 0 6px rgba(var(--acc), .25); }
+.sl-sp-slider-track, .sl-sp-slider-fill { position: absolute; top: 50%; height: 5px; transform: translateY(-50%); border-radius: 999px; pointer-events: none; }
+.sl-sp-slider-track { left: 0; right: 0; background: rgba(255, 255, 255, .14); }
+.sl-sp-slider-fill { background: linear-gradient(90deg, rgba(var(--acc), .7), rgb(var(--acc))); box-shadow: 0 0 10px rgba(var(--acc), .35); }
+.sl-sp-slider-center { position: absolute; top: 50%; width: 2px; height: 12px; transform: translate(-50%, -50%); border-radius: 1px; background: var(--hair2); pointer-events: none; }
+.sl-sp-slider-input { position: relative; width: 100%; height: 22px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; outline: none; z-index: 1; }
+.sl-sp-slider-input::-webkit-slider-runnable-track { height: 5px; background: transparent; }
+.sl-sp-slider-input::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6.5px; border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .55); transition: transform .15s var(--spring), box-shadow .15s; }
+.sl-sp-slider-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+.sl-sp-slider-value { font-size: .8rem; font-weight: 700; font-variant-numeric: tabular-nums; color: rgb(var(--acc)); }
+.sl-sp-slider-reset { border: 0; background: none; padding: 0; font-size: .78rem; font-weight: 600; color: var(--t3); }
+
+/* Phone-sized sheet: two columns of compact rows so a landscape screen shows a whole section at once.
+   Multi-column, not grid: the phone's WebView (Chrome 99) gives flex rows zero height inside a grid. */
+@media (max-height: 500px) {
+  #settings { font-size: 14px; }
+  .sl-modal-header { padding: 10px 14px 10px 18px; }
+  .sl-modal-main-section { padding: 4px 14px 14px; }
+  .sl-cols { columns: 2; column-gap: 14px; }
+  .sl-sp-section-title { column-span: all; padding: 12px 4px 4px; margin: 4px 0 0; }
+  .sl-sp-row { padding: 7px 10px; gap: 10px; min-height: 36px; box-sizing: border-box; break-inside: avoid; }
+  .sl-sp-row--stacked { gap: 2px; }
+  .sl-sp-description { font-size: 11px; line-height: 1.3; }
+  .sl-sp-help { font-size: 11.5px; }
+  .sl-sp-slider { gap: 0; }
+  .sl-sp-select { max-width: 160px; }
+}
+/* Portrait phone: one column. */
+@media (max-width: 500px) {
+  .sl-cols { columns: 1; }
+  .sl-modal { height: 94vh; }
+}

@@ -266,6 +266,8 @@
     else if (m.type === 'settings' && okSettings(m.S)) { LS.set(SETTINGS_KEY, JSON.stringify(m.S)); renderPanel(); }
     else if (m.type === 'schema' && Array.isArray(m.schema) && JSON.stringify(m.schema).length < 60000) {
       LS.set(SCHEMA_KEY, JSON.stringify(m.schema));
+      if (m.builtins && typeof m.builtins === 'object' && JSON.stringify(m.builtins).length < 20000) LS.set('lyricdock:builtins', JSON.stringify(m.builtins));
+      if (okSettings(m.defaults)) LS.set('lyricdock:defaults', JSON.stringify(m.defaults));
       if (okSettings(m.S)) LS.set(SETTINGS_KEY, JSON.stringify(m.S));
       renderPanel();
     }
@@ -472,24 +474,48 @@
   const ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
     + '<path d="M4.5 4h15A2.5 2.5 0 0 1 22 6.5v8a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 14.5v-8A2.5 2.5 0 0 1 4.5 4z"/>'
     + '<path d="M6 9h9" stroke-width="2.4"/><path d="M6 12.8h6" stroke-width="2.4" opacity=".5"/><path d="M12 17v2.6M8.6 20.6h6.8"/></svg>';
-  const CSS = `.ld-panel{--hair:rgba(255,255,255,.08);display:flex;flex-direction:column;gap:2px;font-size:14px}
-    .ld-panel h3{font-size:15px;font-weight:600;margin:12px 2px 2px;padding-top:12px;border-top:1px solid var(--hair)}
-    .ld-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 12px;border-radius:12px}
+  // Panel look: Spotify's dark surfaces with LyricDock mint as the accent; ⓘ chips show each setting's help on hover.
+  const CSS = `.ld-panel{--acc:61,220,151;--hair:rgba(255,255,255,.08);--hair2:rgba(255,255,255,.15);--tint:rgba(255,255,255,.05);
+      display:flex;flex-direction:column;gap:2px;font-size:14px;padding-bottom:8px}
+    .ld-panel h3{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+      color:rgba(255,255,255,.62);margin:14px 2px 2px;padding-top:16px;border-top:1px solid var(--hair)}
+    .ld-panel h3::before{content:'';width:14px;height:3px;border-radius:2px;background:rgb(var(--acc))}
+    .ld-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 12px;border-radius:12px;transition:background .15s}
     .ld-row>:first-child{min-width:0;flex:1} .ld-row>:last-child{flex-shrink:0} /* long text wraps; buttons stay visible */
-    .ld-row:hover{background:rgba(255,255,255,.06)} .ld-desc{font-size:12px;opacity:.6;margin-top:2px}
-    .ld-panel select,.ld-panel input[type=text],.ld-panel button{background:rgba(255,255,255,.06);color:inherit;border:0;
-      box-shadow:inset 0 0 0 1px var(--hair);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px}
-    .ld-panel button{cursor:pointer} .ld-panel button:hover{background:rgba(255,255,255,.14)} .ld-panel option{color:#000}
-    .ld-panel input[type=range]{width:200px;accent-color:#fff} .ld-panel input[type=text]{width:240px}
-    .ld-val{min-width:64px;text-align:right;font-variant-numeric:tabular-nums;opacity:.8}
-    .ld-status{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.06);font-size:13px}
-    .ld-status i{width:8px;height:8px;border-radius:50%;background:#e5534b} .ld-status.on i{background:#3ddc97}
+    .ld-row:hover{background:var(--tint)} .ld-desc{font-size:12px;opacity:.6;margin-top:3px;line-height:1.4}
+    .ld-label{display:flex;align-items:center;gap:7px;font-weight:600}
+    .ld-help{flex:none;width:17px;height:17px;border-radius:50%;display:inline-grid;place-items:center;cursor:help;
+      font:italic 700 11px/1 Georgia,serif;color:rgba(255,255,255,.65);background:rgba(255,255,255,.1);box-shadow:inset 0 0 0 1px var(--hair2)}
+    .ld-help:hover,.ld-help:focus{background:rgb(var(--acc));color:#000;outline:none}
+    .ld-help::after{content:attr(data-help);position:absolute;left:12px;right:12px;top:calc(100% - 4px);z-index:10;padding:10px 12px;border-radius:10px;
+      font:400 12.5px/1.45 var(--font-family,inherit);font-style:normal;color:#fff;text-align:left;white-space:normal;
+      background:#232327;box-shadow:inset 3px 0 0 rgb(var(--acc)),0 12px 30px rgba(0,0,0,.55),inset 0 0 0 1px var(--hair2);
+      opacity:0;transform:translateY(-4px);pointer-events:none;transition:opacity .15s,transform .15s}
+    .ld-help:hover::after,.ld-help:focus::after{opacity:1;transform:none}
+    .ld-panel select,.ld-panel input[type=text],.ld-panel button{background:var(--tint);color:inherit;border:0;
+      box-shadow:inset 0 0 0 1px var(--hair);border-radius:9px;padding:7px 11px;font:inherit;font-size:13px;transition:background .15s,box-shadow .15s}
+    .ld-panel select:focus,.ld-panel input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 1.5px rgba(var(--acc),.8)}
+    .ld-panel button{cursor:pointer;font-weight:600} .ld-panel button:hover{background:rgba(255,255,255,.12)}
+    .ld-panel button.ld-primary{background:rgb(var(--acc));color:#062;box-shadow:0 4px 14px rgba(var(--acc),.3)}
+    .ld-panel button.ld-primary:hover{filter:brightness(1.08)}
+    .ld-panel option,.ld-panel optgroup{background:#1c1c21;color:#fff}
+    .ld-panel input[type=range]{width:200px;accent-color:rgb(var(--acc))} .ld-panel input[type=text]{width:240px}
+    .ld-switch{-webkit-appearance:none;appearance:none;width:40px;height:24px;border-radius:12px;background:rgba(0,0,0,.45);position:relative;cursor:pointer;
+      box-shadow:inset 0 0 0 1px var(--hair2);transition:background .2s;margin:0}
+    .ld-switch::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#ddd;transition:transform .25s cubic-bezier(.34,1.45,.64,1)}
+    .ld-switch:checked{background:rgb(var(--acc))} .ld-switch:checked::after{transform:translateX(16px);background:#fff}
+    .ld-val{min-width:64px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:rgb(var(--acc))}
+    .ld-status{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;font-size:13px;font-weight:600;
+      background:linear-gradient(90deg,rgba(229,83,75,.16),rgba(255,255,255,.03));box-shadow:inset 0 0 0 1px rgba(229,83,75,.3)}
+    .ld-status.on{background:linear-gradient(90deg,rgba(var(--acc),.16),rgba(255,255,255,.03));box-shadow:inset 0 0 0 1px rgba(var(--acc),.3)}
+    .ld-status i{flex:none;width:9px;height:9px;border-radius:50%;background:#e5534b}
+    .ld-status.on i{background:rgb(var(--acc));animation:ldBeacon 1.8s ease-out infinite}
+    @keyframes ldBeacon{0%{box-shadow:0 0 0 0 rgba(var(--acc),.6)}100%{box-shadow:0 0 0 9px rgba(var(--acc),0)}}
     .ld-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
     .ld-topbar{position:relative}
     .ld-topbar::after{content:'';position:absolute;right:6px;top:6px;width:7px;height:7px;border-radius:50%;background:#e5534b;
       box-shadow:0 0 0 2px var(--background-base,#000);pointer-events:none}
-    .ld-topbar.ld-on::after{background:#3ddc97}`;
-  safe(() => { const st = document.createElement('style'); st.textContent = CSS; document.head.append(st); });
+    .ld-topbar.ld-on::after{background:#3ddc97}`;  safe(() => { const st = document.createElement('style'); st.textContent = CSS; document.head.append(st); });
 
   let panel = null;
   const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
@@ -503,7 +529,7 @@
 
   function control(x, S) {
     const v = S[x.k] ?? x.def;
-    if (x.type === 'toggle') { const c = h('input', { type: 'checkbox', checked: !!v }); c.onchange = () => change(x.k, c.checked); return c; }
+    if (x.type === 'toggle') { const c = h('input', { type: 'checkbox', checked: !!v, className: 'ld-switch' }); c.onchange = () => change(x.k, c.checked); return c; }
     if (x.type === 'choice') {
       const s = h('select', {}, ...x.opts.map(([val, name]) => h('option', { value: val, selected: val === v }, name)));
       s.onchange = () => change(x.k, s.value);
@@ -521,6 +547,13 @@
     return t;
   }
 
+  // Label + ⓘ chip; hovering (or focusing) the chip shows the setting's help text under the row.
+  function label(x) {
+    const l = h('div', { className: 'ld-label' }, x.label);
+    if (x.help) { const c = h('span', { className: 'ld-help', tabIndex: 0, title: '' }, 'i'); c.dataset.help = x.help; l.append(c); }
+    return l;
+  }
+
   function renderPanel() {
     if (!panel?.isConnected) return;
     const schema = readJson(SCHEMA_KEY, []), S = readJson(SETTINGS_KEY, {}), presets = readJson(PRESETS_KEY, {});
@@ -530,7 +563,7 @@
     const latest = window.__lyricdock?.latest;
     kids.push(h('div', { className: 'ld-row' }, h('div', {}, `LyricDock ${VERSION === 'dev' ? '(development build)' : 'v' + VERSION}`,
       h('div', { className: 'ld-desc' }, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : latest && latest !== VERSION ? `v${latest} downloaded` : 'Up to date - updates install automatically')),
-      VERSION === 'dev' ? '' : latest && latest !== VERSION ? h('button', { onclick: () => location.reload() }, 'Update now')
+      VERSION === 'dev' ? '' : latest && latest !== VERSION ? h('button', { className: 'ld-primary', onclick: () => location.reload() }, 'Update now')
         : h('button', { onclick: e => checkUpdate(e.target) }, 'Check for updates')));
     // pairing (no-adb link): the code the phone shows under its waiting screen / Settings -> Connection
     const pc = pairCode(), codeIn = h('input', { type: 'text', placeholder: 'e.g. K7QX-9MP-2F', value: pc ? `${pc.slice(0, 4)}-${pc.slice(4, 7)}-${pc.slice(7)}` : '' });
@@ -544,21 +577,26 @@
       } }, 'Pair'))));
     // presets
     const names = Object.keys(presets).sort();
-    const sel = h('select', {}, ...(names.length ? names.map(n => h('option', { value: n }, n)) : [h('option', { value: '' }, 'No presets yet - save one')]));
+    // Built-in presets come from the phone (its shipped default config and variants); yours are stored here.
+    const builtins = readJson('lyricdock:builtins', {}), defs = readJson('lyricdock:defaults', {});
+    const grp = (label, list, pre) => { const g = h('optgroup', { label }); list.forEach(n => g.append(h('option', { value: pre + n }, n))); return g; };
+    const sel = h('select', {}, ...(Object.keys(builtins).length ? [grp('Built-in', Object.keys(builtins), 'b:')] : []),
+      ...(names.length ? [grp('Yours', names, 'u:')] : [h('option', { value: '' }, 'No presets of yours yet - save one')]));
+    const chosen = () => sel.value.startsWith('b:') ? { ...defs, ...builtins[sel.value.slice(2)] } : presets[sel.value.slice(2)];
     const name = h('input', { type: 'text', placeholder: 'New preset name' });
     const savePresets = p => { LS.set(PRESETS_KEY, JSON.stringify(p)); send({ type: 'presets', presets: p }); renderPanel(); };
     kids.push(h('h3', {}, 'Presets'), h('div', { className: 'ld-row' }, h('div', { className: 'ld-presets' },
       sel,
-      h('button', { onclick: () => { const p = presets[sel.value]; if (!p) return; LS.set(SETTINGS_KEY, JSON.stringify({ ...S, ...p }));
+      h('button', { onclick: () => { const p = chosen(); if (!p) return; LS.set(SETTINGS_KEY, JSON.stringify({ ...S, ...p }));
         if (on) send({ type: 'load', S: p }); else LS.set(DIRTY_KEY, '1'); renderPanel(); } }, 'Apply'),
-      h('button', { onclick: () => { if (!sel.value) return; const p = { ...presets }; delete p[sel.value]; savePresets(p); } }, 'Delete'),
+      h('button', { onclick: () => { if (!sel.value.startsWith('u:')) return; const p = { ...presets }; delete p[sel.value.slice(2)]; savePresets(p); } }, 'Delete'),
       name,
       h('button', { onclick: () => { const n = name.value.trim().slice(0, 40); if (!n) return; const { apiKey, ...rest } = S; savePresets({ ...presets, [n]: rest }); } }, 'Save current'))));
     if (!schema.length) kids.push(h('div', { className: 'ld-desc' }, 'Connect the phone once so its settings can load here.'));
     for (const x of schema) {
       if (x.group) { kids.push(h('h3', {}, x.group)); continue; }
       kids.push(h('div', { className: 'ld-row' },
-        h('div', {}, h('div', {}, x.label), ...(x.desc ? [h('div', { className: 'ld-desc' }, x.desc)] : [])), control(x, S)));
+        h('div', {}, label(x), ...(x.desc ? [h('div', { className: 'ld-desc' }, x.desc)] : [])), control(x, S)));
     }
     panel.replaceChildren(...kids);
   }
@@ -606,7 +644,7 @@
           h('button', { onclick: () => { Spicetify.Platform?.ClipboardAPI?.copy(cmd); Spicetify.showNotification('Copied'); } }, 'Copy'))),
       h('div', { className: 'ld-presets', style: 'justify-content:space-between;margin-top:8px' },
         h('a', { href: `https://github.com/DhakadG/lyricdock/releases/tag/v${to}`, target: '_blank' }, 'Release notes'),
-        h('button', { style: 'background:#1ed760;color:#000;font-weight:700;border-radius:999px;padding:8px 22px', onclick: () => location.reload() }, 'Update')));
+        h('button', { className: 'ld-primary', style: 'border-radius:999px;padding:9px 24px', onclick: () => location.reload() }, 'Update')));
     Spicetify.PopupModal.display({ title: 'LyricDock update available', content: box });
   }
   addEventListener('lyricdock:update', () => { renderPanel(); safe(showUpdate); });

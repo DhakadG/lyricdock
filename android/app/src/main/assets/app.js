@@ -29,12 +29,26 @@ function art(url) {
 let kw = null;
 // Half the CSS-pixel size (a quarter of the device's): identical under this much blur, and it's what lets the
 // phone's GPU (Adreno 505) hold 60fps - full size ran the whole app at 32-42fps.
-function sizeBg() { const c = $('bgc'); c.width = Math.round(innerWidth / 2); c.height = Math.round(innerHeight / 2); kw?.resize(); }
+// Settings -> Performance -> Background resolution (default 0.5).
+function sizeBg() { const c = $('bgc'); c.width = Math.round(innerWidth * S.bgRes); c.height = Math.round(innerHeight * S.bgRes); kw?.resize(); }
 function kawarp() {
   if (kw || !window.Kawarp) return kw;
   try {
-    kw = new Kawarp($('bgc'), { animationSpeed: S.bgSpeed, warpIntensity: S.bgWarp, blurPasses: 6, saturation: 1.5,
-      tintIntensity: 0, dithering: 0.008, transitionDuration: 1000, scale: 1 });
+    kw = new Kawarp($('bgc'), { animationSpeed: S.bgSpeed, warpIntensity: S.bgWarp, blurPasses: S.bgBlur, saturation: S.bgSaturation,
+      tintIntensity: 0, dithering: 0.008, transitionDuration: S.bgFade, scale: 1 });
+    // Frame-rate cap (Settings -> Performance): Kawarp's own loop, minus the frames the cap skips.
+    const k = kw;
+    k.renderLoop = t => {
+      if (!k.isPlaying) return;
+      if (t - k.lastFrameTime >= 1000 / +S.bgFps - 4) {
+        const dt = (t - k.lastFrameTime) / 1000;
+        k.lastFrameTime = t;
+        k._animationSpeed += (k._targetAnimationSpeed - k._animationSpeed) * 0.05;
+        k.accumulatedTime += dt * k._animationSpeed;
+        k.render(k.accumulatedTime, t);
+      }
+      k.animationId = requestAnimationFrame(k.renderLoop);
+    };
     sizeBg(); // canvas is 300x150 until told otherwise
   } catch (e) { kw = null; } // no WebGL -> blurred-art fallback below
   return kw;
@@ -56,6 +70,16 @@ function colours(im) {
 
 // 'artist' is the dynamic background fed the artist's picture instead of the cover (falls back to the cover).
 const artistImgs = new Map(), audio = new Map();
+// Accent colour (progress bar, buttons, settings): the most colourful of the cover's three sampled colours, lifted
+// so it stays visible on dark backgrounds. Settings -> Now playing -> Accent colour from cover.
+function accentFrom(cs) {
+  const sat = ([r, g, b]) => Math.max(r, g, b) - Math.min(r, g, b);
+  let [r, g, b] = cs.map(c => c.match(/\d+/g).map(Number)).sort((x, y) => sat(y) - sat(x))[0];
+  const k = 220 / Math.max(r, g, b, 1);
+  if (k > 1) { r = Math.min(255, r * k); g = Math.min(255, g * k); b = Math.min(255, b * k); }
+  document.documentElement.style.setProperty('--acc', `${r | 0}, ${g | 0}, ${b | 0}`);
+}
+
 function background(url, im) {
   if (S.bg === 'artist' && P.artistImg && url === P.art) {
     const a = P.artistImg;
@@ -71,9 +95,11 @@ function paint(url, im) {
   if (dyn && im && kawarp()) {
     try { kw.loadImageElement(im); kw.start(); } catch (e) {}
   } else kw?.stop();
-  if (S.bg === 'gradient' && im) {
-    try { colours(im).forEach((c, i) => root.setProperty(`--c${i + 1}`, c)); } catch (e) {}
-  }
+  if (im) try {
+    const cs = colours(im);
+    if (S.bg === 'gradient') cs.forEach((c, i) => root.setProperty(`--c${i + 1}`, c));
+    accentFrom(cs);
+  } catch (e) {}
   if (dyn && !kawarp()) { document.body.classList.remove('bg-dynamic', 'bg-artist'); document.body.classList.add('bg-blur'); } // no WebGL
 }
 function onArtist(m) {
@@ -203,7 +229,7 @@ function onPreload(m) {
 // ---- liked + audio quality (sent with every heartbeat)
 function onMeta(m) {
   if (Number.isFinite(m.volume) && !(performance.now() < P.volLock)) $('vol').value = m.volume;
-  $('ctl').classList.toggle('has-vol', Number.isFinite(m.volume));
+  $('ctl').classList.toggle('has-vol', Number.isFinite(m.volume) && S.showVolume);
   if (typeof m.liked === 'boolean' && performance.now() > P.heartLock) {
     P.liked = m.liked;
     $('heart').classList.toggle('on', m.liked);
@@ -287,7 +313,7 @@ function handle(m) {
     if (Settings.fresh && !P.gotHello && m.last) Settings.load(m.last);
     Settings.setPresets(m.presets);
     P.gotHello = true;
-    send({ type: 'schema', schema: Settings.schema(), S }); // lets Spotify's LyricDock panel render these settings
+    send({ type: 'schema', schema: Settings.schema(), S, builtins: Settings.BUILTIN, defaults: Settings.defaults }); // lets Spotify's LyricDock panel render these settings
     if (!m.paired) send({ type: 'pair', code: Rtc.code }); // hand the pairing code over the link we already have
   }
   else if (m.type === 'set') Settings.setRemote(m.k, m.v); // changed from the desktop panel
@@ -410,8 +436,11 @@ function applyInsets() {
 // ---- settings -> page
 function apply(k) {
   const b = document.body;
-  b.className = b.className.replace(/\b(layout|bg|align|prog|pp|scroll)-\S+/g, '').replace(/\s+/g, ' ').trim();
-  b.classList.add(`layout-${S.layout}`, `bg-${S.bg}`, `align-${S.align}`, `prog-${S.progress}`, `pp-${S.ppAnim}`, `scroll-${S.scroll}`);
+  b.className = b.className.replace(/\b(layout|bg|align|prog|pp|scroll|art)-\S+/g, '').replace(/\s+/g, ' ').trim();
+  b.classList.add(`layout-${S.layout}`, `bg-${S.bg}`, `align-${S.align}`, `prog-${S.progress}`, `pp-${S.ppAnim}`, `scroll-${S.scroll}`, `art-${S.artSide}`);
+  b.classList.toggle('no-accent', !S.accent);
+  b.classList.toggle('no-spin', !S.spin);
+  if (!S.showVolume) $('ctl').classList.remove('has-vol');
   b.classList.toggle('blurlines', S.blurLines);
   b.classList.toggle('times', S.times);
   b.classList.toggle('show-liked', S.showLiked);
@@ -422,11 +451,15 @@ function apply(k) {
   r.setProperty('--size', S.size);
   r.setProperty('--dim', S.bgDim);
   r.setProperty('--as', S.animSpeed);
+  r.setProperty('--lw', S.weight);
+  r.setProperty('--lgap', S.lineGap + 'vmin');
+  r.setProperty('--lop', S.lineOpacity);
+  r.setProperty('--blur', S.blurAmount + 'px');
   (['split', 'tv'].includes(S.layout) ? $('art') : b).appendChild($('ctl'));
-  if (kw) { kw.animationSpeed = S.bgSpeed; kw.warpIntensity = S.bgWarp; }
+  if (kw) { kw.animationSpeed = S.bgSpeed; kw.warpIntensity = S.bgWarp; kw.blurPasses = S.bgBlur; kw.saturation = S.bgSaturation; kw.transitionDuration = S.bgFade; }
   if (!k || k === '*' || k === 'bg') art(P.art).then(im => background(P.art, im));
   if (kw && k === 'bgBeat') kw.animationSpeed = S.bgSpeed;
-  if (k === '*' || ['roman', 'credits', 'letters'].includes(k)) Lyrics.rebuild();
+  if (k === '*' || ['roman', 'credits', 'letters', 'lettersMin', 'dots', 'dotsGap'].includes(k)) Lyrics.rebuild();
   requestAnimationFrame(() => { Lyrics.refresh(); sizeBg(); });
 }
 Settings.onChange(apply);

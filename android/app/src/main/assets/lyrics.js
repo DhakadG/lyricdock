@@ -16,7 +16,7 @@ const Lyrics = (() => {
 
   // Spicy's letter mode: a long-held short word glows and lifts letter by letter, each letter owning an equal
   // slice of the word's time. Scripts with combining marks (Indic, Arabic...) stay whole - splitting breaks them.
-  const letterable = (text, x) => Settings.S.letters && x.e - x.t >= 1000 && !x.p && !(x.i > 0 && x.prevP) &&
+  const letterable = (text, x) => Settings.S.letters && x.e - x.t >= Settings.S.lettersMin && !x.p && !(x.i > 0 && x.prevP) &&
     /^[\p{L}\p{N}'’!?,.-]{2,12}$/u.test(text) && !/\p{M}/u.test(text);
 
   function syllables(container, syls, m) {
@@ -116,7 +116,8 @@ const Lyrics = (() => {
     }
     synced = lyr.kind !== 'static';
     const frag = [];
-    if (synced && lyr.lines[0].t > 3000) frag.push(dots(0, lyr.lines[0].t));
+    const S = Settings.S, gap = S.dotsGap * 1000;
+    if (synced && S.dots && lyr.lines[0].t > Math.min(3000, gap)) frag.push(dots(0, lyr.lines[0].t));
     lyr.lines.forEach((ln, i) => {
       const el = div('ln' + (ln.opp ? ' opp' : ''));
       const entry = { el, t: ln.t, e: ln.e };
@@ -136,7 +137,7 @@ const Lyrics = (() => {
       lines.push(entry);
       frag.push(el);
       const next = lyr.lines[i + 1];
-      if (synced && next && next.t - ln.e > 4000) frag.push(dots(ln.e, next.t));
+      if (synced && S.dots && next && next.t - ln.e > gap) frag.push(dots(ln.e, next.t));
     });
     // Provider is always shown when known (API terms: attribution goes wherever the lyrics are).
     if (lyr.writers?.length || lyr.source) {
@@ -163,18 +164,17 @@ const Lyrics = (() => {
   // Line states mirror Spicy Lyrics: NotSung / Active / Sung. Words in active lines run Spicy's springs.
   // Scroll lead: like Spicy, the list starts moving to the next line a moment before it is sung, so the eye is
   // already there. A seek (position jumps against the clock) snaps instead of sweeping through every line.
-  const LEAD = 250;
   let lastP = null;
   function update(p, dt) {
     if (!synced) return;
     const jumped = lastP !== null && Math.abs(p - lastP - dt * 1000) > 1500;
     lastP = p;
-    const opts = { lift: Settings.S.lift, glow: Settings.S.glow };
+    const S = Settings.S, opts = { lift: S.lift, glow: S.glow, liftK: S.liftAmount, glowK: S.glowStrength };
     let a = -1;
     for (let i = 0; i < lines.length; i++) {
       const x = lines[i];
       const state = p < x.t ? 'ns' : p >= x.e ? 'sung' : 'on';
-      if (x.t <= p + LEAD) a = i;
+      if (x.t <= p + S.scrollLead) a = i;
       if (state !== x.state) {
         if (x.state === 'on' && x.syl) { Anim.rest(x.syl, state === 'sung'); if (x.bg) Anim.rest(x.bg, state === 'sung'); }
         if (x.state === 'on' && x.dots) Anim.restDots(x);
@@ -201,7 +201,7 @@ const Lyrics = (() => {
       const d = Math.min(3, Math.abs(k - i));
       if (x.d !== d) { x.d = d; x.el.dataset.d = d; }
       x.el.classList.toggle('past', k < a);
-      x.el.classList.toggle('far', Math.abs(k - i) > 20); // off screen: skip painting it (long songs)
+      x.el.classList.toggle('far', Math.abs(k - i) > Settings.S.renderDistance); // off screen: skip painting it (long songs)
     });
     const el = lines[i]?.el;
     if (!el) return;
