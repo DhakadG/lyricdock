@@ -20,9 +20,10 @@ const Settings = (() => {
 
     { group: 'Background' },
     { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
-      ['dynamic', 'Dynamic'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']] },
-    { k: 'bgSpeed', label: 'Motion speed', type: 'range', min: 0, max: 1.5, step: 0.05, def: 0.35, when: s => s.bg === 'dynamic' },
-    { k: 'bgWarp', label: 'Warp', type: 'range', min: 0, max: 1, step: 0.05, def: 1, when: s => s.bg === 'dynamic' },
+      ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']] },
+    { k: 'bgSpeed', label: 'Motion speed', type: 'range', min: 0, max: 1.5, step: 0.05, def: 0.35, when: s => s.bg === 'dynamic' || s.bg === 'artist' },
+    { k: 'bgBeat', label: 'Move with the music', desc: 'Speeds up with the tempo and loud parts (Spotify desktop only)', type: 'toggle', def: true, when: s => s.bg === 'dynamic' || s.bg === 'artist' },
+    { k: 'bgWarp', label: 'Warp', type: 'range', min: 0, max: 1, step: 0.05, def: 1, when: s => s.bg === 'dynamic' || s.bg === 'artist' },
     { k: 'bgDim', label: 'Dim', type: 'range', min: 0, max: 0.8, step: 0.05, def: 0.2, when: s => s.bg !== 'black' },
 
     { group: 'Lyrics' },
@@ -34,6 +35,8 @@ const Settings = (() => {
     { k: 'blurLines', label: 'Blur distant lines', type: 'toggle', def: true },
     { k: 'glow', label: 'Glow on sung words', type: 'toggle', def: true },
     { k: 'lift', label: 'Lift sung words', type: 'toggle', def: true },
+    { k: 'letters', label: 'Letter-by-letter on long notes', desc: 'Held words glow and lift one letter at a time', type: 'toggle', def: true },
+    { k: 'notices', label: 'Status notices', desc: 'Short messages: offline, rate limits, source changes, updates', type: 'toggle', def: true },
     { k: 'credits', label: 'Show credits', desc: 'Written by / Provided by under the lyrics', type: 'toggle', def: true },
     { k: 'tapSeek', label: 'Tap a line to jump to it', type: 'toggle', def: true },
     { k: 'offset', label: 'Sync offset', desc: 'Positive shows lyrics later, negative earlier', type: 'range', min: -1000, max: 1000, step: 10, def: 0, unit: 'ms' },

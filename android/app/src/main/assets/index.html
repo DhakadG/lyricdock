@@ -16,7 +16,7 @@
   /* ---- backgrounds */
   #bgc, #bg, #bgGrad, #dim { position: fixed; inset: 0; }
   #bgc { width: 100%; height: 100%; display: none; }
-  body.bg-dynamic #bgc { display: block; }
+  body.bg-dynamic #bgc, body.bg-artist #bgc { display: block; }
   #bg { display: none; background: #111 center/cover; transform: scale(1.4); filter: blur(60px) saturate(1.7) brightness(.7); }
   body.bg-blur #bg { display: block; }
   #bgGrad { display: none; background: linear-gradient(135deg, var(--c1, #333), var(--c2, #181818), var(--c3, #050505));
@@ -83,6 +83,15 @@
     text-shadow: 0 0 var(--tsr) rgba(255, 255, 255, var(--tso)); }
   .bgv { font-size: .55em; opacity: .85; margin-top: .3vmin; }
   .ln.on .bgv .sy { background-image: linear-gradient(90deg, rgba(255, 255, 255, .6) var(--gp), rgba(255, 255, 255, .3) calc(var(--gp) + 20%)); }
+  /* Right-to-left lines (Urdu / Arabic / Hebrew in their own script): right-aligned, the fill sweeps leftwards. */
+  .ln.rtl { text-align: right; transform-origin: right center; }
+  body.align-center .ln.rtl { text-align: center; transform-origin: center; }
+  .ln.rtl.on .sy { background-image: linear-gradient(270deg, rgba(255, 255, 255, .85) var(--gp), rgba(255, 255, 255, .5) calc(var(--gp) + 20%)); }
+  .ln.far { visibility: hidden; } /* 20+ lines away: never on screen, so don't paint it */
+  #toast { position: fixed; left: 50%; bottom: calc(var(--sa-b) + 9vmin); transform: translate(-50%, 2vmin); z-index: 7; max-width: 80vw;
+    padding: 1.1vmin 2.6vmin; border-radius: 5vmin; background: rgba(20, 20, 24, .82); font-size: 2.6vmin; opacity: 0; pointer-events: none;
+    transition: opacity .3s, transform .3s var(--ease); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
   /* Interlude dots (Spicy's musical-line): only there while the gap is playing; anim.js drives each dot + the group. */
   .ln.dots { display: none; opacity: 1; transform: none; padding: 2vmin 0; }
   .ln.dots.on { display: block; }
@@ -336,6 +345,7 @@
 <div id="times"><span id="tcur"></span><span id="tdur"></span></div>
 <button id="gear"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
 <div id="dot">Reconnecting…</div>
+<div id="toast"></div>
 <div id="pairAsk"><div class="pa-card"><div class="pa-title">Connect <b id="pairName"></b>?</div><div class="pa-sub">Allow only if Spotify on your computer shows the same code:</div><div id="pairDigits" class="pa-digits"></div><div class="pa-btns"><button id="pairDeny">Deny</button><button id="pairAllow" class="pa-ok">Allow</button></div></div></div>
 <div id="settings">
   <div class="sl-modal">

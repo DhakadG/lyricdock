@@ -78,10 +78,12 @@ const Anim = (() => {
     const st = w.el.style;
     const put = (prop, val) => { if (w[prop] !== val) { w[prop] = val; st.setProperty(prop, val); } };
     put('--gp', grad.toFixed(1) + '%');
-    put('scale', opts.lift ? s.toFixed(4) : '1');
-    put('transform', opts.lift ? `translate3d(0, ${(y).toFixed(4)}em, 0)` : 'none');
-    put('--tsr', (4 + 2 * g).toFixed(1) + 'px');
-    put('--tso', opts.glow ? Math.min(g * 35, 100).toFixed(0) + '%' : '0%');
+    // Letters of a long-held word (lyrics.js letter mode) get Spicy's emphasis: more lift, scale and glow.
+    const e = w.emph ? 2.2 : 1;
+    put('scale', opts.lift ? (1 + (s - 1) * e).toFixed(4) : '1');
+    put('transform', opts.lift ? `translate3d(0, ${(y * e).toFixed(4)}em, 0)` : 'none');
+    put('--tsr', (4 + (w.emph ? 6 : 2) * g).toFixed(1) + 'px');
+    put('--tso', opts.glow ? Math.min(g * 35 * (w.emph ? 1.6 : 1), 100).toFixed(0) + '%' : '0%');
   }
 
   // ---- interlude dots (Spicy's DotAnimations / DotGroupAnimations). Each dot owns a third of the gap and

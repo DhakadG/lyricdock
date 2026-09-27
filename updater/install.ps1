@@ -116,7 +116,22 @@ Ok 'Spicetify applied - Spotify is starting'
 # Phone app: it updates itself from GitHub Releases (Settings -> Updates). With a phone plugged in over adb,
 # install the latest APK now as well.
 Section 'PHONE APP'
-$adb = try { & "$app\find-adb.ps1" } catch { $null } # PATH, Android SDK, the companion's copy, or the one a repo checkout used
+$adb = try { & "$app\find-adb.ps1" } catch { $null } # PATH, Android SDK, the companion's copy, a remembered one
+if (-not $adb -and (Test-Path "$PWD\.tools\sdk\platform-tools\adb.exe")) { $adb = "$PWD\.tools\sdk\platform-tools\adb.exe" } # run from a repo checkout
+if (-not $adb) {
+    Info 'adb is not installed. It is optional: it adds the USB link and the companion''s phone controls.'
+    $a = Read-Host '             Download Google''s Android platform-tools (about 7 MB)? [Y/n]'
+    if ($a -notmatch '^n') {
+        try {
+            Invoke-WebRequest -UseBasicParsing 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile "$env:TEMP\platform-tools.zip"
+            Expand-Archive "$env:TEMP\platform-tools.zip" "$env:LOCALAPPDATA\LyricDock" -Force
+            Remove-Item "$env:TEMP\platform-tools.zip" -ErrorAction SilentlyContinue
+            $adb = "$env:LOCALAPPDATA\LyricDock\platform-tools\adb.exe"
+            Ok 'adb installed'
+        } catch { Warn "adb download failed: $($_.Exception.Message)" }
+    }
+}
+if ($adb) { Set-Content "$env:LOCALAPPDATA\LyricDock\adb-path.txt" $adb; Info "Using adb: $adb" } # the companion uses the same one
 $phone = if ($adb) { (& $adb devices) -match "`tdevice$" | Select-Object -First 1 } else { $null }
 if ($phone) {
     try {
@@ -141,6 +156,7 @@ if ($phone) {
 } elseif (-not $adb) { Info 'adb not installed - fine: the phone app updates itself (Settings -> Updates).' }
 else { Info 'No phone on adb - the phone app updates itself (Settings -> Updates).' }
 
+Get-CimInstance Win32_Process -Filter "Name like 'p%sh%.exe'" | Where-Object { $_.CommandLine -like '*LyricDock.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } # restart it with the new files
 # Start the companion in the tray (single instance, so re-running the installer doesn't stack copies).
 Start-Process $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$app\LyricDock.ps1`" -Tray" -WindowStyle Hidden
 

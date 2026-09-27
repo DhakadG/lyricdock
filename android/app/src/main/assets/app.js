@@ -53,19 +53,62 @@ function colours(im) {
   return [avg(0, 0, 6, 6), avg(3, 3, 9, 9), avg(6, 6, 12, 12)];
 }
 
+// 'artist' is the dynamic background fed the artist's picture instead of the cover (falls back to the cover).
+const artistImgs = new Map(), audio = new Map();
 function background(url, im) {
-  const root = document.documentElement.style;
-  // Cover still downloading (swap only waits ~0.9s): finish it, then update - otherwise the old song's colours stick.
-  if (!im && url) art(url).then(i => { if (i && P.art === url) background(url, i); });
+  if (S.bg === 'artist' && P.artistImg && url === P.art) {
+    const a = P.artistImg;
+    return art(a).then(i => { if (P.artistImg === a) paint(a, i); });
+  }
+  paint(url, im);
+}
+function paint(url, im) {
+  const root = document.documentElement.style, dyn = S.bg === 'dynamic' || S.bg === 'artist';
+  // Image still downloading (swap only waits ~0.9s): finish it, then update - otherwise the old song's colours stick.
+  if (!im && url) art(url).then(i => { if (i && (P.art === url || P.artistImg === url)) paint(url, i); });
   $('bg').style.backgroundImage = url ? `url("${url}")` : 'none';
-  if (S.bg === 'dynamic' && im && kawarp()) {
+  if (dyn && im && kawarp()) {
     try { kw.loadImageElement(im); kw.start(); } catch (e) {}
   } else kw?.stop();
   if (S.bg === 'gradient' && im) {
     try { colours(im).forEach((c, i) => root.setProperty(`--c${i + 1}`, c)); } catch (e) {}
   }
-  if (S.bg === 'dynamic' && !kawarp()) document.body.classList.replace('bg-dynamic', 'bg-blur'); // no WebGL
+  if (dyn && !kawarp()) { document.body.classList.remove('bg-dynamic', 'bg-artist'); document.body.classList.add('bg-blur'); } // no WebGL
 }
+function onArtist(m) {
+  if (!/^https:\/\/[^"'()\\\s]+$/.test(m.img || '')) return;
+  artistImgs.set(m.id, m.img);
+  if (artistImgs.size > 12) artistImgs.delete(artistImgs.keys().next().value);
+  if (m.id === P.id && P.artistImg !== m.img) { P.artistImg = m.img; if (S.bg === 'artist') background(P.art); }
+}
+// Tempo + loudness (0..1 every 0.5s) from Spotify desktop's audio analysis: the background moves with the music.
+function onAudio(m) {
+  if (typeof m.id !== 'string' || !Number.isFinite(m.tempo) || !Array.isArray(m.loud)) return;
+  audio.set(m.id, m);
+  if (audio.size > 6) audio.delete(audio.keys().next().value);
+}
+let beatAt = 0;
+function beatBg(p) {
+  if (!kw || performance.now() - beatAt < 200) return;
+  beatAt = performance.now();
+  const a = S.bgBeat && audio.get(P.id);
+  const level = a ? a.loud[Math.max(0, p / 500 | 0)] ?? 0.5 : 0.5;
+  const target = a && P.playing ? S.bgSpeed * Math.min(1.6, Math.max(0.6, a.tempo / 120)) * (0.45 + level * 1.1) : S.bgSpeed;
+  kw.animationSpeed += (target - kw.animationSpeed) * 0.35; // eased, so beats swell rather than jerk
+}
+
+// ---- short status notices (Spicy-style toasts)
+let toastT;
+window.notice = (text, ms = 3500) => {
+  if (!S.notices) return;
+  const t = $('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('show'), ms);
+};
+addEventListener('offline', () => notice('Offline - lyrics and art may be missing until the network is back'));
+addEventListener('online', () => notice('Back online'));
 
 // ---- track changes
 const OUT = {
@@ -90,6 +133,7 @@ function swap(m, im, lyr) {
   P.art = m.art;
   P.dur = m.dur || P.dur;
   P.lyrics = lyr;
+  P.artistImg = artistImgs.get(m.id) ?? null;
   $('title').textContent = m.title || '';
   $('artist').textContent = m.artist || '';
   $('art').style.backgroundImage = m.art ? `url("${m.art}")` : 'none';
@@ -222,6 +266,7 @@ function decideSource() {
   Web.setWanted(S.source === 'web' || (S.source === 'auto' && !(bLive && b.playing)));
   if (want === P.source) return;
   P.source = want;
+  if (P.shown) notice(want === 'web' ? 'Following your Spotify account' : 'Following Spotify on the computer');
   const s = SRC[want];
   for (const m of [s.track && { ...s.track, dir: 1 }, s.preload, s.pos]) if (m) handle(m);
 }
@@ -232,6 +277,8 @@ function handle(m) {
   else if (m.type === 'preload') onPreload(m);
   else if (m.type === 'pos') onPos(m);
   else if (m.type === 'api') Api.onResponse(m);
+  else if (m.type === 'artist') onArtist(m);
+  else if (m.type === 'audio') onAudio(m);
   else if (m.type === 'hello') { // bridge (re)connected: desktop-side settings + presets
     if (Settings.fresh && !P.gotHello && m.last) Settings.load(m.last);
     Settings.setPresets(m.presets);
@@ -244,7 +291,7 @@ function handle(m) {
   else if (m.type === 'presets') Settings.setPresets(m.presets);
   else if (m.type === 'diag') window.lastDiag = m; // inspected over CDP while developing
   else if (m.type === 'auth') Web.onAuth(m);
-  else if (m.type === 'update') { P.update = m; Settings.render(); }
+  else if (m.type === 'update') { P.update = m; Settings.render(); if (m.state === 'installing') notice(`Updating LyricDock to v${m.version}…`, 6000); }
 }
 
 // ---- automatic pairing by Spotify account: listen while signed in; a desktop asking shows the Allow prompt.
@@ -252,7 +299,7 @@ Rtc.onAsk((name, digits) => new Promise(resolve => {
   $('pairName').textContent = name;
   $('pairDigits').textContent = digits;
   document.body.classList.add('pair-ask');
-  const done = ok => { document.body.classList.remove('pair-ask'); clearTimeout(t); resolve(ok); };
+  const done = ok => { document.body.classList.remove('pair-ask'); clearTimeout(t); if (ok) notice(`Paired with ${name}`); resolve(ok); };
   $('pairAllow').onclick = () => done(true);
   $('pairDeny').onclick = () => done(false);
   const t = setTimeout(() => done(false), 60000); // unanswered: treat as deny
@@ -373,7 +420,8 @@ function apply(k) {
   (['split', 'tv'].includes(S.layout) ? $('art') : b).appendChild($('ctl'));
   if (kw) { kw.animationSpeed = S.bgSpeed; kw.warpIntensity = S.bgWarp; }
   if (!k || k === '*' || k === 'bg') art(P.art).then(im => background(P.art, im));
-  if (k === '*' || ['roman', 'credits'].includes(k)) Lyrics.rebuild();
+  if (kw && k === 'bgBeat') kw.animationSpeed = S.bgSpeed;
+  if (k === '*' || ['roman', 'credits', 'letters'].includes(k)) Lyrics.rebuild();
   requestAnimationFrame(() => { Lyrics.refresh(); sizeBg(); });
 }
 Settings.onChange(apply);
@@ -404,5 +452,6 @@ const linkLog = window.linkLog = [];
     $('tdur').textContent = clock(P.dur);
   }
   Lyrics.update(p, dt);
+  beatBg(p);
   requestAnimationFrame(tick);
 })(performance.now());

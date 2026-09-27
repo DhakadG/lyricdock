@@ -240,6 +240,7 @@
     renderPanel();
     if (track) send(track);
     if (preload) send(preload);
+    extraMsgs.forEach(send);
     beat();
   }
 
@@ -392,6 +393,7 @@
       pq: safe(() => JSON.stringify([P.data?.playbackQuality, Spicetify.Platform.PlayerAPI._state?.playbackQuality]).slice(0, 400), '') });
     preloadNext();
     setTimeout(preloadNext, 3000); // Spotify's queue can lag the song change by a moment
+    extras(it, base.id);
     if (track.lyrics) return;
     // Ads have no lyrics; local files and podcasts can't use Spotify's lyrics endpoint (it wants a track id).
     const kind = it.uri.split(':')[1];
@@ -400,6 +402,28 @@
     if (item()?.uri !== it.uri) return; // skipped meanwhile
     if (!track.lyrics) { track = { ...track, lyrics }; send(track); }
     upgradeFromSpicy(it.uri, base, dir);
+  }
+
+  // Extras for the phone's background: the artist's picture ('Artist image' background) and tempo + loudness
+  // from Spotify's audio analysis ('Move with the music'), loudness as 0..1 every 0.5s. Kept for reconnects.
+  let extraMsgs = [];
+  async function extras(it, id) {
+    extraMsgs = [];
+    const keep = m => { if (item()?.uri === it.uri) { extraMsgs.push(m); send(m); } };
+    const artistId = (it.artists?.[0]?.uri || it.metadata?.artist_uri || '').split(':')[2];
+    if (artistId) Spicetify.CosmosAsync.get(`https://api.spotify.com/v1/artists/${artistId}`).then(a => {
+      const url = [...(a?.images ?? [])].sort((x, y) => y.width - x.width)[0]?.url;
+      if (url) keep({ type: 'artist', id, img: url });
+    }).catch(() => {});
+    try {
+      const d = await Spicetify.getAudioData(it.uri);
+      const segs = d?.segments ?? [], tempo = d?.track?.tempo;
+      if (!segs.length || !Number.isFinite(tempo)) return;
+      const n = Math.ceil((d.track.duration || segs[segs.length - 1].start + 1) * 2), loud = new Array(n).fill(0);
+      for (const g of segs) { const i = Math.floor(g.start * 2); if (i < n) loud[i] = Math.max(loud[i], Math.min(1, Math.max(0, (g.loudness_max + 35) / 30))); }
+      for (let i = 1; i < n; i++) if (!loud[i]) loud[i] = loud[i - 1]; // fill 0.5s slots between segments
+      keep({ type: 'audio', id, tempo, loud: loud.map(v => Math.round(v * 100) / 100) });
+    } catch {} // older/newer clients without audio analysis: the background just keeps its set speed
   }
 
   // Spicy fetches the playing track itself; its word-synced lyrics replace the fallback as soon as they land.

@@ -72,7 +72,7 @@ const Web = (() => {
 
   // ---- playback
   const info = it => ({ id: it.id, uri: it.uri, title: it.name, artist: (it.artists || []).map(a => a.name).join(', '),
-    album: it.album?.name, art: [...(it.album?.images || [])].sort((a, b) => b.width - a.width)[0]?.url || null, dur: it.duration_ms });
+    album: it.album?.name, artistId: it.artists?.[0]?.id, art: [...(it.album?.images || [])].sort((a, b) => b.width - a.width)[0]?.url || null, dur: it.duration_ms });
 
   function direction(id) {
     if (hist.length > 1 && hist[hist.length - 2] === id) { hist.pop(); return -1; }
@@ -103,6 +103,10 @@ const Web = (() => {
     const t = cur;
     out({ type: 'track', ...t, dir: direction(t.id), lyrics: null });
     api('GET', '/me/library/contains?uris=' + encodeURIComponent(t.uri)).then(r => { if (Array.isArray(r?.json)) t.liked = !!r.json[0]; });
+    if (t.artistId) api('GET', '/artists/' + t.artistId).then(r => { // for the 'Artist image' background
+      const img = [...(r?.json?.images || [])].sort((a, b) => b.width - a.width)[0]?.url;
+      if (img) out({ type: 'artist', id: t.id, img });
+    });
     // Lyrics: the Spicy API (app.js topUp, if a key is set), else LRCLIB.
     const l = (Api.enabled() ? await Api.get(t.id) : null) ?? await Lrclib.get(t);
     if (l && cur === t) out({ type: 'track', ...t, lyrics: l });

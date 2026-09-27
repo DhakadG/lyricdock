@@ -14,13 +14,33 @@ const Lyrics = (() => {
   const pick = (s = '', r, m, cap = true) =>
     m === 'orig' ? (s || r || '') : (r ?? (Roman.isIndic(s) ? Roman.translit(s, cap) : s));
 
+  // Spicy's letter mode: a long-held short word glows and lifts letter by letter, each letter owning an equal
+  // slice of the word's time. Scripts with combining marks (Indic, Arabic...) stay whole - splitting breaks them.
+  const letterable = (text, x) => Settings.S.letters && x.e - x.t >= 1000 && !x.p && !(x.i > 0 && x.prevP) &&
+    /^[\p{L}\p{N}'’!?,.-]{2,12}$/u.test(text) && !/\p{M}/u.test(text);
+
   function syllables(container, syls, m) {
     const out = [];
     let group = null;
     syls.forEach((x, i) => {
+      const text = pick(x.s, x.r, m, i === 0);
+      if (letterable(text, { ...x, i, prevP: syls[i - 1]?.p })) {
+        const g = document.createElement('span'), ch = Array.from(text), step = (x.e - x.t) / ch.length;
+        g.className = 'wg lw';
+        ch.forEach((c, k) => {
+          const el = document.createElement('span');
+          el.className = 'sy lt';
+          el.textContent = c;
+          g.append(el);
+          out.push({ el, t: x.t + step * k, e: x.t + step * (k + 1), emph: true });
+        });
+        container.append(g);
+        if (i < syls.length - 1) container.append(' ');
+        return;
+      }
       const el = document.createElement('span');
       el.className = 'sy';
-      el.textContent = pick(x.s, x.r, m, i === 0);
+      el.textContent = text;
       // IsPartOfWord joins a syllable to the next one: keep the word together, no space.
       if (x.p || (syls[i - 1]?.p && group)) {
         if (!group) { group = document.createElement('span'); group.className = 'wg'; container.append(group); }
@@ -33,6 +53,7 @@ const Lyrics = (() => {
     return out;
   }
 
+  const RTL = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
   const div = (cls, text) => { const d = document.createElement('div'); d.className = cls; if (text) d.textContent = text; return d; };
 
   // Interlude: three dots, each owning a third of the gap (Spicy's musical-line / dotGroup).
@@ -111,6 +132,7 @@ const Lyrics = (() => {
       } else el.textContent = pick(ln.s, ln.r, mode(ln.s || '')) || '♪';
       if (synced) el.onclick = () => Settings.S.tapSeek && onSeek?.(ln.t);
       if (Roman.isIndic(el.textContent)) el.classList.add('indic'); // taller line box for matras
+      if (RTL.test(el.textContent)) { el.dir = 'rtl'; el.classList.add('rtl'); } // Urdu / Arabic / Hebrew kept in script
       lines.push(entry);
       frag.push(el);
       const next = lyr.lines[i + 1];
@@ -139,14 +161,20 @@ const Lyrics = (() => {
   }
 
   // Line states mirror Spicy Lyrics: NotSung / Active / Sung. Words in active lines run Spicy's springs.
+  // Scroll lead: like Spicy, the list starts moving to the next line a moment before it is sung, so the eye is
+  // already there. A seek (position jumps against the clock) snaps instead of sweeping through every line.
+  const LEAD = 250;
+  let lastP = null;
   function update(p, dt) {
     if (!synced) return;
+    const jumped = lastP !== null && Math.abs(p - lastP - dt * 1000) > 1500;
+    lastP = p;
     const opts = { lift: Settings.S.lift, glow: Settings.S.glow };
     let a = -1;
     for (let i = 0; i < lines.length; i++) {
       const x = lines[i];
       const state = p < x.t ? 'ns' : p >= x.e ? 'sung' : 'on';
-      if (x.t <= p) a = i;
+      if (x.t <= p + LEAD) a = i;
       if (state !== x.state) {
         if (x.state === 'on' && x.syl) { Anim.rest(x.syl, state === 'sung'); if (x.bg) Anim.rest(x.bg, state === 'sung'); }
         if (x.state === 'on' && x.dots) Anim.restDots(x);
@@ -163,7 +191,7 @@ const Lyrics = (() => {
         for (const d of x.dd) Anim.dot(d, p, dt);
       }
     }
-    if (a !== anchor) scrollTo(a);
+    if (a !== anchor || jumped) scrollTo(a, jumped);
   }
 
   function scrollTo(a, instant) {
@@ -173,6 +201,7 @@ const Lyrics = (() => {
       const d = Math.min(3, Math.abs(k - i));
       if (x.d !== d) { x.d = d; x.el.dataset.d = d; }
       x.el.classList.toggle('past', k < a);
+      x.el.classList.toggle('far', Math.abs(k - i) > 20); // off screen: skip painting it (long songs)
     });
     const el = lines[i]?.el;
     if (!el) return;

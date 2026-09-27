@@ -45,6 +45,8 @@ const Api = (() => {
       if (lyr) { cache[m.id] = { at: Date.now(), lyr }; save(); }
     }
     Api.lastStatus = m.status;
+    if (m.status === 429) notice('Spicy Lyrics API is rate-limiting - using other lyrics sources for now');
+    else if (m.status === 401 || m.status === 403) notice('Spicy Lyrics API key was refused - check it in Settings → Lyrics');
     done(m.id, lyr);
   }
 
