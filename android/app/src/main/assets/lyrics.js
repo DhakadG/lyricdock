@@ -11,8 +11,8 @@ const Lyrics = (() => {
     if (r === 'off') return 'orig';
     return r === 'smart' && Roman.hasDeva(text) ? 'orig' : 'roman'; // Hindi (even partly) stays as is
   };
-  const pick = (s = '', r, m, cap = true) =>
-    m === 'orig' ? (s || r || '') : (r ?? (Roman.isIndic(s) ? Roman.translit(s, cap) : s));
+  const pick = (s = '', r, m, cap = true) => (window.cleanWords ?? (t => t))(
+    m === 'orig' ? (s || r || '') : (r ?? (Roman.isIndic(s) ? Roman.translit(s, cap) : s)));
 
   // Spicy's letter mode: a long-held short word glows and lifts letter by letter, each letter owning an equal
   // slice of the word's time. Scripts with combining marks (Indic, Arabic...) stay whole - splitting breaks them.
@@ -63,7 +63,10 @@ const Lyrics = (() => {
     const dd = [0, 1, 2].map(i => ({ el: div('dt'), t: t + third * i, e: t + third * (i + 1) }));
     group.append(...dd.map(d => d.el));
     el.append(group);
-    lines.push({ el, t, e, dots: true, grp: { el: group, t, e }, dd });
+    // Intro only: 3 · 2 · 1 above the dots in the last three seconds (Settings -> Countdown before singing).
+    const cd = t === 0 ? div('cd') : null;
+    if (cd) el.prepend(cd);
+    lines.push({ el, t, e, dots: true, grp: { el: group, t, e }, dd, cd });
     return el;
   }
 
@@ -188,6 +191,7 @@ const Lyrics = (() => {
         if (x.bg) for (const w of x.bg) Anim.word(w, p, dt, opts);
       } else if (x.dots) {
         Anim.dotGroup(x.grp, p, dt);
+        if (x.cd) { const r = Math.ceil((x.e - p) / 1000), v = S.countdown && r <= 3 && r > 0 ? String(r) : ''; if (x.cd.textContent !== v) x.cd.textContent = v; }
         for (const d of x.dd) Anim.dot(d, p, dt);
       }
     }

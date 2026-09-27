@@ -185,6 +185,30 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     @JavascriptInterface
     public boolean kioskOn() { return isOwner(); }
 
+    // Settings -> Screen -> Keep the screen on: FLAG_KEEP_SCREEN_ON, and in kiosk mode also the "stay on while
+    // plugged in" global setting (otherwise that would keep it on regardless).
+    @JavascriptInterface
+    public void keepAwake(boolean on) { runOnUiThread(new Awake(this, on)); }
+
+    void applyAwake(boolean on) {
+        if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (isOwner()) try {
+            ((DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE)).setGlobalSetting(
+                    new ComponentName(this, AdminReceiver.class), Settings.Global.STAY_ON_WHILE_PLUGGED_IN, on ? "7" : "0");
+        } catch (Exception ignored) {}
+    }
+
+    // "level,charging" for Settings -> Screen -> Battery indicator.
+    @JavascriptInterface
+    public String battery() {
+        Intent b = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (b == null) return "";
+        int level = b.getIntExtra("level", -1), scale = b.getIntExtra("scale", 100), status = b.getIntExtra("status", -1);
+        boolean charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL;
+        return (level * 100 / Math.max(1, scale)) + "," + (charging ? 1 : 0);
+    }
+
     // Settings -> Leave kiosk mode: undo everything kiosk() did and give up device owner, from the phone itself
     // (no adb needed). Reinstall / setup-phone.ps1 turns it back on.
     @JavascriptInterface

@@ -40,7 +40,7 @@ function kawarp() {
     const k = kw;
     k.renderLoop = t => {
       if (!k.isPlaying) return;
-      if (t - k.lastFrameTime >= 1000 / +S.bgFps - 4) {
+      if (S.bgFps === 'max' || t - k.lastFrameTime >= 1000 / +S.bgFps - 2) {
         const dt = (t - k.lastFrameTime) / 1000;
         k.lastFrameTime = t;
         k._animationSpeed += (k._targetAnimationSpeed - k._animationSpeed) * 0.05;
@@ -169,6 +169,7 @@ function swap(m, im, lyr) {
   $('art').style.backgroundImage = m.art ? `url("${m.art}")` : 'none';
   background(m.art, im);
   Lyrics.build(lyr);
+  window.afterSwap?.(m);
 }
 
 // The bridge sends Spicy-cache results raw ({spicy}) and Spotify/LRCLIB ones already normalized.
@@ -222,6 +223,7 @@ function onPreload(m) {
   pre.set(m.id, m);
   if (pre.size > 6) pre.delete(pre.keys().next().value);
   art(m.art); // warm the decode now
+  window.afterPreload?.(m);
   // Warm the API cache for the next song too, and keep whichever is better for when it starts.
   if (Api.enabled() && Lyrics.rank(m.lyrics) < 3) Api.get(m.id).then(l => { if (Lyrics.rank(l) > Lyrics.rank(m.lyrics)) m.lyrics = l; });
 }
@@ -267,6 +269,7 @@ function onPos(m) {
   onMeta(m);
   // After a tap, ignore play state from beats already in flight, so the button doesn't flicker back.
   if (performance.now() > P.lockUntil) setPlaying(!!m.playing, had && !!m.playing !== P.playing);
+  window.afterPos?.(m);
 }
 
 // ---- sources. The bridge (native -> dock()) and the Web API (spotify.js) both produce track/pos/preload; each
@@ -321,6 +324,7 @@ function handle(m) {
   else if (m.type === 'presets') Settings.setPresets(m.presets);
   else if (m.type === 'diag') window.lastDiag = m; // inspected over CDP while developing
   else if (m.type === 'auth') Web.onAuth(m);
+  else if (m.type === 'list' || m.type === 'album') window.onExtra?.(m);
   else if (m.type === 'update') { P.update = m; Settings.render(); if (m.state === 'installing') notice(`Updating LyricDock to v${m.version}…`, 6000); }
 }
 
@@ -455,12 +459,14 @@ function apply(k) {
   r.setProperty('--lgap', S.lineGap + 'vmin');
   r.setProperty('--lop', S.lineOpacity);
   r.setProperty('--blur', S.blurAmount + 'px');
-  (['split', 'tv'].includes(S.layout) ? $('art') : b).appendChild($('ctl'));
+  // Controls: over the cover (Default/TV), in the always-visible deck (Player card), centred on screen otherwise.
+  (['split', 'tv'].includes(S.layout) ? $('art') : S.layout === 'player' ? $('deck') : b).appendChild($('ctl'));
   if (kw) { kw.animationSpeed = S.bgSpeed; kw.warpIntensity = S.bgWarp; kw.blurPasses = S.bgBlur; kw.saturation = S.bgSaturation; kw.transitionDuration = S.bgFade; }
   if (!k || k === '*' || k === 'bg') art(P.art).then(im => background(P.art, im));
   if (kw && k === 'bgBeat') kw.animationSpeed = S.bgSpeed;
   if (k === '*' || ['roman', 'credits', 'letters', 'lettersMin', 'dots', 'dotsGap'].includes(k)) Lyrics.rebuild();
   requestAnimationFrame(() => { Lyrics.refresh(); sizeBg(); });
+  window.afterApply?.(k);
 }
 Settings.onChange(apply);
 apply();
@@ -468,9 +474,28 @@ pullInsets();
 setPlaying(false);
 addEventListener('resize', () => { pullInsets(); Lyrics.refresh(); sizeBg(); });
 
+// ---- progress bar: one linear CSS transition from "now" to the end of the song, run by the compositor (smooth at any
+// frame rate, no per-frame work). Re-synced only on seek / pause / new song / drift > 200ms.
+const F = { at: 0, pos: -1, playing: false, dur: 0 };
+function fillSync(p) {
+  const frac = P.dur ? Math.min(1, Math.max(0, p / P.dur)) : 0;
+  Object.assign(F, { at: performance.now(), pos: p, playing: P.playing, dur: P.dur });
+  for (const f of [$('fill'), $('dfill')]) { // the edge bar and the Player card's bar
+    f.style.transition = 'none';
+    f.style.transform = `scaleX(${frac})`;
+    if (!P.playing || !P.dur || frac >= 1) continue;
+    f.offsetWidth; // commit the start point before starting the glide
+    f.style.transition = `transform ${Math.round(P.dur - p)}ms linear`;
+    f.style.transform = 'scaleX(1)';
+  }
+}
+function fillCheck(p) {
+  const expected = F.pos + (F.playing ? performance.now() - F.at : 0);
+  if (F.pos < 0 || F.playing !== P.playing || F.dur !== P.dur || Math.abs(p - expected) > 200) fillSync(p);
+}
 // ---- frame loop
 const clock = t => { t = Math.max(0, t) / 1000 | 0; return `${t / 60 | 0}:${String(t % 60).padStart(2, '0')}`; };
-let lastT = performance.now(), lastSec = -1, lastFrac = -1;
+let lastT = performance.now(), lastSec = -1;
 const linkLog = window.linkLog = [];
 (function tick(t) {
   const dt = Math.min(0.1, (t - lastT) / 1000) || 0.016;
@@ -483,13 +508,11 @@ const linkLog = window.linkLog = [];
     if (linkLog.length > 50) linkLog.shift();
   }
   const p = now();
-  // Only when it moved half a pixel (~7 writes/s instead of 60): each write costs a compositor frame.
-  const frac = P.dur ? Math.min(1, p / P.dur) : 0;
-  if (Math.abs(frac - lastFrac) * innerWidth > 0.5) { lastFrac = frac; $('fill').style.transform = `scaleX(${frac})`; }
-  if (S.times && (p / 1000 | 0) !== lastSec) {
+  fillCheck(p);
+  if ((p / 1000 | 0) !== lastSec) {
     lastSec = p / 1000 | 0;
-    $('tcur').textContent = clock(p);
-    $('tdur').textContent = clock(P.dur);
+    $('tcur').textContent = $('dcur').textContent = clock(p);
+    $('tdur').textContent = $('ddur').textContent = clock(P.dur);
   }
   Lyrics.update(p, dt);
   beatBg(p);

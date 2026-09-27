@@ -58,10 +58,11 @@ const Web = (() => {
 
   function logout() { tok = {}; save(); cur = null; state = {}; say('Signed out'); }
 
-  async function api(method, path) {
+  async function api(method, path, body) {
     if (Date.now() < backoff || !(await fresh())) return null;
     const t0 = performance.now();
-    const r = await fetch('https://api.spotify.com/v1' + path, { method, headers: { Authorization: 'Bearer ' + tok.access } }).catch(() => null);
+    const r = await fetch('https://api.spotify.com/v1' + path, { method, headers: { Authorization: 'Bearer ' + tok.access, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined }).catch(() => null);
     if (!r) return null;
     const rtt = performance.now() - t0;
     if (r.status === 401) { tok.exp = 0; return null; } // refreshes on the next call
@@ -72,7 +73,7 @@ const Web = (() => {
 
   // ---- playback
   const info = it => ({ id: it.id, uri: it.uri, title: it.name, artist: (it.artists || []).map(a => a.name).join(', '),
-    album: it.album?.name, artistId: it.artists?.[0]?.id, art: [...(it.album?.images || [])].sort((a, b) => b.width - a.width)[0]?.url || null, dur: it.duration_ms });
+    album: it.album?.name, year: (it.album?.release_date || '').slice(0, 4), artistId: it.artists?.[0]?.id, art: [...(it.album?.images || [])].sort((a, b) => b.width - a.width)[0]?.url || null, dur: it.duration_ms });
 
   function direction(id) {
     if (hist.length > 1 && hist[hist.length - 2] === id) { hist.pop(); return -1; }
@@ -88,10 +89,10 @@ const Web = (() => {
     const r = await api('GET', '/me/player');
     const s = r?.json, it = s?.item;
     if (r?.status === 200 && it?.type === 'track') {
-      state = { playing: s.is_playing, device: s.device?.name, volume: s.device?.volume_percent };
+      state = { playing: s.is_playing, device: s.device?.name, volume: s.device?.volume_percent, shuffle: s.shuffle_state, repeat: { off: 0, context: 1, track: 2 }[s.repeat_state] ?? 0 };
       if (it.id !== cur?.id) newTrack(it);
       out({ type: 'pos', pos: s.progress_ms + (s.is_playing ? r.rtt / 2 : 0), playing: s.is_playing, dur: it.duration_ms,
-        liked: cur.liked, volume: state.volume, device: state.device });
+        liked: cur.liked, volume: state.volume, device: state.device, shuffle: state.shuffle, repeat: state.repeat });
       delay = s.is_playing ? 1000 : 3000;
     } else if (r) { state = { playing: false }; delay = 5000; }
     if (wanted) timer = setTimeout(poll, delay);
@@ -102,6 +103,7 @@ const Web = (() => {
     cur = { ...info(it), liked: undefined };
     const t = cur;
     out({ type: 'track', ...t, dir: direction(t.id), lyrics: null });
+    out({ type: 'album', id: t.id, album: t.album, year: t.year });
     api('GET', '/me/library/contains?uris=' + encodeURIComponent(t.uri)).then(r => { if (Array.isArray(r?.json)) t.liked = !!r.json[0]; });
     if (t.artistId) api('GET', '/artists/' + t.artistId).then(r => { // for the 'Artist image' background
       const img = [...(r?.json?.images || [])].sort((a, b) => b.width - a.width)[0]?.url;
@@ -123,6 +125,10 @@ const Web = (() => {
     else if (cmd === 'prev') await api('POST', '/me/player/previous');
     else if (cmd === 'seek') await api('PUT', `/me/player/seek?position_ms=${Math.max(0, Math.round(arg))}`);
     else if (cmd === 'volume') await api('PUT', `/me/player/volume?volume_percent=${Math.max(0, Math.min(100, Math.round(arg)))}`);
+    else if (cmd === 'shuffle') await api('PUT', `/me/player/shuffle?state=${!state.shuffle}`);
+    else if (cmd === 'repeat') await api('PUT', `/me/player/repeat?state=${['off', 'context', 'track'][Number.isFinite(arg) ? arg % 3 : ((state.repeat || 0) + 1) % 3]}`);
+    else if (cmd === 'play' && arg?.uri) await api('PUT', '/me/player/play', /^spotify:(playlist|album|artist|show|collection)/.test(arg.uri) ? { context_uri: arg.uri }
+      : arg.ctx && !/^spotify:collection/.test(arg.ctx) ? { context_uri: arg.ctx, offset: { uri: arg.uri } } : { uris: [arg.uri] });
     else if (cmd === 'heart' && cur) {
       const r = await api(cur.liked ? 'DELETE' : 'PUT', '/me/library?uris=' + encodeURIComponent(cur.uri));
       if (r && r.status < 300) cur.liked = !cur.liked;
@@ -136,8 +142,27 @@ const Web = (() => {
     if (w) kick(); else clearTimeout(timer);
   }
 
+  // Lists for the phone's slide-over panel (friend activity isn't in the public Web API).
+  const small = im => [...(im || [])].sort((a, b) => (a.width || 0) - (b.width || 0)).find(i => (i.width || 300) >= 64)?.url || im?.[0]?.url || '';
+  async function list(which) {
+    if (!loggedIn()) return { items: [], error: 'Sign in to your Spotify account first (Settings → Playback source).' };
+    if (which === 'friends') return { items: [], error: 'Friend activity is only available through Spotify on your computer (desktop mode).' };
+    if (which === 'queue') {
+      const r = await api('GET', '/me/player/queue'), m = x => ({ uri: x.uri, title: x.name, sub: (x.artists || [x.show]).filter(Boolean).map(a => a.name).join(', '), art: small(x.album?.images || x.images) });
+      return { now: r?.json?.currently_playing ? m(r.json.currently_playing) : null, items: (r?.json?.queue || []).map(m) };
+    }
+    if (which === 'recent') {
+      const r = await api('GET', '/me/player/recently-played?limit=40');
+      return { items: (r?.json?.items || []).map(x => ({ uri: x.track.uri, ctx: x.context?.uri, title: x.track.name, sub: x.track.artists.map(a => a.name).join(', '), art: small(x.track.album.images), time: Date.parse(x.played_at) })) };
+    }
+    const [pl, al] = await Promise.all([api('GET', '/me/playlists?limit=50'), api('GET', '/me/albums?limit=50')]);
+    return { items: [{ uri: 'spotify:collection:tracks', title: 'Liked Songs', sub: 'Playlist', art: '' },
+      ...(pl?.json?.items || []).filter(Boolean).map(p => ({ uri: p.uri, title: p.name, sub: `Playlist · ${p.owner?.display_name || ''}`, art: small(p.images) })),
+      ...(al?.json?.items || []).map(a => ({ uri: a.album.uri, title: a.album.name, sub: `Album · ${a.album.artists.map(x => x.name).join(', ')}`, art: small(a.album.images) }))] };
+  }
+
   return {
-    login, logout, onAuth, control, setWanted, loggedIn,
+    login, logout, onAuth, control, setWanted, loggedIn, list,
     userId: () => (loggedIn() ? tok.uid ?? null : null),
     refreshUserId: async () => { if (loggedIn() && !tok.uid) { const r = await api('GET', '/me'); if (r?.json?.id) { tok.uid = r.json.id; save(); } } },
     onMessage: f => { out = f; },

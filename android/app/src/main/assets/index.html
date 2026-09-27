@@ -7,27 +7,52 @@
 </head>
 <body class="paused">
 <canvas id="bgc"></canvas><div id="bg"></div><div id="bgGrad"></div><div id="dim"></div>
-<div id="wrap">
-  <div id="left">
+<main id="wrap">
+  <section id="left">
     <div id="artbox">
       <div id="art">
         <div id="pulse"><div><svg viewBox="0 0 24 24"><path id="pulseIcon"/></svg></div></div>
         <div id="ripple"></div>
         <div id="ctl">
-          <button id="prev"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
-          <button id="pp"><svg viewBox="0 0 24 24"><path id="ppIcon"/></svg></button>
-          <button id="next"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+          <button id="shuf" class="small" aria-label="Shuffle"><svg viewBox="0 0 24 24"><path d="M17 3l4 4-4 4V8h-2.6l-3.2 4 3.2 4H17v-3l4 4-4 4v-3h-3.5l-3.7-4.6L6 18H3v-2h2l3.6-4.6L5 7H3V5h3l3.8 4.6L13.5 5H17z"/></svg></button>
+          <button id="prev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
+          <button id="pp" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path id="ppIcon"/></svg></button>
+          <button id="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+          <button id="rep" class="small" aria-label="Repeat"><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg><i></i></button>
           <input id="vol" type="range" min="0" max="100" step="1" aria-label="Volume">
+          <div id="deckbar"><div id="dtrack"><div id="dfill"></div></div><div id="dtimes"><span id="dcur">0:00</span><span id="ddur">0:00</span></div></div>
+          <div id="lists">
+            <button data-list="queue" aria-label="Queue"><svg viewBox="0 0 24 24"><path d="M3 6h13v2H3zm0 5h13v2H3zm0 5h9v2H3zm15-2v-4l5 5-5 5v-4z"/></svg></button>
+            <button data-list="recent" aria-label="Recently played"><svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l4 4 4-4H6a7 7 0 1 1 2.05 4.95l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8z"/></svg></button>
+            <button data-list="library" aria-label="Your library"><svg viewBox="0 0 24 24"><path d="M4 3h2v18H4zm5 0h2v18H9zm4.9 1.3 1.9-.6 5 16.9-1.9.6z"/></svg></button>
+            <button data-list="friends" aria-label="Friend activity"><svg viewBox="0 0 24 24"><path d="M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-7 1.7-7 4v2h14v-2c0-2.3-3.7-4-7-4zm7.5-2a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm1 2.1c1.6.6 3.5 1.7 3.5 3.9v2h2v-2c0-2.3-3-3.6-5.5-3.9z"/></svg></button>
+          </div>
         </div>
       </div>
     </div>
-    <div id="meta"><div id="titlerow"><div id="title">Waiting for Spotify…</div><button id="heart" aria-label="Like"><svg viewBox="0 0 24 24"><path class="fill" fill="currentColor" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/></svg></button></div><div id="artist"></div><div id="quality"></div></div>
-  </div>
-  <div id="lyrics"><div id="lines"></div></div>
-</div>
+    <div id="meta">
+      <div id="titlerow"><div id="title" class="mq">Waiting for Spotify…</div><button id="heart" aria-label="Like"><svg viewBox="0 0 24 24"><path class="fill" fill="currentColor" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/></svg></button></div>
+      <div id="artist" class="mq"></div>
+      <div id="album" class="mq"></div>
+      <div id="quality"></div>
+    </div>
+    <div id="deck"></div>
+  </section>
+  <section id="lyrics"><div id="lines"></div></section>
+</main>
 <div id="bar"><div id="fill"></div></div>
 <div id="times"><span id="tcur"></span><span id="tdur"></span></div>
-<button id="gear"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+<button id="gear" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+<div id="nextChip"><span>Up next</span><b></b></div>
+<div id="srcBadge"></div>
+<div id="batt"><i></i><span></span></div>
+<div id="nightTint"></div>
+<div id="clockScreen"><div id="clkTime"></div><div id="clkDate"></div><div id="clkNext"></div></div>
+<aside id="listPanel">
+  <header><nav id="listTabs"><button data-tab="queue">Queue</button><button data-tab="recent">Recently played</button><button data-tab="library">Library</button><button data-tab="friends">Friends</button></nav>
+    <button id="listClose" aria-label="Close"><svg viewBox="0 0 16 16"><path d="M2.47 2.47a.75.75 0 0 1 1.06 0L8 6.94l4.47-4.47a.75.75 0 1 1 1.06 1.06L9.06 8l4.47 4.47a.75.75 0 1 1-1.06 1.06L8 9.06l-4.47 4.47a.75.75 0 0 1-1.06-1.06L6.94 8 2.47 3.53a.75.75 0 0 1 0-1.06z"/></svg></button></header>
+  <div id="listBody"></div>
+</aside>
 <div id="dot">Reconnecting…</div>
 <div id="toast"></div>
 <div id="pairAsk"><div class="pa-card"><div class="pa-title">Connect <b id="pairName"></b>?</div><div class="pa-sub">Allow only if Spotify on your computer shows the same code:</div><div id="pairDigits" class="pa-digits"></div><div class="pa-btns"><button id="pairDeny">Deny</button><button id="pairAllow" class="pa-ok">Allow</button></div></div></div>
@@ -36,8 +61,9 @@
     <div class="sl-modal-container">
       <div class="sl-modal-header">
         <h1>Settings</h1>
+        <button id="speek" class="sl-text-btn" aria-pressed="false">Preview</button>
         <button id="sreset" class="sl-text-btn">Reset all</button>
-        <button id="sclose" class="sl-modal-close-btn"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.47 2.47a.75.75 0 0 1 1.06 0L8 6.94l4.47-4.47a.75.75 0 1 1 1.06 1.06L9.06 8l4.47 4.47a.75.75 0 1 1-1.06 1.06L8 9.06l-4.47 4.47a.75.75 0 0 1-1.06-1.06L6.94 8 2.47 3.53a.75.75 0 0 1 0-1.06z"/></svg></button>
+        <button id="sclose" class="sl-modal-close-btn" aria-label="Close"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.47 2.47a.75.75 0 0 1 1.06 0L8 6.94l4.47-4.47a.75.75 0 1 1 1.06 1.06L9.06 8l4.47 4.47a.75.75 0 1 1-1.06 1.06L8 9.06l-4.47 4.47a.75.75 0 0 1-1.06-1.06L6.94 8 2.47 3.53a.75.75 0 0 1 0-1.06z"/></svg></button>
       </div>
       <div class="sl-modal-main-section"></div>
     </div>
@@ -52,5 +78,6 @@
 <script src="anim.js"></script>
 <script src="lyrics.js"></script>
 <script src="app.js"></script>
+<script src="features.js"></script>
 </body>
 </html>

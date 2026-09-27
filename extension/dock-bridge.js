@@ -37,7 +37,7 @@
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     last = { pos, at: Date.now(), playing };
     send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality(), via: ws?.kind,
-      volume: safe(() => Math.round(P.getVolume() * 100), undefined) });
+      volume: safe(() => Math.round(P.getVolume() * 100), undefined), shuffle: safe(() => P.getShuffle(), undefined), repeat: safe(() => P.getRepeat(), undefined) });
   }
 
   // ---- link. The phone sends {type:'alive'} every second; an adb-forwarded socket can look open after the
@@ -263,7 +263,7 @@
     if (m.type === 'pair' && /^[A-Z2-9]{10}$/.test(m.code?.replace(/-/g, '') ?? '')) {
       if (pairCode() !== m.code.replace(/-/g, '')) { LS.set(PAIR_KEY, m.code.replace(/-/g, '')); safe(() => Spicetify.showNotification('LyricDock phone paired')); renderPanel(); }
     }
-    else if (m.type === 'settings' && okSettings(m.S)) { LS.set(SETTINGS_KEY, JSON.stringify(m.S)); renderPanel(); }
+    else if (m.type === 'settings' && okSettings(m.S)) { LS.set(SETTINGS_KEY, JSON.stringify(m.S)); syncControls(m.S); }
     else if (m.type === 'schema' && Array.isArray(m.schema) && JSON.stringify(m.schema).length < 60000) {
       LS.set(SCHEMA_KEY, JSON.stringify(m.schema));
       if (m.builtins && typeof m.builtins === 'object' && JSON.stringify(m.builtins).length < 20000) LS.set('lyricdock:builtins', JSON.stringify(m.builtins));
@@ -286,8 +286,49 @@
       else if (m.cmd === 'heart') P.toggleHeart();
       else if (m.cmd === 'seek' && Number.isFinite(m.ms)) P.seek(Math.max(0, m.ms));
       else if (m.cmd === 'volume' && Number.isFinite(m.v)) P.setVolume(Math.max(0, Math.min(1, m.v / 100)));
+      else if (m.cmd === 'shuffle') P.toggleShuffle();
+      else if (m.cmd === 'repeat') { if (P.setRepeat) P.setRepeat(Number.isFinite(m.v) ? m.v % 3 : (P.getRepeat() + 1) % 3); else P.toggleRepeat(); }
+      else if (m.cmd === 'play' && /^spotify:[a-z]+:[A-Za-z0-9:]+$/.test(m.uri ?? '')) playItem(m.uri, m.ctx);
       setTimeout(beat, 80);
     }
+    else if (m.type === 'list' && ['queue', 'recent', 'library', 'friends'].includes(m.which)) lists(m.which).then(r => send({ type: 'list', which: m.which, ...r }));
+  }
+
+  // ---- queue / recently played / library / friends for the phone's slide-over panel
+  const art64 = x => img(x?.images?.find?.(i => i.width <= 300)?.url || x?.images?.[0]?.url || x?.imageUrl || x?.image_url || x?.image || '');
+  function playItem(uri, ctx) {
+    if (/^spotify:(playlist|album|artist|show|collection|user)/.test(uri)) return P.playUri(uri);
+    if (ctx && /^spotify:/.test(ctx)) return P.playUri(ctx, {}, { skipTo: { uri } });
+    return P.playUri(uri);
+  }
+  async function lists(which) {
+    try {
+      if (which === 'queue') {
+        const q = Spicetify.Queue ?? {}, meta = t => ({ uri: t?.contextTrack?.uri ?? t?.uri, title: t?.contextTrack?.metadata?.title ?? t?.metadata?.title,
+          sub: t?.contextTrack?.metadata?.artist_name ?? t?.metadata?.artist_name, art: img(t?.contextTrack?.metadata?.image_url ?? t?.metadata?.image_url) });
+        const items = (q.nextTracks ?? []).filter(t => (t?.contextTrack?.uri ?? t?.uri)?.startsWith('spotify:track') && t?.provider !== 'unavailable').slice(0, 60).map(meta);
+        return { now: q.track ? meta(q.track) : null, items };
+      }
+      if (which === 'recent') {
+        const r = await Spicetify.CosmosAsync.get('https://api.spotify.com/v1/me/player/recently-played?limit=40');
+        return { items: (r?.items ?? []).map(x => ({ uri: x.track.uri, ctx: x.context?.uri, title: x.track.name, sub: x.track.artists.map(a => a.name).join(', '),
+          art: art64(x.track.album), time: Date.parse(x.played_at) })) };
+      }
+      if (which === 'library') {
+        const root = await Spicetify.Platform.RootlistAPI.getContents({ limit: 500 });
+        const flat = xs => xs.flatMap(x => x.type === 'folder' ? flat(x.items ?? []) : [x]);
+        const items = [{ uri: 'spotify:collection:tracks', title: 'Liked Songs', sub: 'Playlist', art: '' },
+          ...flat(root?.items ?? []).filter(x => x.uri).map(x => ({ uri: x.uri, title: x.name, sub: `Playlist · ${x.owner?.name ?? ''}`, art: art64(x) }))];
+        return { items };
+      }
+      if (which === 'friends') {
+        const r = await Spicetify.CosmosAsync.get('https://spclient.wg.spotify.com/presence-view/v1/buddylist');
+        return { items: (r?.friends ?? []).sort((a, b) => b.timestamp - a.timestamp).map(f => ({ uri: f.track?.uri, ctx: f.track?.context?.uri,
+          title: f.user?.name, sub: `${f.track?.name ?? ''} · ${f.track?.artist?.name ?? ''}`, ctxName: f.track?.context?.name,
+          art: f.user?.imageUrl || '', time: f.timestamp, live: Date.now() - f.timestamp < 5 * 60000 })) };
+      }
+    } catch (e) { return { items: [], error: `Couldn't load this (${String(e?.message || e).slice(0, 80)})` }; }
+    return { items: [] };
   }
 
   // ---- lyrics, fastest local source first, never blocking on the network:
@@ -435,6 +476,14 @@
       }
       if (url) keep({ type: 'artist', id, img: url });
       else send({ type: 'diag', extras: errs.slice(0, 4) });
+      // Album + release year for the phone's album line.
+      try {
+        const albumUri = it.album?.uri || it.metadata?.album_uri;
+        const q = Spicetify.GraphQL?.Definitions?.getAlbum;
+        const r = q && albumUri ? await Spicetify.GraphQL.Request(q, { uri: albumUri, locale: '', offset: 0, limit: 1 }) : null;
+        const a = r?.data?.albumUnion;
+        keep({ type: 'album', id, album: a?.name || it.metadata?.album_title || '', year: (a?.date?.isoString || '').slice(0, 4) });
+      } catch { keep({ type: 'album', id, album: it.metadata?.album_title || '', year: '' }); }
     })();
     try {
       const d = await Spicetify.getAudioData(it.uri);
@@ -474,44 +523,48 @@
   const ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
     + '<path d="M4.5 4h15A2.5 2.5 0 0 1 22 6.5v8a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 14.5v-8A2.5 2.5 0 0 1 4.5 4z"/>'
     + '<path d="M6 9h9" stroke-width="2.4"/><path d="M6 12.8h6" stroke-width="2.4" opacity=".5"/><path d="M12 17v2.6M8.6 20.6h6.8"/></svg>';
-  // Panel look: Spotify's dark surfaces with LyricDock mint as the accent; ⓘ chips show each setting's help on hover.
-  const CSS = `.ld-panel{--acc:61,220,151;--hair:rgba(255,255,255,.08);--hair2:rgba(255,255,255,.15);--tint:rgba(255,255,255,.05);
-      display:flex;flex-direction:column;gap:2px;font-size:14px;padding-bottom:8px}
-    .ld-panel h3{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
-      color:rgba(255,255,255,.62);margin:14px 2px 2px;padding-top:16px;border-top:1px solid var(--hair)}
-    .ld-panel h3::before{content:'';width:14px;height:3px;border-radius:2px;background:rgb(var(--acc))}
-    .ld-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 12px;border-radius:12px;transition:background .15s}
-    .ld-row>:first-child{min-width:0;flex:1} .ld-row>:last-child{flex-shrink:0} /* long text wraps; buttons stay visible */
-    .ld-row:hover{background:var(--tint)} .ld-desc{font-size:12px;opacity:.6;margin-top:3px;line-height:1.4}
-    .ld-label{display:flex;align-items:center;gap:7px;font-weight:600}
-    .ld-help{flex:none;width:17px;height:17px;border-radius:50%;display:inline-grid;place-items:center;cursor:help;
-      font:italic 700 11px/1 Georgia,serif;color:rgba(255,255,255,.65);background:rgba(255,255,255,.1);box-shadow:inset 0 0 0 1px var(--hair2)}
-    .ld-help:hover,.ld-help:focus{background:rgb(var(--acc));color:#000;outline:none}
-    .ld-help::after{content:attr(data-help);position:absolute;left:12px;right:12px;top:calc(100% - 4px);z-index:10;padding:10px 12px;border-radius:10px;
-      font:400 12.5px/1.45 var(--font-family,inherit);font-style:normal;color:#fff;text-align:left;white-space:normal;
-      background:#232327;box-shadow:inset 3px 0 0 rgb(var(--acc)),0 12px 30px rgba(0,0,0,.55),inset 0 0 0 1px var(--hair2);
-      opacity:0;transform:translateY(-4px);pointer-events:none;transition:opacity .15s,transform .15s}
-    .ld-help:hover::after,.ld-help:focus::after{opacity:1;transform:none}
-    .ld-panel select,.ld-panel input[type=text],.ld-panel button{background:var(--tint);color:inherit;border:0;
-      box-shadow:inset 0 0 0 1px var(--hair);border-radius:9px;padding:7px 11px;font:inherit;font-size:13px;transition:background .15s,box-shadow .15s}
-    .ld-panel select:focus,.ld-panel input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 1.5px rgba(var(--acc),.8)}
-    .ld-panel button{cursor:pointer;font-weight:600} .ld-panel button:hover{background:rgba(255,255,255,.12)}
-    .ld-panel button.ld-primary{background:rgb(var(--acc));color:#062;box-shadow:0 4px 14px rgba(var(--acc),.3)}
-    .ld-panel button.ld-primary:hover{filter:brightness(1.08)}
-    .ld-panel option,.ld-panel optgroup{background:#1c1c21;color:#fff}
-    .ld-panel input[type=range]{width:200px;accent-color:rgb(var(--acc))} .ld-panel input[type=text]{width:240px}
-    .ld-switch{-webkit-appearance:none;appearance:none;width:40px;height:24px;border-radius:12px;background:rgba(0,0,0,.45);position:relative;cursor:pointer;
-      box-shadow:inset 0 0 0 1px var(--hair2);transition:background .2s;margin:0}
-    .ld-switch::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#ddd;transition:transform .25s cubic-bezier(.34,1.45,.64,1)}
-    .ld-switch:checked{background:rgb(var(--acc))} .ld-switch:checked::after{transform:translateX(16px);background:#fff}
-    .ld-val{min-width:64px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:rgb(var(--acc))}
-    .ld-status{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;font-size:13px;font-weight:600;
-      background:linear-gradient(90deg,rgba(229,83,75,.16),rgba(255,255,255,.03));box-shadow:inset 0 0 0 1px rgba(229,83,75,.3)}
-    .ld-status.on{background:linear-gradient(90deg,rgba(var(--acc),.16),rgba(255,255,255,.03));box-shadow:inset 0 0 0 1px rgba(var(--acc),.3)}
-    .ld-status i{flex:none;width:9px;height:9px;border-radius:50%;background:#e5534b}
-    .ld-status.on i{background:rgb(var(--acc));animation:ldBeacon 1.8s ease-out infinite}
-    @keyframes ldBeacon{0%{box-shadow:0 0 0 0 rgba(var(--acc),.6)}100%{box-shadow:0 0 0 9px rgba(var(--acc),0)}}
-    .ld-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  // Panel look: Spotify's own - its font stack, neutral greys, pill buttons, green only where Spotify uses it (switches).
+  const FONT = 'var(--encore-body-font-stack, SpotifyMixUI, CircularSp, "Helvetica Neue", system-ui, sans-serif)';
+  const CSS = `.ld-panel{--hair:rgba(255,255,255,.07);--sub:rgba(255,255,255,.62);font-family:${FONT};font-size:14px;display:flex;flex-direction:column;gap:1px;padding-bottom:12px}
+    .ld-panel h3{font-size:15px;font-weight:700;letter-spacing:-.01em;margin:22px 4px 6px;color:#fff}
+    .ld-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:10px 12px;border-radius:6px}
+    .ld-row>:first-child{min-width:0;flex:1} .ld-row>:last-child{flex-shrink:0}
+    .ld-row:hover{background:rgba(255,255,255,.04)}
+    .ld-desc{font-size:12.5px;color:var(--sub);margin-top:3px;line-height:1.45;max-width:52ch}
+    .ld-label{display:flex;align-items:center;gap:6px;font-weight:500;color:#fff}
+    .ld-help{flex:none;width:16px;height:16px;display:inline-grid;place-items:center;cursor:help;color:rgba(255,255,255,.45);transition:color .15s}
+    .ld-help svg{width:14px;height:14px;fill:currentColor}
+    .ld-help:hover,.ld-help:focus{color:#fff;outline:none}
+    .ld-help::after{content:attr(data-help);position:absolute;left:12px;right:12px;top:calc(100% - 2px);z-index:10;padding:10px 12px;border-radius:6px;
+      font:400 13px/1.5 ${FONT};color:rgba(255,255,255,.92);text-align:left;white-space:normal;
+      background:#282828;box-shadow:0 16px 24px rgba(0,0,0,.5),0 6px 8px rgba(0,0,0,.3);
+      opacity:0;transform:translateY(-3px);pointer-events:none;transition:opacity .12s,transform .12s}
+    .ld-help:hover::after,.ld-help:focus::after{opacity:1;transform:none;transition-delay:.25s}
+    .ld-panel select,.ld-panel input[type=text]{background:#2a2a2a;color:#fff;border:0;border-radius:4px;padding:8px 12px;font:inherit;font-size:13px;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);transition:box-shadow .15s}
+    .ld-panel select:hover,.ld-panel input[type=text]:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+    .ld-panel select:focus,.ld-panel input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 1.5px #fff}
+    .ld-panel button{cursor:pointer;font:700 13px/1 ${FONT};color:#fff;background:transparent;border:0;border-radius:999px;padding:9px 16px;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);transition:transform .1s,box-shadow .15s,background .15s}
+    .ld-panel button:hover{box-shadow:inset 0 0 0 1px #fff;transform:scale(1.03)} .ld-panel button:active{transform:scale(.97)}
+    .ld-panel button.ld-primary{background:#fff;color:#000;box-shadow:none} .ld-panel button.ld-primary:hover{background:#f0f0f0}
+    .ld-panel option,.ld-panel optgroup{background:#282828;color:#fff}
+    .ld-panel input[type=range]{width:210px;accent-color:#fff;cursor:pointer} .ld-panel input[type=text]{width:240px}
+    .ld-switch{-webkit-appearance:none;appearance:none;width:40px;height:22px;border-radius:11px;background:#535353;position:relative;cursor:pointer;margin:0;transition:background .2s}
+    .ld-switch::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s cubic-bezier(.3,1.3,.6,1)}
+    .ld-switch:hover{background:#6a6a6a} .ld-switch:checked{background:#1ed760} .ld-switch:checked::after{transform:translateX(18px)}
+    .ld-val{min-width:58px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:rgba(255,255,255,.85)}
+    .ld-status{display:flex;align-items:center;gap:10px;padding:4px 12px 10px;font-size:13px;color:var(--sub)}
+    .ld-status i{flex:none;width:8px;height:8px;border-radius:50%;background:#f15e6c}
+    .ld-status.on{color:#fff} .ld-status.on i{background:#1ed760}
+    .ld-presets{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .ld-preview{position:sticky;top:-1px;z-index:5;margin:0 0 8px;height:150px;border-radius:8px;overflow:hidden;background:#181818 center/cover;
+      box-shadow:0 8px 24px rgba(0,0,0,.5)}
+    .ld-preview-bg{position:absolute;inset:-30px;background:inherit;background-size:cover;filter:blur(28px) saturate(1.4)}
+    .ld-preview-dim{position:absolute;inset:0;background:#000}
+    .ld-preview-lines{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 22px;color:#fff;font-family:system-ui,Roboto,sans-serif}
+    .ld-preview-lines div{letter-spacing:-.012em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ld-preview-tag{position:absolute;top:8px;right:10px;font-size:11px;font-weight:700;color:rgba(255,255,255,.6);letter-spacing:.02em}
     .ld-topbar{position:relative}
     .ld-topbar::after{content:'';position:absolute;right:6px;top:6px;width:7px;height:7px;border-radius:50%;background:#e5534b;
       box-shadow:0 0 0 2px var(--background-base,#000);pointer-events:none}
@@ -520,26 +573,29 @@
   let panel = null;
   const h = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 
+  // Every change is saved and sent at once (sliders while dragging), and shown in the live preview.
   function change(k, v) {
     const S = readJson(SETTINGS_KEY, {});
     S[k] = v;
     LS.set(SETTINGS_KEY, JSON.stringify(S));
     if (ws?.readyState === 1) send({ type: 'set', k, v }); else LS.set(DIRTY_KEY, '1');
+    preview(S);
   }
 
   function control(x, S) {
     const v = S[x.k] ?? x.def;
-    if (x.type === 'toggle') { const c = h('input', { type: 'checkbox', checked: !!v, className: 'ld-switch' }); c.onchange = () => change(x.k, c.checked); return c; }
+    if (x.type === 'toggle') { const c = h('input', { type: 'checkbox', checked: !!v, className: 'ld-switch' }); c.dataset.k = x.k; c.onchange = () => change(x.k, c.checked); return c; }
     if (x.type === 'choice') {
       const s = h('select', {}, ...x.opts.map(([val, name]) => h('option', { value: val, selected: val === v }, name)));
       s.onchange = () => change(x.k, s.value);
+      s.dataset.k = x.k;
       return s;
     }
     if (x.type === 'range') {
       const out = h('span', { className: 'ld-val' }, `${v}${x.unit ?? ''}`);
       const r = h('input', { type: 'range', min: x.min, max: x.max, step: x.step, value: v });
-      r.oninput = () => { out.textContent = `${r.value}${x.unit ?? ''}`; };
-      r.onchange = () => change(x.k, +r.value);
+      r.oninput = () => { out.textContent = `${r.value}${x.unit ?? ''}`; change(x.k, +r.value); };
+      r.dataset.k = x.k; out.dataset.out = x.k;
       return h('div', { className: 'ld-presets' }, r, out);
     }
     const t = h('input', { type: 'text', value: v ?? '', placeholder: x.placeholder ?? '', spellcheck: false });
@@ -550,10 +606,49 @@
   // Label + ⓘ chip; hovering (or focusing) the chip shows the setting's help text under the row.
   function label(x) {
     const l = h('div', { className: 'ld-label' }, x.label);
-    if (x.help) { const c = h('span', { className: 'ld-help', tabIndex: 0, title: '' }, 'i'); c.dataset.help = x.help; l.append(c); }
+    if (x.help) { const c = h('span', { className: 'ld-help', tabIndex: 0 }); c.innerHTML = INFO; c.dataset.help = x.help; l.append(c); }
     return l;
   }
 
+  const INFO = '<svg viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm8.75-3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zM7.25 7h1.5v4.5h-1.5z"/></svg>';
+  const scroller = () => { for (let e = panel?.parentElement; e; e = e.parentElement) if (e.scrollHeight > e.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(e).overflowY)) return e; return null; };
+
+  // Changes coming back from the phone (or made there): update the controls in place - no rebuild, no scroll jump,
+  // and a slider being dragged is left alone.
+  function syncControls(S) {
+    if (!panel?.isConnected) return;
+    for (const c of panel.querySelectorAll('[data-k]')) {
+      const v = S[c.dataset.k];
+      if (v === undefined || c === document.activeElement) continue;
+      if (c.type === 'checkbox') c.checked = !!v; else if (String(c.value) !== String(v)) c.value = v;
+      const out = panel.querySelector(`[data-out="${c.dataset.k}"]`);
+      if (out && c.type === 'range') out.textContent = `${v}${out.textContent.replace(/^[-\d.]+/, '')}`;
+    }
+    preview(S);
+  }
+
+  // Live preview: three lyric lines styled with the current settings over the playing cover, pinned to the top of the
+  // panel so every change is visible without leaving it.
+  const previewBox = h('div', { className: 'ld-preview' });
+  previewBox.innerHTML = '<div class="ld-preview-bg"></div><div class="ld-preview-dim"></div><div class="ld-preview-lines"><div></div><div></div><div></div></div><div class="ld-preview-tag">Live preview</div>';
+  function preview(S) {
+    const d = { size: 1, weight: '700', lineOpacity: 0.5, blurLines: true, blurAmount: 1.2, glow: true, glowStrength: 1, align: 'left', bgDim: 0.2, lineGap: 1.5, bg: 'dynamic', ...readJson('lyricdock:defaults', {}), ...S };
+    const art = safe(() => img(item()?.metadata?.image_xlarge_url || item()?.metadata?.image_url), '');
+    previewBox.style.backgroundImage = art ? `url("${art}")` : 'none';
+    previewBox.querySelector('.ld-preview-bg').style.display = d.bg === 'black' ? 'none' : '';
+    previewBox.querySelector('.ld-preview-dim').style.opacity = d.bg === 'black' ? 1 : d.bgDim;
+    const lines = previewBox.querySelectorAll('.ld-preview-lines div'), words = ['Every change you make', 'shows up here as you move it', 'before it reaches the phone'];
+    lines.forEach((l, i) => {
+      const active = i === 1;
+      l.textContent = words[i];
+      Object.assign(l.style, {
+        fontSize: `${(active ? 26 : 22) * d.size}px`, fontWeight: d.weight, textAlign: d.align === 'center' ? 'center' : 'left',
+        opacity: active ? 1 : d.lineOpacity, padding: `${d.lineGap * 1.6}px 0`,
+        filter: !active && d.blurLines ? `blur(${d.blurAmount}px)` : 'none',
+        textShadow: active && d.glow ? `0 0 ${8 * d.glowStrength}px rgba(255,255,255,${Math.min(0.55 * d.glowStrength, 0.9)})` : 'none',
+      });
+    });
+  }
   function renderPanel() {
     if (!panel?.isConnected) return;
     const schema = readJson(SCHEMA_KEY, []), S = readJson(SETTINGS_KEY, {}), presets = readJson(PRESETS_KEY, {});
@@ -598,7 +693,11 @@
       kids.push(h('div', { className: 'ld-row' },
         h('div', {}, label(x), ...(x.desc ? [h('div', { className: 'ld-desc' }, x.desc)] : [])), control(x, S)));
     }
-    panel.replaceChildren(...kids);
+    // Keep the scroll position: rebuilding must never throw you back to the top.
+    const sc = scroller(), top = sc?.scrollTop ?? 0;
+    panel.replaceChildren(previewBox, ...kids);
+    if (sc) sc.scrollTop = top;
+    preview(S);
   }
 
   function openPanel() {
