@@ -166,7 +166,7 @@ const Settings = (() => {
     if (x.type === 'action') {
       const box = el('div', 'sl-presets'), b = el('button', 'sl-text-btn', x.text());
       b.onclick = () => x.run();
-      box.append(b, el('span', 'sl-sp-description', x.info()));
+      box.append(b, el('span', 'sl-sp-description', x.info?.() ?? '')); // info is optional
       return box;
     }
     if (x.type === 'text') {

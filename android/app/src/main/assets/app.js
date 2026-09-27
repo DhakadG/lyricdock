@@ -312,7 +312,8 @@ setInterval(() => { Web.refreshUserId(); const uid = Web.userId(); if (uid) Rtc.
 // ---- app updates (native Updater: GitHub Releases, silent install as device owner)
 let appVersion = '';
 try { appVersion = Dock.version(); } catch (e) {}
-window.checkUpdate = install => { P.update = { state: 'checking' }; Settings.render(); try { Dock.checkUpdate(!!install); } catch (e) {} };
+// Native call first: a broken settings render must never stop the app from updating (that's how fixes arrive).
+window.checkUpdate = install => { P.update = { state: 'checking' }; try { Dock.checkUpdate(!!install); } catch (e) {} try { Settings.render(); } catch (e) {} };
 window.updateStatus = () => {
   const u = P.update, v = `v${appVersion || '?'}`;
   if (!u) return v;
