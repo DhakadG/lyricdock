@@ -1382,23 +1382,97 @@
     } catch (e) { say('Check failed - retry'); }
   }
 
-  // Update notice (the loader has already downloaded the new build; reloading Spotify's page switches to it).
+  // Update sheet: what's new first, one clear action. The loader has already downloaded the build; Update reloads
+  // Spotify's window to switch to it (about a second), Later leaves it for the next start. Recovery tools for a
+  // Spotify update that removed Spicetify sit behind a disclosure.
+  const UCSS = `.ldu{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:rgba(0,0,0,.55);font-family:${FONT};color:#fff;animation:ldxIn .16s ease-out}
+    .ldu-card{width:min(460px,92vw);max-height:86vh;overflow:auto;background:#181818;border-radius:16px;padding:24px;box-sizing:border-box;
+      box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.07);animation:ldxCard .24s cubic-bezier(.2,.8,.2,1)}
+    .ldu-top{display:flex;gap:14px;align-items:center}
+    .ldu-app{flex:none;width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(160deg,#2a2a2a,#121212);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),0 6px 16px rgba(0,0,0,.4);color:#1ed760}
+    .ldu-app svg{width:24px;height:24px}
+    .ldu-top h2{margin:0;font-size:20px;font-weight:700;letter-spacing:-.02em}
+    .ldu-top p{margin:2px 0 0;color:rgba(255,255,255,.6);font-size:13px}
+    .ldu-x{margin-left:auto;align-self:flex-start;width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:rgba(255,255,255,.6);cursor:pointer;display:grid;place-items:center}
+    .ldu-x:hover{background:rgba(255,255,255,.08);color:#fff} .ldu-x svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+    .ldu-ver{display:flex;align-items:center;gap:10px;margin:20px 0 4px;font-variant-numeric:tabular-nums;font-size:13px;font-weight:600}
+    .ldu-ver span{padding:5px 10px;border-radius:999px;background:#242424;color:rgba(255,255,255,.7)}
+    .ldu-ver span.new{background:rgba(30,215,96,.14);color:#1ed760}
+    .ldu-ver svg{width:16px;height:16px;fill:none;stroke:rgba(255,255,255,.4);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    .ldu-notes{margin:16px 0 0;padding:14px 16px;border-radius:12px;background:#202020;font-size:13.5px;line-height:1.55;color:rgba(255,255,255,.85)}
+    .ldu-notes b{display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,.5);margin:0 0 6px}
+    .ldu-notes ul{margin:0;padding-left:18px} .ldu-notes li{margin:3px 0} .ldu-notes li strong{color:#fff;font-weight:600}
+    .ldu-notes .ldu-skel{height:10px;border-radius:5px;background:#2c2c2c;margin:8px 0;animation:lduPulse 1.2s ease-in-out infinite alternate}
+    @keyframes lduPulse{to{opacity:.4}}
+    .ldu-actions{display:flex;gap:10px;align-items:center;margin-top:20px}
+    .ldu-actions small{flex:1;color:rgba(255,255,255,.5);font-size:12px;line-height:1.4}
+    .ldu-btn{cursor:pointer;border:0;border-radius:999px;padding:10px 20px;font:700 14px/1 ${FONT};white-space:nowrap;transition:transform .12s,background .15s,box-shadow .15s}
+    .ldu-btn:active{transform:scale(.97)} .ldu-btn:focus{outline:none} .ldu-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+    .ldu-btn.ghost{background:transparent;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)} .ldu-btn.ghost:hover{box-shadow:inset 0 0 0 1px #fff}
+    .ldu-btn.primary{background:#1ed760;color:#000} .ldu-btn.primary:hover{background:#3be477;transform:scale(1.03)}
+    .ldu details{margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:14px}
+    .ldu summary{cursor:pointer;list-style:none;font-size:13px;font-weight:600;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:8px}
+    .ldu summary::-webkit-details-marker{display:none}
+    .ldu summary svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;transition:transform .2s}
+    .ldu details[open] summary svg{transform:rotate(90deg)}
+    .ldu summary:hover{color:#fff}
+    .ldu-fix{margin-top:10px;font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.5}
+    .ldu-cmd{display:flex;gap:8px;align-items:center;margin-top:10px;padding:8px 8px 8px 12px;border-radius:10px;background:#101010;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+    .ldu-cmd code{flex:1;min-width:0;font:12px/1.4 ui-monospace,Consolas,monospace;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:all}
+    .ldu-cmd button{flex:none;cursor:pointer;border:0;border-radius:6px;padding:6px 10px;background:#2a2a2a;color:#fff;font:600 12px ${FONT}} .ldu-cmd button:hover{background:#333}
+    .ldu-fix .ldu-btn{margin-top:10px;padding:8px 14px;font-size:13px}`;
+  safe(() => { const st = document.createElement('style'); st.textContent = UCSS; document.head.append(st); });
+
+  // Release notes: the GitHub release body, as a short list (bold kept, links dropped).
+  async function releaseNotes(v) {
+    const r = await fetch(`https://api.github.com/repos/DhakadG/lyricdock/releases/tags/v${v}`).then(x => x.ok ? x.json() : null).catch(() => null);
+    return String(r?.body || '').split(/\r?\n/).map(l => l.trim()).filter(l => /^[-*]\s+/.test(l)).slice(0, 6)
+      .map(l => l.replace(/^[-*]\s+/, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1'));
+  }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const mdLine = s => esc(s).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
   function showUpdate() {
     const to = window.__lyricdock?.latest;
-    if (!to || to === VERSION || VERSION === 'dev') return;
+    if (!to || to === VERSION || VERSION === 'dev' || document.querySelector('.ldu')) return;
     const cmd = 'iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex';
-    const box = h('div', { className: 'ld-panel', style: 'overflow-x:hidden' },
-      h('div', { className: 'ld-row' }, h('div', {}, h('div', {}, h('b', {}, `v${VERSION}`), '  →  ', h('b', { style: 'color:#3ddc97' }, `v${to}`)),
-        h('div', { className: 'ld-desc' }, 'Already downloaded. Update reloads Spotify\'s window (about a second) to switch to it; otherwise it loads next time Spotify starts.'))),
-      h('div', { className: 'ld-row' }, h('div', {}, h('div', {}, 'Something broken after a Spotify update?'),
-        h('div', { className: 'ld-desc' }, 'Run updater (needs the installer run once), or paste this into PowerShell:'), h('code', { style: 'display:block;font-size:11px;opacity:.8;user-select:all;word-break:break-all;margin-top:4px' }, cmd)),
-        h('div', { className: 'ld-presets' },
-          h('button', { onclick: () => window.open('lyricdock-updater://update') }, 'Run updater'),
-          h('button', { onclick: () => { Spicetify.Platform?.ClipboardAPI?.copy(cmd); Spicetify.showNotification('Copied'); } }, 'Copy'))),
-      h('div', { className: 'ld-presets', style: 'justify-content:space-between;margin-top:8px' },
-        h('a', { href: `https://github.com/DhakadG/lyricdock/releases/tag/v${to}`, target: '_blank' }, 'Release notes'),
-        h('button', { className: 'ld-primary', style: 'border-radius:999px;padding:9px 24px', onclick: () => location.reload() }, 'Update')));
-    Spicetify.PopupModal.display({ title: 'LyricDock update available', content: box });
+    const el = document.createElement('div');
+    el.className = 'ldu';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'LyricDock update');
+    el.innerHTML = `<div class="ldu-card">
+      <div class="ldu-top"><div class="ldu-app">${ICON}</div><div><h2>Update ready</h2><p>LyricDock ${esc(to)} is downloaded</p></div>
+        <button class="ldu-x" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div class="ldu-ver"><span>${esc(VERSION)}</span><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span class="new">${esc(to)}</span></div>
+      <div class="ldu-notes"><b>What's new</b><div class="ldu-list"><div class="ldu-skel" style="width:88%"></div><div class="ldu-skel" style="width:70%"></div><div class="ldu-skel" style="width:78%"></div></div></div>
+      <div class="ldu-actions"><small>Update reloads Spotify's window, about a second. Later loads it next time Spotify starts.</small>
+        <button class="ldu-btn ghost" data-a="later">Later</button><button class="ldu-btn primary" data-a="update">Update now</button></div>
+      <details><summary><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>LyricDock missing after a Spotify update?</summary>
+        <div class="ldu-fix">Spotify updates can remove Spicetify. Run the updater (installed with LyricDock), or paste this into PowerShell.
+          <div class="ldu-cmd"><code>${esc(cmd)}</code><button data-a="copy">Copy</button></div>
+          <button class="ldu-btn ghost" data-a="run">Run updater</button></div></details>
+    </div>`;
+    const close = () => { el.remove(); removeEventListener('keydown', key, true); };
+    const key = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    addEventListener('keydown', key, true);
+    el.addEventListener('click', e => {
+      if (e.target === el) return close();
+      const a = e.target.closest('[data-a], .ldu-x');
+      if (!a) return;
+      if (a.classList.contains('ldu-x') || a.dataset.a === 'later') close();
+      else if (a.dataset.a === 'update') location.reload();
+      else if (a.dataset.a === 'run') window.open('lyricdock-updater://update');
+      else if (a.dataset.a === 'copy') { safe(() => Spicetify.Platform.ClipboardAPI.copy(cmd)); a.textContent = 'Copied'; setTimeout(() => { a.textContent = 'Copy'; }, 1500); }
+    });
+    document.body.append(el);
+    el.querySelector('.ldu-btn.primary').focus();
+    releaseNotes(to).then(items => {
+      const box = el.querySelector('.ldu-list');
+      if (!box) return;
+      box.innerHTML = items.length ? `<ul>${items.map(i => `<li>${mdLine(i)}</li>`).join('')}</ul>`
+        : `Improvements and fixes. <a href="https://github.com/DhakadG/lyricdock/releases/tag/v${esc(to)}" target="_blank" style="color:#fff">Full release notes</a>`;
+    });
   }
   addEventListener('lyricdock:update', () => { renderPanel(); safe(showUpdate); });
 
