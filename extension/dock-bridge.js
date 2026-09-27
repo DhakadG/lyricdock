@@ -659,10 +659,13 @@
       try {
         const r = await gql(def, SEARCH_VARS(q));
         if (r?.errors?.length) throw new Error(r.errors[0]?.message || 'error');
-        items = harvest(r?.data);
-        if (items.length) break;
+        // Merge: the quick-search query returns top songs, suggestions add artists / albums / playlists.
+        const seen = new Set(items.map(x => x.uri));
+        for (const x of harvest(r?.data)) if (!seen.has(x.uri)) { seen.add(x.uri); items.push(x); }
       } catch (e) { noteErr(`search ${def}`, e); }
     }
+    const order = { Songs: 0, Artists: 1, Albums: 2, Playlists: 3 };
+    items.sort((x, y) => order[x.section] - order[y.section]);
     if (!items.length) {
       const r = await web(`/search?q=${encodeURIComponent(q)}&type=track,artist,album,playlist&limit=8`);
       items = harvest(r);
