@@ -112,7 +112,7 @@ const WZ = [
   ['Turn on developer options', 'On the phone: Settings → About phone → Software information → tap Build number seven times until it says developer mode is on.'],
   ['Turn on USB debugging', 'Settings → Developer options → USB debugging on. Connect the phone to this PC with a data cable (not a charge-only one).'],
   ['Run the setup', 'The next button opens a PowerShell window that downloads adb for a moment, installs LyricDock, makes it the kiosk (full screen, starts on boot, silent updates) and deletes adb again. When the phone asks "Allow USB debugging?", tick Always allow and tap Allow.'],
-  ['Pair it', 'The phone shows a pairing code. In Spotify, click the LyricDock button in the top bar and enter it under Phones - or sign the phone in to your Spotify account and it finds your PC by itself. You can turn USB debugging off afterwards.'],
+  ['Connect it', 'In Spotify, click the LyricDock button in the top bar → Devices → Find devices, then Connect next to the phone and tap Allow on it. You can turn USB debugging off afterwards.'],
 ];
 let wz = 0;
 function wzShow() {
@@ -135,7 +135,7 @@ wzShow();
 const FAQ = [
   ['Do I need this helper?', 'No. Spotify and the phone talk to each other directly. The helper installs or repairs the Spotify extension, runs the one-time phone setup, and can host a local signalling relay.'],
   ['The LyricDock button is gone from Spotify', 'Spotify updates can remove Spicetify. Click Install / repair on the Dashboard (or run spicetify backup apply), then restart Spotify.'],
-  ['The phone says "Waiting for Spotify"', 'Pair once: enter the code the phone shows in Spotify → LyricDock → Phones. Both must be on the same network (or set a TURN server for away-from-home use). If your router isolates devices, use USB tethering or the local relay.'],
+  ['The phone says "Waiting for Spotify"', 'In Spotify: LyricDock → Devices → Find devices → Connect, then Allow on the phone. Both must be on the same network (or set a TURN server for away-from-home use). If your router isolates devices, use USB tethering or the local relay.'],
   ['Can I use several phones?', 'Yes. Pair each one in Spotify → LyricDock → Phones. They all follow the same Spotify, and each keeps its own settings (Edit settings next to its name).'],
   ['Does it work without Spicetify?', 'Yes, in Spotify-account mode: put your own Spotify Client ID in the phone\'s Settings → Playback source and sign in. It follows whatever device your account plays on.'],
   ['What goes through ntfy.sh?', 'Only the encrypted one-time connection setup (keys derived from the pairing code). Music, lyrics and commands go directly between Spotify and the phone. Turn on the local relay to keep even that at home.'],

@@ -40,7 +40,7 @@ body.bg-black #dim { opacity: 1; background: #000; }
   padding: var(--sa-t) calc(var(--sa-r) + var(--pad)) var(--sa-b) calc(var(--sa-l) + var(--pad) + 1.5vmin); }
 body.art-right #wrap { flex-direction: row-reverse; } /* Settings -> Cover side */
 #left { flex: 0 0 38%; display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 0; }
-#artbox { width: min(100%, 68vmin); }
+#artbox { position: relative; width: min(100%, 68vmin); }
 #art { position: relative; width: 100%; aspect-ratio: 1; border-radius: 2.4vmin; background: #1a1a1d center/cover;
   box-shadow: 0 3vmin 8vmin -1vmin rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .06), 0 2vmin 9vmin -3vmin rgba(var(--acc), .35);
   transition: transform calc(.6s / var(--as)) var(--ease), box-shadow .6s, border-radius .4s; }
@@ -224,14 +224,16 @@ body.ui #ctl, body.ui #gear { visibility: visible; transition: opacity .35s, tra
 
 /* Progress bar floats just above the edge; its ends stop where the rounded corner would cut it (flat screens:
    --bar-* are 0, so it is a classic full-width edge bar). Fill: white into the cover's accent. */
-#bar { position: fixed; left: var(--bar-bx); right: var(--bar-bx); bottom: var(--bar-by); height: .8vmin; border-radius: 1vmin;
+#bar { position: fixed; left: var(--bar-bx); right: var(--bar-bx); bottom: var(--bar-by); height: .8vmin; border-radius: 999px;
   background: rgba(255, 255, 255, .16); z-index: 4; transition: height .3s var(--ease); }
 #bar::before { content: ''; position: absolute; left: 0; right: 0; top: -3vmin; bottom: -1vmin; }
 body.prog-top #bar { top: var(--bar-ty); bottom: auto; left: var(--bar-tx); right: var(--bar-tx); }
 body.prog-top #bar::before { top: -1vmin; bottom: -3vmin; }
 body.prog-off #bar { display: none; }
 body.ui #bar { height: 1.6vmin; }
-#fill { height: 100%; border-radius: inherit; transform-origin: left; transform: scaleX(0); will-change: transform; /* app.js drives a linear transition */
+/* Fully rounded: a full-width pill slides in from the left inside a rounded, clipping track (a scaled fill would squash its rounded end). */
+#track { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+#fill { height: 100%; border-radius: 999px; transform: translateX(-100%); will-change: transform; /* app.js drives a linear transition */
   background: linear-gradient(90deg, rgba(255, 255, 255, .85), rgb(var(--acc)));
   box-shadow: 0 0 2vmin rgba(var(--acc), .55); }
 #times { position: fixed; left: calc(var(--bar-bx) + 2vmin); right: calc(var(--bar-bx) + 2vmin); bottom: calc(var(--bar-by) + 2.4vmin);
@@ -453,8 +455,8 @@ body.layout-player #deck #ctl { position: static; transform: none; width: 100%; 
   padding: 2.4vmin 3vmin 1.6vmin; gap: 1vmin; justify-content: space-between; backdrop-filter: none; -webkit-backdrop-filter: none;
   background: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .02)), rgba(10, 12, 14, .55); }
 body.layout-player #deckbar { display: block; flex: 0 0 100%; order: -1; margin-bottom: 1vmin; }
-#dtrack { height: 1vmin; border-radius: 1vmin; background: rgba(255, 255, 255, .16); overflow: hidden; }
-#dfill { height: 100%; transform-origin: left; transform: scaleX(0); background: #fff; border-radius: inherit; will-change: transform; }
+#dtrack { height: 1vmin; border-radius: 999px; background: rgba(255, 255, 255, .16); overflow: hidden; }
+#dfill { height: 100%; transform: translateX(-100%); background: #fff; border-radius: 999px; will-change: transform; }
 #dtimes { display: flex; justify-content: space-between; margin-top: 1vmin; font-size: 2.4vmin; font-weight: 600; opacity: .6; font-variant-numeric: tabular-nums; }
 body.layout-player #bar, body.layout-player #times { display: none; }
 body.layout-player #ctl #pp { background: transparent; color: #fff; box-shadow: none; width: 12vmin; height: 12vmin; }
@@ -572,8 +574,12 @@ body.outline .ln { text-shadow: 0 .2vmin 1.2vmin rgba(0, 0, 0, .55); }
 
 /* ---- clock screen, night mode */
 #clockScreen { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #050506;
-  opacity: 0; visibility: hidden; transition: opacity 1.2s, visibility 0s 1.2s; }
-body.clock #clockScreen { opacity: 1; visibility: visible; transition: opacity 1.2s, visibility 0s; }
+  opacity: 0; visibility: hidden; transition: opacity .55s var(--ease), visibility 0s .55s; }
+body.clock #clockScreen { opacity: 1; visibility: visible; transition: opacity .5s var(--ease) .08s, visibility 0s; }
+/* Clock <-> song view as one motion: the song view sinks back and fades while the clock rises (and the reverse). */
+#left, #lyrics, #clockPane { transition: transform .6s var(--ease), opacity .5s var(--ease); }
+body.clock:not(.layout-clock) #left, body.clock:not(.layout-clock) #lyrics { transform: scale(.94); opacity: 0; }
+body.clock .fc-wrap { animation: fcIn .6s var(--ease) both; } @keyframes fcIn { from { transform: scale(1.04); } }
 #clockScreen > div { transform: translate(var(--cx, 0), var(--cy, 0)); transition: transform 3s ease; }
 #clkTime { font-size: 26vmin; font-weight: 200; letter-spacing: -.04em; font-variant-numeric: tabular-nums; line-height: 1; }
 #clkDate { font-size: 4.2vmin; font-weight: 500; opacity: .55; margin-top: 2vmin; }
@@ -586,18 +592,17 @@ body.clock #clockScreen { opacity: 1; visibility: visible; transition: opacity 1
 #clockScreen.stacked .fc-wrap { flex-direction: column; gap: calc(var(--cw) * .15); }
 .fc-group { display: flex; gap: calc(var(--cw) * .05); }
 /* One card per digit (Figma "Flip digit", 300 x 440). Each layer holds the whole card SVG and shows one half of it. */
-.fc-cell { position: relative; width: var(--cw); height: var(--ch); perspective: calc(var(--ch) * 4); }
-.fc-half, .fc-flap { position: absolute; left: 0; right: 0; height: calc(50% - .5px); overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.fc-half.top, .fc-flap.top { top: 0; }
-.fc-half.bot, .fc-flap.bot { bottom: 0; }
-.fc-flap { z-index: 2; visibility: hidden; will-change: transform; transform: translateZ(0); }
-.fc-flap.top { transform-origin: 50% 100%; }
-.fc-flap.bot { transform-origin: 50% 0; }
-.fc-svg { position: absolute; left: 0; width: var(--cw); height: var(--ch); display: block; }
-.top > .fc-svg { top: 0; } .bot > .fc-svg { bottom: 0; }
-.fc-num { fill: none; stroke: #fff; stroke-opacity: .74; stroke-width: 46.5; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 2.5; }
+.fc-cell { position: relative; width: var(--cw); height: var(--ch); perspective: calc(var(--ch) * 3.5); }
+/* Every layer is the whole card, clipped to its half at exactly the centre line: all four line up to the pixel. */
+.fc-l { position: absolute; inset: 0; overflow: hidden; }
+.fc-l.top { clip-path: inset(0 0 50% 0); }
+.fc-l.bot { clip-path: inset(50% 0 0 0); }
+.fc-l.flap { z-index: 2; visibility: hidden; transform-origin: 50% 50%; backface-visibility: hidden; -webkit-backface-visibility: hidden; will-change: transform; }
+.fc-l.flap.on { visibility: visible; }
+.fc-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }.fc-num { fill: none; stroke: #fff; stroke-opacity: .74; stroke-width: 46.5; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 2.5; }
 .fc-ap { font: 700 34px var(--font), system-ui; letter-spacing: .02em; fill: #fff; fill-opacity: .74; }
 .fc-shade, .fc-drop { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+.fc-l.bot .fc-drop { background: linear-gradient(#000, transparent 70%); }
 .fc-sheen { position: absolute; left: 0; right: 0; height: 60%; background: linear-gradient(transparent, rgba(255, 255, 255, .08), transparent); opacity: 0; pointer-events: none; }#nightTint { position: fixed; inset: 0; z-index: 8; pointer-events: none; display: none;
   background: rgba(255, 130, 40, calc(var(--nw, .4) * .22)); mix-blend-mode: multiply; }
 body.night #nightTint { display: block; box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, var(--nd, .5)); }
@@ -666,3 +671,41 @@ body:not(.bg-video) #yt { display: none; }
   .st-tab { flex-direction: column; gap: 4px; padding: 8px 10px; font-size: .64rem; }
 
 }
+
+/* Settings -> Connection status card */
+.st-custom { padding: 14px 14px 12px; }
+.cc { width: 100%; }
+.cc-top { display: flex; gap: 12px; align-items: flex-start; }
+.cc-top b { display: block; font-size: 1rem; font-weight: 700; letter-spacing: -.01em; }
+.cc-top small { display: block; color: var(--t2); font-size: .78rem; margin-top: 2px; }
+.cc-dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: #ff453a; box-shadow: 0 0 0 4px rgba(255, 69, 58, .15); }
+.cc-dot.on { background: #30d158; box-shadow: 0 0 0 4px rgba(48, 209, 88, .15); }
+.cc-dot.mid { background: #ff9f0a; box-shadow: 0 0 0 4px rgba(255, 159, 10, .15); }
+.cc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.cc-grid > div { background: rgba(255, 255, 255, .04); border-radius: 10px; padding: 10px 12px; box-shadow: inset 0 0 0 1px var(--hair); }
+.cc-grid small { display: block; font-size: .66rem; color: var(--t3); font-weight: 600; }
+.cc-grid b { display: block; font-size: .82rem; margin: 3px 0; }
+.cc-grid span { display: block; font-size: .7rem; color: var(--t2); line-height: 1.4; }
+.cc-grid .cc-code { font-size: 1.25rem; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+@media (orientation: portrait) { .cc-grid { grid-template-columns: 1fr; } }
+
+/* ---- layouts built on the flip clock */
+#clockPane { display: none; position: relative; flex: 1; min-width: 0; align-items: center; justify-content: center; }
+body.layout-clocksplit #lyrics { display: none; }
+body.layout-clocksplit #clockPane { display: flex; }
+body.layout-clocksplit #artbox { width: 62vmin; }
+body.layout-clock #gear, body.layout-clock > #ctl { z-index: 9; }
+@media (orientation: portrait) {
+  body.layout-clocksplit #wrap { flex-direction: column; gap: 2vmin;
+    padding: calc(var(--sa-t) + 6vmin) calc(var(--sa-r) + 6vmin) calc(var(--sa-b) + var(--bar-by) + 4vmin) calc(var(--sa-l) + 6vmin); }
+  body.layout-clocksplit #left { flex: 0 0 auto; }
+}
+
+/* ---- cover swipe (features.js) and cover crossfade (app.js) */
+#artPeek { position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 1; border-radius: 2.4vmin; background: #1a1a1d center/cover;
+  opacity: 0; pointer-events: none; z-index: 0; box-shadow: 0 3vmin 8vmin -1vmin rgba(0, 0, 0, .7); will-change: transform, opacity; }
+#art { z-index: 1; }
+body.art-dragging #art { transition: none; }
+body.art-dragging #left { position: relative; z-index: 3; }
+.art-x { position: absolute; inset: 0; border-radius: inherit; background: center/cover; pointer-events: none; z-index: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

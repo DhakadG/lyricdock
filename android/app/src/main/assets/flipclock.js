@@ -1,18 +1,17 @@
-// Flip clock screen (shown when music is paused / idle): one dark card per digit that flips like a mechanical clock.
+// Flip clock: one dark card per digit that flips like a mechanical clock. Shown full screen when the music stops
+// (or always, as the "Flip clock" layout) and beside the cover in the "Cover + clock" layout.
 // The ten digit cards are designed in Figma (page "LyricDock · Flip Clock", component set "Flip digit") and exported
-// as SVG; D below holds each card's numeral path in the card's 300 x 440 space, and CARD is the exported card body
-// (two halves, 2 px split, vertical gradients, a hairline of light on the top edge). scripts/flip-assets.mjs writes
+// as SVG; D holds each numeral path in the card's 300 x 440 space and CARD the card body (two halves, a 3 px split
+// cut across the digit, vertical gradients, a hairline of light on the top edge). scripts/flip-assets.mjs writes
 // the same SVGs to design/flipclock/.
 //
-// How a flip works: each card has four layers - static top half (new digit), static bottom half (old), a top flap
-// (old) that falls away and a bottom flap (new) that lands. Only the flaps move (transform + a shade overlay's
-// opacity: no filters, cheap on old GPUs). Variants:
-//   classic  fall 180 ms ease-in, land 200 ms ease-out, the falling flap darkens
-//   bounce   the landing flap overshoots and settles
-//   fold     slower, a sheen sweeps the flap and its shadow falls on the half below
-//   cascade  units flip first, tens a beat later, hours after minutes (departure board)
-//   roll     no split: the new digit rolls down over a drum
-//   fade     a quiet crossfade
+// A card is four layers, each the WHOLE card clipped to one half at exactly the centre line (clip-path), so every
+// layer lines up to the pixel: static top (new digit), static bottom (old digit), top flap (old) and bottom flap
+// (new). A flip only changes numeral paths (no markup rebuilt) and moves the two flaps around the centre line:
+//   fall  the top flap tips over (ease-in, like gravity), darkening, and is hidden once edge-on;
+//   land  the bottom flap - which appears only after it has turned past 70deg, still in shadow, so no bright sliver
+//         pops out at the split - swings down onto the old bottom and settles.
+// Variants: classic, bounce (overshoot), fold (slow, sheen + cast shadow), cascade (digit by digit), roll, fade.
 // Sound is synthesised (Web Audio, no files): a whoosh as the flap falls, a click as it lands; haptics at the landing.
 const Flip = (() => {
   const $ = id => document.getElementById(id);
@@ -29,19 +28,24 @@ const Flip = (() => {
     8: 'M150 210.7C115.9 210.7 95.75 189 95.75 151.8C95.75 114.6 119 92.9 150 92.9C181 92.9 204.25 114.6 204.25 151.8C204.25 189 184.1 210.7 150 210.7ZM150 210.7C109.7 210.7 84.9 235.5 84.9 278.9C84.9 319.2 112.8 347.1 150 347.1C187.2 347.1 215.1 319.2 215.1 278.9C215.1 235.5 190.3 210.7 150 210.7Z',
     9: 'M100.4 325.4C112.8 340.9 129.85 347.1 150 347.1C193.4 347.1 215.1 306.8 215.1 235.5V176.6C215.1 123.9 190.3 92.9 150 92.9C109.7 92.9 84.9 123.9 84.9 170.4C84.9 213.8 109.7 241.7 150 241.7C184.1 241.7 208.9 220 215.1 192.1',
   };
-  // Gradients are defined once for the page (DEFS): repeating the ids inside every card made all cards re-resolve
-  // them whenever a flip rewrote a card, which flashed.
+  // Gradients once for the page: ids repeated in every card re-resolve whenever one changes, which flashed.
   const DEFS = '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="fcT" x1="0" y1="0" x2="0" y2="219" gradientUnits="userSpaceOnUse"><stop stop-color="#191919"/><stop offset="1" stop-color="#121212"/></linearGradient>'
     + '<linearGradient id="fcB" x1="0" y1="221" x2="0" y2="440" gradientUnits="userSpaceOnUse"><stop stop-color="#111"/><stop offset="1" stop-color="#0A0A0A"/></linearGradient></defs></svg>';
   const CARD = '<path d="M0 40C0 17.9 17.9 0 40 0H260C282.1 0 300 17.9 300 40V219H0V40Z" fill="url(#fcT)"/>'
     + '<path d="M0 221H300V400C300 422.1 282.1 440 260 440H40C17.9 440 0 422.1 0 400V221Z" fill="url(#fcB)"/>'
     + '<rect x="40" width="220" height="1" fill="#fff" fill-opacity=".06"/>';
-  const card = (d, label) => `<svg class="fc-svg" viewBox="0 0 300 440" aria-hidden="true">${S().clockCards ? CARD : ''}`
-    + `${D[d] ? `<path class="fc-num" transform="translate(150 220) scale(1.15) translate(-150 -220)" d="${D[d]}"/>` : ''}<rect y="218.5" width="300" height="3" fill="#000"/>${label ? `<text class="fc-ap" x="30" y="${label === 'PM' ? 412 : 62}">${label}</text>` : ''}</svg>`; // AM top-left, PM bottom-left
-  // Fall: accelerates like gravity (the flap tips over its hinge). Land: fast, then decelerates onto the stop.
+  const layerSvg = () => `<svg class="fc-svg" viewBox="0 0 300 440" aria-hidden="true">${S().clockCards ? CARD : ''}`
+    + '<path class="fc-num" transform="translate(150 220) scale(1.15) translate(-150 -220)" d=""/><rect y="218.5" width="300" height="3" fill="#000"/><text class="fc-ap" x="30" y="62"></text></svg>';
+  // Point a layer at a digit (and the AM / PM mark): only attributes change.
+  function paint(layer, d, label) {
+    layer.num.setAttribute('d', D[d] || '');
+    if (layer.ap.textContent !== (label || '')) { layer.ap.textContent = label || ''; layer.ap.setAttribute('y', label === 'PM' ? 412 : 62); }
+  }
   const EASE = { in: 'cubic-bezier(.5,0,.85,.35)', out: 'cubic-bezier(.15,.75,.35,1)' };
+  // The system's reduce-motion preference turns every flip into a quiet crossfade.
+  const rm = matchMedia('(prefers-reduced-motion: reduce)'), reduced = () => rm.matches;
 
-  let root, groups = [], shown = false, secs = false, lastKey = '', tapT = 0;
+  let root = null, groups = [], shown = false, secs = false, lastKey = '', tapT = 0, forceSecs = null;
 
   // ---- sound: noise bursts through filters, synthesised on demand (no audio files to ship)
   let ac = null, noise = null;
@@ -74,10 +78,9 @@ const Flip = (() => {
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
     o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.07);
   }
-  // fall / land: seconds from now when the (first) flap starts falling and when the (last) one lands.
   function sound(fall, land) {
     const kind = S().clockSound, v = S().clockVolume;
-    if (kind === 'off' || v <= 0 || document.body.classList.contains('night')) return;
+    if (kind === 'off' || v <= 0 || document.hidden || document.body.classList.contains('night')) return;
     if (kind === 'mechanical') {
       burst({ type: 'bandpass', f0: 900, f1: 2600, q: 0.8, vol: 0.18 * v, attack: 0.02, len: Math.max(0.05, land - fall), at: fall });
       burst({ type: 'highpass', f0: 3200, vol: 0.9 * v, len: 0.016, at: land });
@@ -88,10 +91,11 @@ const Flip = (() => {
   }
   const haptic = at => { if (S().clockHaptic) setTimeout(() => { try { Dock.vibrate(12); } catch (e) {} }, at * 1000); };
 
-  // ---- DOM: a group per unit (hours, minutes, seconds), a card per digit
-  const cellHtml = (d, label) => { const f = card(d, label);
-    return `<div class="fc-cell"><div class="fc-half top">${f}</div><div class="fc-half bot">${f}<b class="fc-drop"></b></div>`
-      + `<div class="fc-flap top">${f}<b class="fc-shade"></b><b class="fc-sheen"></b></div><div class="fc-flap bot">${f}<b class="fc-shade"></b></div></div>`; };
+  // ---- DOM: a group per unit (hours, minutes, seconds), a card per digit, four full-card layers per card
+  const cellHtml = () => { const svg = layerSvg();
+    return `<div class="fc-cell"><div class="fc-l top">${svg}</div><div class="fc-l bot">${svg}<b class="fc-drop"></b></div>`
+      + `<div class="fc-l flap top">${svg}<b class="fc-shade"></b><b class="fc-sheen"></b></div><div class="fc-l flap bot">${svg}<b class="fc-shade"></b></div></div>`; };
+  const showSecs = () => forceSecs ?? secs;
   function parts() {
     const d = new Date(), h24 = S().clock24 === '24';
     let h = d.getHours();
@@ -100,124 +104,156 @@ const Flip = (() => {
     // 12-hour: a blank first card before single-digit hours (" 9"), so the layout never jumps.
     return { h: h24 ? String(h).padStart(2, '0') : String(h).padStart(2, ' '), m: String(d.getMinutes()).padStart(2, '0'), s: String(d.getSeconds()).padStart(2, '0'), ampm };
   }
-  function build() {
-    root = $('clockScreen');
+  function build(blank) {
+    if (!root) return;
     if (!document.getElementById('fcT')) document.body.insertAdjacentHTML('beforeend', DEFS);
-    const v = parts(), units = secs ? ['h', 'm', 's'] : ['h', 'm'];
+    const v = parts(), units = showSecs() ? ['h', 'm', 's'] : ['h', 'm'];
     root.querySelector('.fc-wrap')?.remove();
     const wrap = document.createElement('div');
     wrap.className = 'fc-wrap';
-    wrap.innerHTML = units.map(u => `<div class="fc-group" data-u="${u}">${[...v[u]].map((d, i) => cellHtml(d, u === 'h' && i === 0 ? v.ampm : '')).join('')}</div>`).join('');
+    wrap.innerHTML = units.map(u => `<div class="fc-group" data-u="${u}">${[...v[u]].map(cellHtml).join('')}</div>`).join('');
     root.prepend(wrap);
-    groups = [...wrap.querySelectorAll('.fc-group')].map(el => ({ el, u: el.dataset.u, cells: [...el.querySelectorAll('.fc-cell')].map((c, i) => ({ el: c, d: v[el.dataset.u][i] })) }));
+    groups = [...wrap.querySelectorAll('.fc-group')].map(el => ({ el, u: el.dataset.u, cells: [...el.querySelectorAll('.fc-cell')].map((c, i) => {
+      const L = [...c.children].map(x => ({ el: x, num: x.querySelector('.fc-num'), ap: x.querySelector('.fc-ap') }));
+      const cell = { el: c, top: L[0], bot: L[1], ft: L[2], fb: L[3], d: blank ? ' ' : v[el.dataset.u][i], label: '' };
+      const lab = el.dataset.u === 'h' && i === 0 ? v.ampm : '';
+      cell.label = blank ? '' : lab;
+      for (const x of L) paint(x, cell.d, cell.label);
+      return cell;
+    }) }));
     layout();
   }
-  // Card size: as big as the screen allows (groups side by side in landscape, stacked in portrait) x the size setting.
+  // Card size: as big as the space allows (groups side by side when wide, stacked when tall) x the size setting.
   function layout() {
     if (!root) return;
-    const n = groups.length || 2, W = innerWidth, H = innerHeight, R = 440 / 300;
+    const n = groups.length || 2, W = root.clientWidth || innerWidth, H = root.clientHeight || innerHeight, R = 440 / 300;
     const stacked = S().clockLayout === 'stacked' || (S().clockLayout === 'auto' && H > W);
     const inner = 0.05, sep = 0.3; // gap between a group's cards / between groups, in card widths
     const cw = stacked
       ? Math.min(W * 0.84 / (2 + inner), H * 0.9 / (n * R + (n - 1) * sep))
       : Math.min(W * 0.94 / (n * (2 + inner) + (n - 1) * sep), H * 0.8 / R);
-    const st = root.style, k = S().clockScale;
+    const st = root.style, k = root.id === 'clockScreen' ? S().clockScale : 1;
     st.setProperty('--cw', `${cw * k}px`);
     st.setProperty('--ch', `${cw * R * k}px`);
     st.setProperty('--fc-dim', 1 - S().clockDim);
     root.classList.toggle('stacked', stacked);
   }
 
-  // ---- flipping one card from its digit to d; returns seconds from now until it lands
-  function flip(cell, d, label, delay) {
-    const [top, bot, ft, fb] = cell.el.children, f = card(d, label);
-    const anim = S().clockAnim, sp = 1 / (S().animSpeed || 1);
-    ft.getAnimations().forEach(a => a.cancel()); fb.getAnimations().forEach(a => a.cancel());
-    // Settle any flip still in flight first: the halves must show exactly the digit we are leaving (a cancelled
-    // flip never ran its landing, which left a stale bottom half under the next flap - the jitter).
-    const was = card(cell.d, label);
-    bot.innerHTML = was + '<b class="fc-drop"></b>';
-    ft.innerHTML = was + '<b class="fc-shade"></b><b class="fc-sheen"></b>'; // the old top half falls away
-    fb.innerHTML = f + '<b class="fc-shade"></b>';
-    top.innerHTML = f;
-    cell.d = d;
-    const T = { classic: [180, 200], bounce: [170, 420], fold: [300, 340], cascade: [160, 300], roll: [0, 420], fade: [0, 420] }[anim] || [180, 200];
+  // ---- one card from its digit to d; returns seconds from now until it lands
+  function flip(cell, d, label, delay, speed = 1, anims = []) {
+    const { top, bot, ft, fb } = cell, from = cell.d, fromLabel = cell.label;
+    const anim = reduced() ? 'fade' : S().clockAnim, sp = 1 / ((S().animSpeed || 1) * speed);
+    for (const x of [ft, fb, top, bot]) x.el.getAnimations({ subtree: true }).forEach(a => a.cancel());
+    // Start from a settled card: halves show exactly the digit we leave, the flaps carry the two digits.
+    paint(bot, from, fromLabel); paint(ft, from, fromLabel);
+    paint(top, d, label); paint(fb, d, label);
+    cell.d = d; cell.label = label;
+    const T = { classic: [180, 210], bounce: [170, 420], fold: [300, 340], cascade: [160, 300], roll: [0, 420], fade: [0, 420] }[anim] || [180, 210];
     const fall = T[0] * sp, land = T[1] * sp, o = { fill: 'forwards' };
+    const settle = () => { paint(bot, d, label); ft.el.classList.remove('on'); fb.el.classList.remove('on'); };
     if (anim === 'roll' || anim === 'fade') {
-      ft.style.visibility = fb.style.visibility = 'hidden';
-      bot.innerHTML = f + '<b class="fc-drop"></b>';
+      paint(bot, d, label);
       const kf = anim === 'roll' ? [{ transform: 'translateY(-30%) rotateX(55deg)', opacity: 0 }, { transform: 'none', opacity: 1 }] : [{ opacity: 0 }, { opacity: 1 }];
-      for (const h of [top, bot]) h.firstElementChild?.animate(kf, { duration: land, delay, easing: EASE.out, fill: 'backwards' });
+      for (const h of [top, bot]) anims.push(h.el.firstElementChild.animate(kf, { duration: land, delay, easing: EASE.out, fill: 'backwards' }));
       return (delay + land) / 1000;
     }
-    ft.style.visibility = fb.style.visibility = 'visible';
-    // Edge-on (+-90deg) a flap still renders as a 1px line across the split: fade the falling flap out on its last
-    // frame and keep the landing flap invisible until it starts moving.
-    fb.style.transform = 'rotateX(90deg)';
-    fb.style.opacity = '0';
-    ft.animate([{ transform: 'rotateX(0)', opacity: 1 }, { transform: 'rotateX(-88deg)', opacity: 1, offset: 0.97 }, { transform: 'rotateX(-90deg)', opacity: 0 }], { duration: fall, delay, easing: EASE.in, ...o });
-    ft.querySelector('.fc-shade').animate([{ opacity: 0 }, { opacity: 0.6 }], { duration: fall, delay, easing: EASE.in, ...o });
-    // The falling flap's shadow on the old bottom half, strongest just before the new flap covers it.
-    bot.querySelector('.fc-drop')?.animate([{ opacity: 0 }, { opacity: 0.5 }], { duration: fall, delay, easing: EASE.in, fill: 'none' });
-    if (anim === 'fold') {
-      ft.querySelector('.fc-sheen').animate([{ opacity: 0, transform: 'translateY(-60%)' }, { opacity: 0.5, transform: 'translateY(40%)' }], { duration: fall, delay, easing: 'linear', ...o });
-      bot.animate([{ opacity: 1 }, { opacity: 0.55 }, { opacity: 1 }], { duration: fall + land, delay, easing: 'ease-in-out' });
-    }
+    ft.el.classList.add('on'); fb.el.classList.add('on');
+    ft.el.animate([{ transform: 'rotateX(0)', opacity: 1 }, { transform: 'rotateX(-89deg)', opacity: 1, offset: 0.985 }, { transform: 'rotateX(-90deg)', opacity: 0 }],
+      { duration: fall, delay, easing: EASE.in, ...o });
+    ft.el.querySelector('.fc-shade').animate([{ opacity: 0 }, { opacity: 0.65 }], { duration: fall, delay, easing: EASE.in, ...o });
+    bot.el.querySelector('.fc-drop').animate([{ opacity: 0 }, { opacity: 0.35 }, { opacity: 0 }], { duration: fall + land * 0.6, delay, easing: 'ease-in-out' });
+    if (anim === 'fold') ft.el.querySelector('.fc-sheen').animate([{ opacity: 0, transform: 'translateY(-60%)' }, { opacity: 0.5, transform: 'translateY(40%)' }], { duration: fall, delay, easing: 'linear', ...o });
     const springy = anim === 'bounce' || anim === 'cascade';
-    const kf = springy
-      ? [{ transform: 'rotateX(90deg)', opacity: 0 }, { transform: 'rotateX(88deg)', opacity: 1, offset: 0.02 }, { transform: 'rotateX(-12deg)', opacity: 1, offset: 0.62 }, { transform: 'rotateX(5deg)', opacity: 1, offset: 0.82 }, { transform: 'rotateX(0)', opacity: 1 }]
-      : [{ transform: 'rotateX(90deg)', opacity: 0 }, { transform: 'rotateX(88deg)', opacity: 1, offset: 0.02 }, { transform: 'rotateX(-3deg)', opacity: 1, offset: 0.8 }, { transform: 'rotateX(0)', opacity: 1 }]; // a tiny settle, like a real flap hitting the stop
-    fb.animate(kf, { duration: land, delay: delay + fall, easing: springy ? 'ease-out' : EASE.out, ...o }).onfinish = () => {
-      bot.innerHTML = f + '<b class="fc-drop"></b>'; ft.style.visibility = fb.style.visibility = 'hidden'; fb.style.opacity = '';
-    };
-    fb.querySelector('.fc-shade').animate([{ opacity: 0.35 }, { opacity: 0 }], { duration: land, delay: delay + fall, easing: EASE.out, ...o });
-    return (delay + fall + (springy ? land * 0.62 : land)) / 1000;
+    // Hidden until it has turned 20deg (no edge-on sliver at the split), shaded like the back of a card.
+    const kf = [{ transform: 'rotateX(90deg)', opacity: 0 }, { transform: 'rotateX(70deg)', opacity: 0, offset: 0.1 }, { transform: 'rotateX(64deg)', opacity: 1, offset: 0.14 },
+      ...(springy ? [{ transform: 'rotateX(-12deg)', opacity: 1, offset: 0.62 }, { transform: 'rotateX(5deg)', opacity: 1, offset: 0.82 }] : [{ transform: 'rotateX(-3deg)', opacity: 1, offset: 0.82 }]),
+      { transform: 'rotateX(0)', opacity: 1 }];
+    const landing = fb.el.animate(kf, { duration: land, delay: delay + fall, easing: springy ? 'ease-out' : EASE.out, ...o });
+    landing.onfinish = settle;
+    anims.push(landing);
+    fb.el.querySelector('.fc-shade').animate([{ opacity: 0.85 }, { opacity: 0.4, offset: 0.3 }, { opacity: 0 }], { duration: land, delay: delay + fall, easing: EASE.out, ...o });
+    return (delay + fall + (springy ? land * 0.62 : land * 0.82)) / 1000;
   }
 
   // 4x a second: flip whatever changed (flips land on the second, not up to 1s late).
+  // Skipped while hidden (no stray sound on return) and while the clock is entering or leaving (one owner per card).
+  let leaving = false;
   function tick() {
-    if (!shown) return;
-    const v = parts(), key = `${v.h}${v.m}${secs ? v.s : ''}${v.ampm}`;
+    if (!shown || !groups.length || leaving || document.hidden) return;
+    const v = parts(), key = `${v.h}${v.m}${showSecs() ? v.s : ''}${v.ampm}`;
     if (key === lastKey) return;
-    const first = !lastKey;
+    if (key.slice(0, 4) !== lastKey.slice(0, 4)) announce(v);
     lastKey = key;
-    if (first) return;
-    const cascade = S().clockAnim === 'cascade';
+    turn(v, S().clockAnim === 'cascade' ? 110 : 35, true);
+  }
+  // Flip every card that differs from v (right to left, the order a real clock turns); target ' ' = blank.
+  function turn(v, stagger, withSound, speed, anims = []) {
     let landAt = -1, fallAt = 0, n = 0, big = false;
-    // Right to left (seconds before minutes before hours, units before tens): the order a real flip clock turns.
     for (const g of [...groups].reverse()) {
       for (let i = g.cells.length - 1; i >= 0; i--) {
-        const cell = g.cells[i], d = v[g.u][i];
-        if (d === undefined || d === cell.d) continue;
-        const delay = cascade ? n * 110 : n * 35;
+        const cell = g.cells[i], d = v ? v[g.u][i] : ' ', label = v && g.u === 'h' && i === 0 ? v.ampm : '';
+        if (d === undefined || (d === cell.d && label === cell.label)) continue;
+        const delay = n * stagger;
         if (g.u !== 's') big = true;
-        const l = flip(cell, d, g.u === 'h' && i === 0 ? v.ampm : '', delay);
+        const l = flip(cell, d, label, delay, speed, anims);
         if (landAt < 0) fallAt = delay / 1000;
         landAt = Math.max(landAt, l);
         n++;
       }
     }
-    if (landAt >= 0 && (!secs || S().clockSoundEvery === 'all' || big)) { sound(fallAt, landAt); haptic(landAt); }
+    if (withSound && landAt >= 0 && (!showSecs() || S().clockSoundEvery === 'all' || big)) { sound(fallAt, landAt); haptic(landAt); }
+    return Math.max(0, landAt);
   }
 
+  // Enter: the cards start blank and flip to the time, one after another (the clock "wakes up").
   function show() {
-    if (shown) return;
+    if (shown && root?.querySelector('.fc-wrap')) return;
     shown = true;
     secs = S().clockSeconds;
-    lastKey = '';
-    build();
-    tick();
+    build(true);
+    const v = parts();
+    lastKey = `${v.h}${v.m}${showSecs() ? v.s : ''}${v.ampm}`;
+    announce(v);
+    leaving = false;
+    requestAnimationFrame(() => turn(v, 70, false, 1.2));
+  }
+  // Leave: the cards flip to blank quickly; resolves when they have, so the song view can come back in after.
+  function leave() {
+    if (!shown) return Promise.resolve();
+    shown = false; leaving = true;
+    const anims = [];
+    turn(null, 35, false, 1.6, anims);
+    // Resolve on the real animations (finished, or cancelled by a newer flip), not on a computed guess.
+    return Promise.all(anims.map(a => a.finished.catch(() => {}))).then(() => { leaving = false; });
   }
   function hide() { shown = false; }
+  // Move the clock to another container (full screen, or beside the cover).
+  // The container can resize on its own (the cover beside it, rotation): watch it, not just the window.
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => layout()) : null;
+  function mount(el, opts = {}) {
+    forceSecs = opts.secs ?? null;
+    if (root === el) return;
+    root?.querySelector('.fc-wrap')?.remove();
+    ro?.disconnect();
+    root = el;
+    ro?.observe(root);
+    shown = false;
+  }
+  // Screen readers: the time as text, updated only when the minute changes.
+  const live = Object.assign(document.createElement('span'), { className: 'sr-only' });
+  live.setAttribute('aria-live', 'polite');
+  document.body.append(live);
+  function announce(v) { live.textContent = `${v.h.trim()}:${v.m}${v.ampm ? ' ' + v.ampm : ''}`; }
   // Tap: seconds on / off (Fliqlo). Double tap: back to the lyrics.
   function onTap() {
     const now = performance.now();
     if (now - tapT < 320) { tapT = 0; return 'dismiss'; }
     tapT = now;
-    setTimeout(() => { if (tapT === now) { secs = !secs; Settings.set('clockSeconds', secs, false); lastKey = ''; build(); tick(); } }, 330);
+    setTimeout(() => { if (tapT === now && forceSecs === null) { secs = !secs; Settings.set('clockSeconds', secs, false); build(false); lastKey = ''; } }, 330);
     return null;
   }
-  addEventListener('resize', layout);
+  if (!ro) addEventListener('resize', layout);
   setInterval(tick, 250);
-  return { show, hide, onTap, rebuild: () => { if (shown) { lastKey = ''; build(); tick(); } }, layout, digits: D, cardSvg: CARD };
+  return { show, hide, leave, onTap, mount, layout, isShown: () => shown,
+    rebuild: () => { if (shown) { build(false); lastKey = ''; } }, digits: D, cardSvg: CARD };
 })();

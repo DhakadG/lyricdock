@@ -159,6 +159,7 @@ const IN = {
 };
 
 function swap(m, im, lyr) {
+  P.prevArt = P.art;
   P.id = m.id;
   P.art = m.art;
   P.dur = m.dur || P.dur;
@@ -201,7 +202,13 @@ async function onTrack(m) {
   const token = ++P.token;
   // Next slides left, previous slides right. The bridge knows which (history), a phone tap knows too.
   const outStyle = S.trackAnim, d = m.dir ?? (performance.now() - P.dirAt < 3000 ? P.dir : 1);
-  const parts = [$('artbox'), $('meta'), $('lyrics')];
+  // The cover stays put when the finger already swiped it over (features.js), and crossfades old -> new in the fade
+  // style instead of fading out to nothing, so a cover is always on screen.
+  const sw = window.__swipe && performance.now() - window.__swipe.at < 4000 ? window.__swipe : null;
+  window.__swipe = null;
+  const xfade = !sw && (outStyle === 'fade' || outStyle === 'blur') && P.art && m.art;
+  const oldArt = P.art;
+  const parts = sw || xfade ? [$('meta'), $('lyrics')] : [$('artbox'), $('meta'), $('lyrics')];
   // Out-animation and cover decode run in parallel; the new cover is ready before it comes in.
   const outDone = outStyle !== 'none' && P.shown
     ? Promise.all(parts.map((el, i) => el.animate(OUT[outStyle](d), { duration: ms(240), delay: ms(i * 30), easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished))
@@ -210,12 +217,22 @@ async function onTrack(m) {
   if (token !== P.token) return; // skipped again meanwhile
   const preLyr = pre.get(m.id)?.lyrics;
   swap(m, im, Lyrics.rank(m.lyrics) >= Lyrics.rank(preLyr) ? m.lyrics : preLyr ?? null);
+  if (xfade) artFadeFrom(oldArt, ms(520));
   topUp(m.id);
   parts.forEach((el, i) => {
     el.getAnimations().forEach(a => a.cancel());
     if (outStyle !== 'none') el.animate(IN[outStyle](d), { duration: ms(560), delay: ms(i * 55), easing: EASE, fill: 'backwards' });
   });
   P.shown = true;
+}
+
+// The previous cover laid over the new one and faded out: an old -> new crossfade with no empty frame.
+function artFadeFrom(url, dur) {
+  const a = $('art'), x = document.createElement('div');
+  x.className = 'art-x';
+  x.style.backgroundImage = `url("${url}")`;
+  a.append(x);
+  x.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur, easing: 'ease-in-out', fill: 'forwards' }).onfinish = () => x.remove();
 }
 
 function onPreload(m) {
@@ -412,7 +429,7 @@ refreshIp();
 setInterval(refreshIp, 10000);
 setInterval(() => {
   send({ type: 'alive', ip: myIp, code: Rtc.code, name: phoneModel });
-  if (!P.id) $('artist').textContent = `Pair code ${Rtc.code} · enter it in Spotify → LyricDock (top bar)`;
+  if (!P.id) $('artist').textContent = `In Spotify: LyricDock button → Devices → Find devices  ·  code ${Rtc.code}`;
 }, 1000);
 
 // ---- settings + presets live on the desktop too (Spicetify LocalStorage), so a new phone starts configured.
@@ -466,7 +483,7 @@ function apply(k) {
   r.setProperty('--lop', S.lineOpacity);
   r.setProperty('--blur', S.blurAmount + 'px');
   // Controls: over the cover (Default/TV), in the always-visible deck (Player card), centred on screen otherwise.
-  (['split', 'tv'].includes(S.layout) ? $('art') : S.layout === 'player' ? $('deck') : b).appendChild($('ctl'));
+  (['split', 'tv', 'clocksplit'].includes(S.layout) ? $('art') : S.layout === 'player' ? $('deck') : b).appendChild($('ctl'));
   if (kw) { kw.animationSpeed = S.bgSpeed; kw.warpIntensity = S.bgWarp; kw.blurPasses = S.bgBlur; kw.saturation = S.bgSaturation; kw.transitionDuration = S.bgFade; }
   if (!k || k === '*' || k === 'bg') art(P.art).then(im => background(P.art, im));
   if (kw && k === 'bgBeat') kw.animationSpeed = S.bgSpeed;
@@ -488,11 +505,11 @@ function fillSync(p) {
   Object.assign(F, { at: performance.now(), pos: p, playing: P.playing, dur: P.dur });
   for (const f of [$('fill'), $('dfill')]) { // the edge bar and the Player card's bar
     f.style.transition = 'none';
-    f.style.transform = `scaleX(${frac})`;
+    f.style.transform = `translateX(${(frac - 1) * 100}%)`;
     if (!P.playing || !P.dur || frac >= 1) continue;
     f.offsetWidth; // commit the start point before starting the glide
     f.style.transition = `transform ${Math.round(P.dur - p)}ms linear`;
-    f.style.transform = 'scaleX(1)';
+    f.style.transform = 'translateX(0)';
   }
 }
 function fillCheck(p) {

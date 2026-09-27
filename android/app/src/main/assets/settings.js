@@ -7,10 +7,10 @@ const Settings = (() => {
   const SCHEMA = [
     { group: 'Layout', icon: 'layout', cat: 'View', desc: 'Where the cover, title, controls and lyrics sit, and which gestures work.' },
     { k: 'layout', label: 'Layout', type: 'choice', def: 'split', opts: [
-      ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar']],
-      help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player.' },
+      ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['clocksplit', 'Cover + clock'], ['clock', 'Flip clock']],
+      help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds; tap again for the controls).' },
     { k: 'artSide', label: 'Cover side', type: 'choice', def: 'left', opts: [['left', 'Cover left, lyrics right'], ['right', 'Lyrics left, cover right']],
-      when: s => s.layout === 'split' || s.layout === 'tv', help: 'Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top.' },
+      when: s => ['split', 'tv', 'clocksplit'].includes(s.layout), help: 'Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top.' },
     { k: 'progress', label: 'Progress bar', type: 'choice', def: 'bottom', opts: [['bottom', 'Bottom'], ['top', 'Top'], ['off', 'Off']],
       help: 'Where the song progress bar sits. Tap it (while the controls are showing) to seek.' },
     { k: 'times', label: 'Show times', desc: 'Elapsed and total time next to the progress bar', type: 'toggle', def: false,
@@ -195,6 +195,7 @@ const Settings = (() => {
     { label: 'Changelog', type: 'action', text: () => 'What\'s new', run: () => window.showChangelog?.(), help: 'Release notes for this and earlier versions, from GitHub.' },
 
     { group: 'Connection', icon: 'link', cat: 'Ops', desc: 'How the phone and Spotify find each other: pairing, signalling server, TURN, kiosk mode.' },
+    { label: 'Status', type: 'custom', render: () => window.connCard?.() },
     { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
       help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer\'s internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection.' },
     { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'ntfy.sh (public)'], ['custom', 'My own ntfy server'], ['helper', 'LyricDock Helper on my PC']],
@@ -204,9 +205,6 @@ const Settings = (() => {
     { k: 'ice', label: 'STUN / TURN servers (away from home)', type: 'text', def: '', placeholder: 'turn:host:3478|user|password, stun:host:3478',
       help: 'Only for using LyricDock on a different network from your computer (e.g. phone on mobile data). Add a TURN relay you control as url|username|password; several separated by commas. Options: a Metered.ca or Cloudflare TURN account, or coturn on a VPS. Leave empty at home.' },
     { label: 'Connection log', type: 'info', value: () => (window.connLog?.() ?? []).slice(0, 6).join('  ·  ') || 'Nothing yet', help: 'The last connection events on this phone (connected, lost, reconnected), newest first.' },
-    { label: 'Link', type: 'info', value: () => window.dockStatus?.() ?? '', help: 'How this phone is currently getting playback: from the computer (direct Wi-Fi / WebRTC, or USB for developers) or from your Spotify account.' },
-    { label: 'Pairing code', desc: 'Enter once in Spotify → LyricDock (top bar) → Pair phone', type: 'info', value: () => window.Rtc?.code ?? '',
-      help: 'Type this into Spotify on your computer once: click the LyricDock button in the top bar → Pair phone. It also encrypts the connection setup.' },
     { label: 'Kiosk mode', desc: 'Full screen, starts on boot, silent updates. Leave it to use the phone normally (tap twice).',
       type: 'action', when: () => { try { return Dock.kioskOn(); } catch (e) { return false; } }, text: () => 'Leave',
       run: () => {
@@ -399,6 +397,7 @@ const Settings = (() => {
   const groupKeys = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (SCHEMA[j].k) out.push(SCHEMA[j].k); return out; };
   const visibleRows = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (!SCHEMA[j].when || SCHEMA[j].when(S)) out.push(SCHEMA[j]); return out; };
   function makeRow(x, where) {
+    if (x.type === 'custom') { const r = el('div', 'sl-sp-row st-custom'); const c = x.render?.(); if (c) r.append(c); return r; }
     const row = el('div', 'sl-sp-row' + (['range', 'text', 'presets', 'action', 'io'].includes(x.type) ? ' sl-sp-row--stacked' : ''));
     const lw = el('div', 'sl-sp-label-wrap');
     const lab = el('div', 'sl-sp-label', x.label);

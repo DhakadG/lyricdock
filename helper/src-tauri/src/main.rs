@@ -101,9 +101,10 @@ async fn status(app: AppHandle) -> Status {
 
 /// Opens a visible PowerShell window running one of the repo's scripts (so the user sees every step).
 fn console(script_url: &str) -> Result<(), String> {
+    // `start "title" program ...`: the title must be quoted or start treats it as the program ("cannot find
+    // 'LyricDock'"). raw_arg keeps Rust from re-quoting the line.
     Command::new("cmd.exe")
-        .args(["/c", "start", "LyricDock", "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-            &format!("iwr -useb {script_url} | iex")])
+        .raw_arg(format!("/c start \"LyricDock\" powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -Command \"iwr -useb {script_url} | iex\""))
         .creation_flags(NO_WINDOW)
         .spawn()
         .map(|_| ())

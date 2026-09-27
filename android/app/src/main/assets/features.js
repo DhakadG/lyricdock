@@ -42,7 +42,7 @@
     (onArt ? $('art') : $('titlerow')).appendChild(h);
     h.classList.toggle('badge', onArt);
     // Quality tag: vertical on the cover's edge; next to the title when there is no big cover.
-    const q = $('quality'), cover = ['split', 'tv'].includes(S.layout);
+    const q = $('quality'), cover = ['split', 'tv', 'clocksplit'].includes(S.layout);
     (cover ? $('art') : $('titlerow')).appendChild(q);
     q.classList.toggle('vert', cover); q.classList.toggle('inline', !cover);
   }
@@ -63,19 +63,86 @@
   let down = null, lastTap = 0;
   addEventListener('touchstart', e => {
     const t = e.touches[0];
-    down = e.touches.length !== 1 || interactive(e) ? null : { x: t.clientX, y: t.clientY, t: performance.now() };
+    const onCover = swipeLayouts.includes(S.layout) && e.target.closest?.('#artbox');
+    down = e.touches.length !== 1 || interactive(e) ? null : { x: t.clientX, y: t.clientY, t: performance.now(), cover: onCover };
   }, { capture: true, passive: true });
   addEventListener('touchend', e => {
     if (!down) return;
-    const t = e.changedTouches[0], dx = t.clientX - down.x, dy = t.clientY - down.y, dt = performance.now() - down.t;
+    const t = e.changedTouches[0], dx = t.clientX - down.x, dy = t.clientY - down.y, dt = performance.now() - down.t, d0 = down;
     down = null;
-    if (S.swipe && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 800) { swipeFx(dx < 0 ? -1 : 1); $(dx < 0 ? 'next' : 'prev').click(); return; }
+    if (S.swipe && !d0.cover && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 800) { swipeFx(dx < 0 ? -1 : 1); $(dx < 0 ? 'next' : 'prev').click(); return; }
     if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && dt < 300) {
       const now2 = performance.now();
       if (S.doubleTapLike && S.showLiked && now2 - lastTap < 320) { $('heart').click(); heartBurst(t.clientX, t.clientY); lastTap = 0; }
       else lastTap = now2;
     }
   }, { capture: true, passive: true });
+  // ---- cover swipe (Default / TV / Cover + clock): the cover follows the finger 1:1 while the next (or previous)
+  // cover slides in beside it. Past a third of the width (or a quick flick) it commits: the covers finish the move and
+  // the song changes (app.js then leaves the cover alone - it is already the new one). Let go early: it springs back.
+  const peek = document.createElement('div');
+  peek.id = 'artPeek';
+  $('artbox').append(peek);
+  const swipeLayouts = ['split', 'tv', 'clocksplit'];
+  let cs = null, csRevert = 0;
+  const artUrl = u => u ? `url("${u}")` : 'none';
+  $('artbox').addEventListener('touchstart', e => {
+    if (!S.swipe || !swipeLayouts.includes(S.layout) || e.touches.length !== 1 || e.target.closest('button, input, #ctl')) return;
+    const t = e.touches[0], w = $('art').offsetWidth;
+    cs = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, on: false, w, gap: w * 0.08, lx: t.clientX, lt: performance.now(), v: 0 };
+  }, { passive: true });
+  $('artbox').addEventListener('touchmove', e => {
+    if (!cs) return;
+    const t = e.touches[0], dx = t.clientX - cs.x, dy = t.clientY - cs.y;
+    if (!cs.on) {
+      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { cs = null; return; } // a vertical drag: not ours
+      if (Math.abs(dx) < 8) return;
+      cs.on = true;
+      document.body.classList.add('art-dragging');
+    }
+    const now2 = performance.now();
+    cs.v = (t.clientX - cs.lx) / Math.max(1, now2 - cs.lt); cs.lx = t.clientX; cs.lt = now2;
+    cs.dx = dx;
+    const dir = dx < 0 ? 1 : -1; // 1 = next (comes from the right), -1 = previous
+    const nextArt = dir > 0 ? P.next?.art : P.prevArt;
+    if (peek.dataset.url !== (nextArt || '')) { peek.dataset.url = nextArt || ''; peek.style.backgroundImage = artUrl(nextArt); }
+    const p = Math.min(1, Math.abs(dx) / cs.w);
+    $('art').style.transform = `translateX(${dx}px) rotate(${dx / cs.w * 4}deg) scale(${1 - p * 0.06})`;
+    peek.style.transform = `translateX(${dir * (cs.w + cs.gap) + dx}px) scale(${0.94 + p * 0.06})`;
+    peek.style.opacity = Math.min(1, p * 1.6);
+  }, { passive: true });
+  const endSwipe = () => {
+    if (!cs) return;
+    const s = cs; cs = null;
+    if (!s.on) return;
+    const dir = s.dx < 0 ? 1 : -1, p = Math.abs(s.dx) / s.w, fast = Math.abs(s.v) > 0.6 && Math.sign(s.v) === Math.sign(s.dx);
+    const art = $('art'), ease = 'cubic-bezier(.2,.8,.2,1)';
+    if (p > 0.33 || (fast && p > 0.1)) {
+      const d = 260;
+      art.animate([{ transform: art.style.transform }, { transform: `translateX(${-dir * (s.w + s.gap)}px) rotate(${-dir * 4}deg) scale(.94)` }], { duration: d, easing: ease, fill: 'forwards' });
+      peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: 'none', opacity: 1 }], { duration: d, easing: ease, fill: 'forwards' }).onfinish = () => {
+        // Hand over: the cover element becomes the new cover in place, the peek goes away - no visible jump.
+        if (peek.dataset.url) art.style.backgroundImage = artUrl(peek.dataset.url);
+        art.getAnimations().forEach(a => a.cancel()); peek.getAnimations().forEach(a => a.cancel());
+        art.style.transform = ''; peek.style.transform = ''; peek.style.opacity = '';
+        document.body.classList.remove('art-dragging');
+        window.__swipe = { dir, at: performance.now() };
+        $(dir > 0 ? 'next' : 'prev').click();
+        // "Previous" can just restart the song: if nothing changes, put the real cover back.
+        const id = P.id;
+        clearTimeout(csRevert);
+        csRevert = setTimeout(() => { if (P.id === id) { window.__swipe = null; art.style.backgroundImage = artUrl(P.art); } }, 2500);
+      };
+    } else {
+      art.animate([{ transform: art.style.transform }, { transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.3,1.4,.5,1)' });
+      peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: `translateX(${dir * (s.w + s.gap)}px) scale(.94)`, opacity: 0 }], { duration: 300, easing: ease });
+      art.style.transform = ''; peek.style.transform = ''; peek.style.opacity = '';
+      document.body.classList.remove('art-dragging');
+    }
+  };
+  $('artbox').addEventListener('touchend', endSwipe, { passive: true });
+  $('artbox').addEventListener('touchcancel', endSwipe, { passive: true });
+
   // A quick nudge of the cover in the swipe direction, so the gesture feels answered before the song changes.
   function swipeFx(dir) {
     $('artbox')?.animate([{ transform: 'none' }, { transform: `translateX(${dir * 4}vmin) rotate(${dir * 1.5}deg)`, opacity: .7 }, { transform: 'none' }],
@@ -125,9 +192,22 @@
   const call = (fn, ...a) => { try { return Dock[fn](...a); } catch (e) { return null; } };
   // Flip clock: tap toggles seconds, double tap goes back to the lyrics (the simple clock: any tap goes back).
   $('clockScreen').onclick = () => {
+    if (S.layout === 'clock') { Flip.onTap(); return; } // the clock IS the layout: taps only toggle seconds
     if (S.clockStyle === 'flip' && Flip.onTap() !== 'dismiss') return;
-    clockDismissedAt = Date.now(); document.body.classList.remove('clock'); Flip.hide();
+    clockDismissedAt = Date.now(); setClock(false);
   };
+  // Clock <-> song view as one motion: entering, the song view sinks back while the clock fades up and its cards
+  // flip from blank to the time; leaving, the cards flip back to blank first, then the song view rises in.
+  let clockOn = false, clockBusy = null;
+  function setClock(on) {
+    if (on === clockOn) return;
+    clockOn = on;
+    const b = document.body;
+    const flip = S.clockStyle === 'flip';
+    if (on) { b.classList.add('clock'); if (flip) { Flip.mount($('clockScreen')); Flip.show(); } return; }
+    const go = () => { if (!clockOn) b.classList.remove('clock'); };
+    if (flip && Flip.isShown()) { clockBusy = Flip.leave().then(go); } else go();
+  }
   function everySecond() {
     const tNow = Date.now(), idleMin = (tNow - lastPlayAt) / 60000, h = new Date().getHours();
     // chip
@@ -138,17 +218,17 @@
       $('nextChip').classList.add('show');
     } else hideChip();
     // clock
-    const wantClock = S.clock !== 'off' && !P.playing && idleMin >= S.clockAfter && tNow - clockDismissedAt > S.clockAfter * 60000
-      && (S.clock === 'paused' ? !!P.id : true);
-    document.body.classList.toggle('clock', wantClock);
-    $('clockScreen').classList.toggle('flip', S.clockStyle === 'flip');
-    if (wantClock && S.clockStyle === 'flip') Flip.show(); else Flip.hide();
+    // The "Flip clock" layout keeps it up; "Cover + clock" has its own; otherwise it's the idle screen.
+    const wantClock = S.layout === 'clock' || (S.layout !== 'clocksplit' && S.clock !== 'off' && !P.playing && idleMin >= S.clockAfter
+      && tNow - clockDismissedAt > S.clockAfter * 60000 && (S.clock === 'paused' ? !!P.id : true));
+    $('clockScreen').classList.toggle('flip', S.clockStyle === 'flip' || S.layout === 'clock');
+    setClock(wantClock);
     $('clkNext').style.display = S.clockCaption ? '' : 'none';
     if (wantClock) {
       const d = new Date();
       $('clkTime').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       $('clkDate').textContent = d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
-      $('clkNext').textContent = P.id ? `Paused · ${$('title').textContent}` : '';
+      $('clkNext').textContent = !P.id ? '' : P.playing ? `${$('title').textContent} · ${$('artist').textContent}` : `Paused · ${$('title').textContent}`;
     }
     // night
     const night = S.night && (S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo);
@@ -380,6 +460,12 @@
     if (k === 'albumLine') albumLine();
     if (k === 'hideExplicit') Lyrics.rebuild();
     if (k && /^clock/.test(k)) { Flip.rebuild(); Flip.layout(); }
+    // Cover + clock: the flip clock (HH:MM) lives where the lyrics would be.
+    if (!k || k === '*' || k === 'layout') {
+      if (S.layout === 'clocksplit') { Flip.mount($('clockPane'), { secs: false }); Flip.show(); }
+      else { Flip.mount($('clockScreen')); clockOn = false; document.body.classList.remove('clock'); }
+      setTimeout(() => Flip.layout(), 60);
+    }
   };
   window.afterApply('*');
   addEventListener('resize', () => setTimeout(remarquee, 100));
@@ -469,10 +555,27 @@
   window.mediaCmd = c => { if (['toggle', 'next', 'prev'].includes(c)) cmdOf(c); };
   window.dockWake = () => {
     lastPlayAt = Date.now(); clockDismissedAt = Date.now();
-    document.body.classList.remove('clock');
+    setClock(false);
     call('wake');
   };
   window.connLog = () => Rtc.log?.() ?? [];
+  // Settings -> Connection: what this phone is connected to right now, how, and how Spotify can find it.
+  window.connCard = () => {
+    const card = document.createElement('div');
+    card.className = 'cc';
+    const p = Rtc.path?.(), linked = Rtc.open?.(), desk = Rtc.desk?.() || 'Spotify on your computer', vis = Rtc.discoverable?.() ?? {};
+    let dockOn = false; try { dockOn = !!Dock.kioskOn; } catch (e) {}
+    const state = linked ? `Connected to ${desk}` : P.source === 'web' ? 'Following your Spotify account' : 'Not connected';
+    const how = linked ? `${p?.relayed ? 'Through a TURN relay' : 'Same network'}${p?.rtt != null ? ` · ${Math.round(p.rtt * 1000)} ms` : ''}`
+      : P.source === 'web' ? 'Spotify on your computer isn\'t linked. Playback comes from your account instead.'
+      : 'Waiting for Spotify on your computer.';
+    card.innerHTML = `<div class="cc-top"><i class="cc-dot${linked ? ' on' : P.source === 'web' ? ' mid' : ''}"></i><div><b>${esc(state)}</b><small>${esc(how)}</small></div></div>
+      <div class="cc-grid">
+        <div><small>Find it from Spotify</small><b>LyricDock button → Devices → Find devices</b><span>${vis.network ? '✓ Visible on this network' : '… checking the network'}${vis.account ? ' · ✓ your Spotify account' : ' · sign in (Playback source) to be found anywhere'}</span></div>
+        <div><small>Or type this pairing code</small><b class="cc-code">${esc(Rtc.code)}</b><span>Spotify → LyricDock → Devices → Pairing code</span></div>
+      </div>`;
+    return card;
+  };
   let mediaKey = null;
   function hardware(h) {
     const inNight = S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo;

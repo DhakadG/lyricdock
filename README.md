@@ -275,7 +275,7 @@ elsewhere (phone on mobile data, PC at home), both ends need a TURN relay you co
 
 ### H. Several phones on one PC
 
-Pair each phone (Spotify → LyricDock → **Phones** → *Add another phone*, or *Find phones on my account*). All of
+In Spotify: LyricDock → **Devices** → **Find devices**, then **Connect** next to each phone and tap **Allow** on it (or type a phone's pairing code under *Other ways to connect*). All of
 them follow the same Spotify; each keeps its **own settings** (click *Edit settings* next to a phone), and presets are
 shared. Commands (play, skip, like) from any phone control Spotify.
 
@@ -368,7 +368,7 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 
 | Setting | Default | What it does |
 |---|---|---|
-| Layout | Default | Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Options: Default / Player card / Lyrics only / Compact / TV view / Cinema / Now Bar. |
+| Layout | Default | Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds; tap again for the controls). Options: Default / Player card / Lyrics only / Compact / TV view / Cinema / Now Bar / Cover + clock / Flip clock. |
 | Cover side | Cover left, lyrics right | Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top. Options: Cover left, lyrics right / Lyrics left, cover right. |
 | Progress bar | Bottom | Where the song progress bar sits. Tap it (while the controls are showing) to seek. Options: Bottom / Top / Off. |
 | Show times | Off | Shows 1:23 / 3:45 above the ends of the progress bar. |
@@ -533,13 +533,12 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 
 | Setting | Default | What it does |
 |---|---|---|
+| Status | — |  |
 | Connection path | Auto (fastest) | How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer's internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection. Options: Auto (fastest) / Prefer USB cable / Wi-Fi only. |
 | Signalling server | ntfy.sh (public) | Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). ntfy.sh is free and public. My own ntfy server: any self-hosted ntfy (https address). LyricDock Helper: the helper app runs a tiny relay on your PC and nothing leaves your network - type your PC's IP address below. Spotify takes this setting from the phone. Options: ntfy.sh (public) / My own ntfy server / LyricDock Helper on my PC. |
 | Server address | (empty) | My own ntfy server: its https:// address (Spotify only allows https). LyricDock Helper: the IPv4 address of the PC running the helper (shown on its Dashboard). |
 | STUN / TURN servers (away from home) | (empty) | Only for using LyricDock on a different network from your computer (e.g. phone on mobile data). Add a TURN relay you control as url\|username\|password; several separated by commas. Options: a Metered.ca or Cloudflare TURN account, or coturn on a VPS. Leave empty at home. |
 | Connection log | — | The last connection events on this phone (connected, lost, reconnected), newest first. |
-| Link | — | How this phone is currently getting playback: from the computer (direct Wi-Fi / WebRTC, or USB for developers) or from your Spotify account. |
-| Pairing code | — | Type this into Spotify on your computer once: click the LyricDock button in the top bar → Pair phone. It also encrypts the connection setup. |
 | Kiosk mode | — | Kiosk mode was turned on by setup-phone.ps1. Leaving it gives the phone back its normal home screen, status bar and lock screen. |
 
 ---
