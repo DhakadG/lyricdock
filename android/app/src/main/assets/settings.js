@@ -60,6 +60,10 @@ const Settings = (() => {
     { group: 'Presets', desc: 'Saved on the desktop, so another phone can reuse them' },
     { label: 'Presets', type: 'presets' },
 
+    { group: 'Updates' },
+    { k: 'autoUpdate', label: 'Update automatically', desc: 'New versions from GitHub Releases install on their own', type: 'toggle', def: true },
+    { label: 'LyricDock app', type: 'action', text: () => 'Check now', run: () => window.checkUpdate?.(true), info: () => window.updateStatus?.() ?? '' },
+
     { group: 'Connection' },
     { label: 'Link', type: 'info', value: () => window.dockStatus?.() ?? '' },
     { label: 'Pairing code', desc: 'Enter once in Spotify → LyricDock (top bar) → Pair phone', type: 'info', value: () => window.Rtc?.code ?? '' },

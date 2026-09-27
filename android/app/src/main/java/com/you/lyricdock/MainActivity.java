@@ -83,6 +83,15 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         runOnUiThread(new LoginClient(this, url));
     }
 
+    // App updates from GitHub Releases (Updater): install=false only checks.
+    @JavascriptInterface
+    public void checkUpdate(boolean install) { new Thread(new Updater(this, install)).start(); }
+
+    @JavascriptInterface
+    public String version() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return ""; }
+    }
+
     // Settings -> "Orientation": auto (all four), landscape (both), portrait (both).
     @JavascriptInterface
     public void setOrientation(String mode) {

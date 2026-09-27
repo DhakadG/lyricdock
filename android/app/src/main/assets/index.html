@@ -193,6 +193,16 @@
   body.times #times { display: flex; }
   body.prog-top #times { top: calc(var(--bar-ty) + 2.4vmin); bottom: auto; left: calc(var(--bar-tx) + 2vmin); right: calc(var(--bar-tx) + 2vmin); }
 
+  #pairAsk { position: fixed; inset: 0; z-index: 20; display: none; place-items: center; background: #000a;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  body.pair-ask #pairAsk { display: grid; }
+  .pa-card { background: rgba(28, 28, 32, .92); border: 1px solid #ffffff24; border-radius: 16px; padding: 22px 26px; max-width: 86vw; text-align: center; }
+  .pa-title { font-size: 18px; font-weight: 700; }
+  .pa-sub { font-size: 13px; opacity: .65; margin-top: 6px; }
+  .pa-digits { font-size: 44px; font-weight: 800; letter-spacing: .25em; margin: 14px 0 18px; font-variant-numeric: tabular-nums; }
+  .pa-btns { display: flex; gap: 10px; justify-content: center; }
+  .pa-btns button { border: 0; border-radius: 999px; padding: 10px 22px; font-size: 15px; font-weight: 600; background: #ffffff1a; }
+  .pa-btns .pa-ok { background: #fff; color: #000; }
   #dot { position: fixed; top: calc(var(--sa-t) + 4vmin); left: 50%; transform: translateX(-50%); padding: .8vmin 2.2vmin; border-radius: 5vmin; z-index: 6;
     background: #000a; font-size: 2.6vmin; opacity: 0; transition: opacity .4s; pointer-events: none; white-space: nowrap; }
   body.stale #dot { opacity: 1; }
@@ -326,6 +336,7 @@
 <div id="times"><span id="tcur"></span><span id="tdur"></span></div>
 <button id="gear"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
 <div id="dot">Reconnecting…</div>
+<div id="pairAsk"><div class="pa-card"><div class="pa-title">Connect <b id="pairName"></b>?</div><div class="pa-sub">Allow only if Spotify on your computer shows the same code:</div><div id="pairDigits" class="pa-digits"></div><div class="pa-btns"><button id="pairDeny">Deny</button><button id="pairAllow" class="pa-ok">Allow</button></div></div></div>
 <div id="settings">
   <div class="sl-modal">
     <div class="sl-modal-container">

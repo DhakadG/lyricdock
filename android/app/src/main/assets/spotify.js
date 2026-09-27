@@ -46,9 +46,10 @@ const Web = (() => {
       say(`Spotify: ${j.error_description || j.error || (r ? r.status : 'offline')}`);
       return false;
     }
-    tok = { cid: cid(), access: j.access_token, refresh: j.refresh_token || tok.refresh, exp: Date.now() + (j.expires_in - 60) * 1000 };
+    tok = { ...tok, cid: cid(), access: j.access_token, refresh: j.refresh_token || tok.refresh, exp: Date.now() + (j.expires_in - 60) * 1000 };
     save();
     say('Signed in');
+    if (!tok.uid) api('GET', '/me').then(r => { if (r?.json?.id) { tok.uid = r.json.id; save(); } }); // for account auto-pairing
     return true;
   }
 
@@ -133,6 +134,8 @@ const Web = (() => {
 
   return {
     login, logout, onAuth, control, setWanted, loggedIn,
+    userId: () => (loggedIn() ? tok.uid ?? null : null),
+    refreshUserId: async () => { if (loggedIn() && !tok.uid) { const r = await api('GET', '/me'); if (r?.json?.id) { tok.uid = r.json.id; save(); } } },
     onMessage: f => { out = f; },
     status: () => status || (loggedIn() ? (state.device ? `Signed in · ${state.device}` : 'Signed in') : 'Not signed in'),
   };

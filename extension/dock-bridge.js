@@ -8,6 +8,9 @@
 (function dockBridge() {
   if (!Spicetify?.Player?.addEventListener || !Spicetify.CosmosAsync || !Spicetify.Platform || !Spicetify.LocalStorage)
     return setTimeout(dockBridge, 300);
+  if (window.__lyricdockRunning) return; // loader + a -Dev copy both installed: run once
+  window.__lyricdockRunning = true;
+  const VERSION = window.__lyricdock?.version ?? 'dev'; // set by the auto-updating loader (lyricdock.js)
 
   const URL_ = 'ws://127.0.0.1:8975';
   const P = Spicetify.Player, LS = Spicetify.LocalStorage;
@@ -143,6 +146,66 @@
     return w;
   }
 
+  // ---- automatic pairing through the Spotify account (mirrors rtc.js watchAccount on the phone). While no phone
+  // is linked, announce on a relay topic derived from the account id; a phone signed in to the same account
+  // answers with its ECDH key, both screens show the same 4 digits, and tapping Allow on the phone sends its
+  // pairing code back, encrypted with the agreed key. The account id isn't secret - the Allow tap is the gate.
+  const EC = { name: 'ECDH', namedCurve: 'P-256' };
+  let autoBusy = false, nextAuto = 0;
+  async function accountId() {
+    return safe(() => Spicetify.Platform.username, null) || (await Spicetify.CosmosAsync.get('https://api.spotify.com/v1/me').catch(() => null))?.id || null;
+  }
+  async function autoPair() {
+    if (autoBusy || ws?.readyState === 1 || Date.now() < nextAuto || typeof RTCPeerConnection === 'undefined') return;
+    autoBusy = true;
+    nextAuto = Date.now() + 30000;
+    let sub = null, modal = false;
+    try {
+      const uid = await accountId();
+      if (!uid) return;
+      const h = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode('lyricdock-account:' + uid)));
+      const topic = 'lda' + Array.from(h, b => b.toString(16).padStart(2, '0')).join('').slice(0, 24);
+      let desk = LS.get('lyricdock:desk');
+      if (!desk) { desk = Math.random().toString(36).slice(2, 12); LS.set('lyricdock:desk', desk); }
+      const kp = await crypto.subtle.generateKey(EC, false, ['deriveBits']);
+      let got = () => {};
+      const inbox = [];
+      sub = new WebSocket(`${RELAY.replace('https', 'wss')}/${topic}/ws`);
+      sub.onmessage = e => {
+        const ev = safe(() => JSON.parse(e.data), {}), m = ev.event === 'message' ? safe(() => JSON.parse(ev.message), null) : null;
+        if (m?.desk === desk && (m.t === 'key' || m.t === 'accept')) { inbox.push(m); got(); }
+      };
+      const next = (t, ms) => new Promise(res => {
+        const look = () => { const i = inbox.findIndex(m => m.t === t); if (i >= 0) { clearTimeout(timer); res(inbox.splice(i, 1)[0]); } };
+        const timer = setTimeout(() => res(null), ms);
+        got = look; look();
+      });
+      await new Promise(r => { sub.onopen = r; setTimeout(r, 3000); });
+      const name = `Spotify on ${navigator.userAgentData?.platform || 'this computer'}`;
+      await fetch(`${RELAY}/${topic}`, { method: 'POST', body: JSON.stringify({ t: 'discover', desk, name, pub: await crypto.subtle.exportKey('jwk', kp.publicKey) }), headers: { Cache: 'no', Firebase: 'no' } });
+      const k = await next('key', 8000);
+      if (!k?.pub) return;
+      const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await crypto.subtle.importKey('jwk', k.pub, EC, false, []) }, kp.privateKey, 256);
+      const hk = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));
+      const digits = String(((hk[0] << 16) | (hk[1] << 8) | hk[2]) % 10000).padStart(4, '0');
+      Spicetify.PopupModal.display({ title: 'Connect your LyricDock phone',
+        content: `<div style="text-align:center;padding:8px 0 4px"><div style="opacity:.7">Your phone found this Spotify. Tap <b>Allow</b> on the phone if it shows:</div><div style="font-size:44px;font-weight:800;letter-spacing:.25em;margin:14px 0">${digits}</div></div>` });
+      modal = true;
+      const a = await next('accept', 65000);
+      if (!a?.box) return;
+      const aes = await crypto.subtle.importKey('raw', hk, 'AES-GCM', false, ['decrypt']);
+      const c = (await unseal(aes, a.box))?.code?.replace(/-/g, '');
+      if (!/^[A-Z2-9]{10}$/.test(c ?? '')) return;
+      LS.set(PAIR_KEY, c);
+      safe(() => Spicetify.showNotification('LyricDock phone paired'));
+      drop(); nextAuto = Date.now() + 60000; ensureLink(); renderPanel();
+    } catch {} finally {
+      try { sub?.close(); } catch {}
+      if (modal) safe(() => Spicetify.PopupModal.hide());
+      autoBusy = false;
+    }
+  }
+
   let nextUsbProbe = 0;
   async function ensureLink() {
     linkState();
@@ -159,7 +222,7 @@
     busy = true;
     try {
       const s = (await tryOpen(1500)) ?? (await rtcOpen());
-      if (s) adopt(s);
+      if (s) adopt(s); else autoPair();
     } finally { busy = false; }
   }
 
@@ -172,7 +235,7 @@
     console.log('[dock] linked via', s.kind);
     // `apply`: settings were changed in the desktop panel while the phone was away - push them now.
     const dirty = LS.get(DIRTY_KEY) === '1';
-    send({ type: 'hello', last: readJson(SETTINGS_KEY, null), presets: readJson(PRESETS_KEY, {}), paired: pairCode().length === 10 });
+    send({ type: 'hello', last: readJson(SETTINGS_KEY, null), presets: readJson(PRESETS_KEY, {}), paired: pairCode().length === 10, version: VERSION });
     if (dirty) { send({ type: 'load', S: readJson(SETTINGS_KEY, {}) }); LS.set(DIRTY_KEY, '0'); }
     renderPanel();
     if (track) send(track);
@@ -420,6 +483,10 @@
     const on = ws?.readyState === 1;
     const kids = [h('div', { className: 'ld-status' + (on ? ' on' : '') }, h('i'),
       on ? 'Phone connected - changes apply instantly' : 'Phone not connected - changes are saved and applied when it connects')];
+    const latest = window.__lyricdock?.latest;
+    kids.push(h('div', { className: 'ld-row' }, h('div', {}, `LyricDock ${VERSION === 'dev' ? '(development build)' : 'v' + VERSION}`,
+      h('div', { className: 'ld-desc' }, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : latest && latest !== VERSION ? `v${latest} downloaded` : 'Up to date - updates install automatically')),
+      ...(latest && latest !== VERSION && VERSION !== 'dev' ? [h('button', { onclick: () => location.reload() }, 'Update now')] : [])));
     // pairing (no-adb link): the code the phone shows under its waiting screen / Settings -> Connection
     const pc = pairCode(), codeIn = h('input', { type: 'text', placeholder: 'e.g. K7QX-9MP-2F', value: pc ? `${pc.slice(0, 4)}-${pc.slice(4, 7)}-${pc.slice(7)}` : '' });
     kids.push(h('h3', {}, 'Pair phone'), h('div', { className: 'ld-row' },
@@ -459,6 +526,23 @@
   // isRight: Spicetify gives right-side buttons the class of Spotify's own round action buttons (left ones sit
   // small among the back/forward arrows), so this matches the native top-bar buttons.
   safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel, false, true).element.classList.add('ld-topbar'));
+  // Update notice (the loader has already downloaded the new build; reloading Spotify's page switches to it).
+  function showUpdate() {
+    const to = window.__lyricdock?.latest;
+    if (!to || to === VERSION || VERSION === 'dev') return;
+    const cmd = 'iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex';
+    const box = h('div', { className: 'ld-panel' },
+      h('div', { className: 'ld-row' }, h('div', {}, h('div', {}, h('b', {}, `v${VERSION}`), '  →  ', h('b', { style: 'color:#3ddc97' }, `v${to}`)),
+        h('div', { className: 'ld-desc' }, 'Already downloaded. Update reloads Spotify\'s window (about a second) to switch to it; otherwise it loads next time Spotify starts.'))),
+      h('div', { className: 'ld-row' }, h('div', {}, h('div', {}, 'Something broken after a Spotify update?'),
+        h('div', { className: 'ld-desc' }, 'Run this in PowerShell to repair / reinstall:'), h('code', { style: 'font-size:11px;opacity:.8;user-select:all' }, cmd)),
+        h('button', { onclick: () => { Spicetify.Platform?.ClipboardAPI?.copy(cmd); Spicetify.showNotification('Copied'); } }, 'Copy')),
+      h('div', { className: 'ld-presets', style: 'justify-content:space-between;margin-top:8px' },
+        h('a', { href: `https://github.com/DhakadG/lyricdock/releases/tag/v${to}`, target: '_blank' }, 'Release notes'),
+        h('button', { style: 'background:#1ed760;color:#000;font-weight:700;border-radius:999px;padding:8px 22px', onclick: () => location.reload() }, 'Update')));
+    Spicetify.PopupModal.display({ title: 'LyricDock update available', content: box });
+  }
+  addEventListener('lyricdock:update', () => { renderPanel(); safe(showUpdate); });
 
   // ---- sync: events + 500ms heartbeat + 100ms drift check (catches seeks instantly) + 1s link check.
   P.addEventListener('songchange', sendTrack);

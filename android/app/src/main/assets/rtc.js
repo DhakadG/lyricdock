@@ -95,10 +95,54 @@ const Rtc = (() => {
     for (let i = 0; i < n; i++) dc.send(JSON.stringify({ _c: id, i, n, d: str.slice(i * CHUNK, (i + 1) * CHUNK) }));
   }
 
+  // ---- automatic pairing through the Spotify account (LocalSend-style "found a device, accept?").
+  // Both sides know the account id, so they meet on a relay topic derived from it. That id isn't secret, so the
+  // pairing code is only released after an ECDH key agreement AND the user tapping Allow on this phone while
+  // both screens show the same 4 digits (a swapped key would show different digits).
+  let acct = null, asking = false, onAsk = async () => false;
+  const denied = new Set();
+  const hex = u8 => Array.from(u8, b => b.toString(16).padStart(2, '0')).join('');
+  const EC = { name: 'ECDH', namedCurve: 'P-256' };
+  async function acctTopic(uid) { return 'lda' + hex(new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('lyricdock-account:' + uid)))).slice(0, 24); }
+  const post = (t, body) => fetch(`${RELAY}/${t}`, { method: 'POST', body, headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
+
+  async function watchAccount(uid) {
+    if (!uid || acct?.uid === uid) return;
+    try { acct?.ws.close(); } catch (e) {}
+    const topic = await acctTopic(uid), ws = new WebSocket(`${RELAY.replace('https', 'wss')}/${topic}/ws`);
+    acct = { uid, topic, ws };
+    ws.onmessage = e => {
+      const ev = JSON.parse(e.data);
+      if (ev.event !== 'message') return;
+      let m; try { m = JSON.parse(ev.message); } catch (x) { return; }
+      if (m?.t === 'discover' && typeof m.desk === 'string' && m.pub) onDiscover(m).catch(() => { asking = false; });
+    };
+    ws.onclose = () => { if (acct?.ws === ws) { acct = null; setTimeout(() => watchAccount(uid), 5000); } };
+  }
+
+  async function onDiscover(m) {
+    if (asking || denied.has(m.desk) || dc?.readyState === 'open') return;
+    const kp = await crypto.subtle.generateKey(EC, false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await crypto.subtle.importKey('jwk', m.pub, EC, false, []) }, kp.privateKey, 256);
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));
+    const digits = String(((h[0] << 16) | (h[1] << 8) | h[2]) % 10000).padStart(4, '0');
+    const aes = await crypto.subtle.importKey('raw', h, 'AES-GCM', false, ['encrypt']);
+    await post(acct.topic, JSON.stringify({ t: 'key', desk: m.desk, pub: await crypto.subtle.exportKey('jwk', kp.publicKey) }));
+    asking = true;
+    const ok = await onAsk(String(m.name || 'Spotify desktop').slice(0, 60), digits);
+    asking = false;
+    if (!ok) { denied.add(m.desk); return; }
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes, enc.encode(JSON.stringify({ code }))));
+    await post(acct.topic, JSON.stringify({ t: 'accept', desk: m.desk, box: b64(iv) + '.' + b64(ct) }));
+  }
+
   init().then(listen);
   return {
     code: pretty,
     send,
+    watchAccount,
+    onAsk: f => { onAsk = f; },
     onMessage: f => { onMsg = f; },
     open: () => dc?.readyState === 'open',
     status: () => dc?.readyState === 'open' ? 'connected' : status,

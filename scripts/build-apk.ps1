@@ -33,8 +33,11 @@ if (-not (Test-Path $ks)) {
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory "$out\gen", "$out\classes" | Out-Null
 
-# AGP normally injects these from build.gradle.
-$manifest = (Get-Content "$app\AndroidManifest.xml" -Raw) -replace '<manifest ', '<manifest package="com.you.lyricdock" android:versionCode="1" android:versionName="0.1" '
+# AGP normally injects these from build.gradle. One version for everything: extension/version.json.
+$ver = (Get-Content "$root\extension\version.json" -Raw | ConvertFrom-Json).version
+$parts = $ver.Split('.') | ForEach-Object { [int]$_ }
+$code = $parts[0] * 10000 + $parts[1] * 100 + $parts[2]
+$manifest = (Get-Content "$app\AndroidManifest.xml" -Raw) -replace '<manifest ', "<manifest package=`"com.you.lyricdock`" android:versionCode=`"$code`" android:versionName=`"$ver`" "
 Set-Content "$out\AndroidManifest.xml" $manifest
 
 & "$bt\aapt2.exe" compile --dir "$app\res" -o "$out\res.zip"

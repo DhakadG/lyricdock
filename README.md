@@ -35,8 +35,9 @@ word-by-word synced lyrics — the Spicy Lyrics experience, mirrored from your d
 #    Needs a phone with NO accounts signed in (factory-reset works best).
 adb shell dpm set-device-owner com.you.lyricdock/.AdminReceiver
 
-# 3. Install the Spicetify bridge
-./scripts/install-extension.ps1
+# 3. Install the Spicetify bridge (auto-updating). Same command repairs it after a Spotify update wipes Spicetify:
+iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex
+#    (from a checkout: ./scripts/install-extension.ps1, or -Dev to run this checkout's bridge directly)
 
 # 4. Keep the link up: USB when plugged in, wireless adb when not, back to USB when it returns.
 #    Either run it in a terminal...

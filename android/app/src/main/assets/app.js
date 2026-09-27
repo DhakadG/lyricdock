@@ -244,7 +244,34 @@ function handle(m) {
   else if (m.type === 'presets') Settings.setPresets(m.presets);
   else if (m.type === 'diag') window.lastDiag = m; // inspected over CDP while developing
   else if (m.type === 'auth') Web.onAuth(m);
+  else if (m.type === 'update') { P.update = m; Settings.render(); }
 }
+
+// ---- automatic pairing by Spotify account: listen while signed in; a desktop asking shows the Allow prompt.
+Rtc.onAsk((name, digits) => new Promise(resolve => {
+  $('pairName').textContent = name;
+  $('pairDigits').textContent = digits;
+  document.body.classList.add('pair-ask');
+  const done = ok => { document.body.classList.remove('pair-ask'); clearTimeout(t); resolve(ok); };
+  $('pairAllow').onclick = () => done(true);
+  $('pairDeny').onclick = () => done(false);
+  const t = setTimeout(() => done(false), 60000); // unanswered: treat as deny
+}));
+setInterval(() => { Web.refreshUserId(); const uid = Web.userId(); if (uid) Rtc.watchAccount(uid); }, 5000);
+
+// ---- app updates (native Updater: GitHub Releases, silent install as device owner)
+let appVersion = '';
+try { appVersion = Dock.version(); } catch (e) {}
+window.checkUpdate = install => { P.update = { state: 'checking' }; Settings.render(); try { Dock.checkUpdate(!!install); } catch (e) {} };
+window.updateStatus = () => {
+  const u = P.update, v = `v${appVersion || '?'}`;
+  if (!u) return v;
+  return { checking: `${v} · checking…`, current: `${v} · up to date`, available: `${v} · v${u.version} available`,
+    installing: `${v} · installing v${u.version}…`, error: `${v} · update check failed (${u.version})` }[u.state] ?? v;
+};
+const autoUpdate = () => S.autoUpdate && checkUpdate(true);
+setTimeout(autoUpdate, 15000);           // shortly after start
+setInterval(autoUpdate, 6 * 3600 * 1000); // and every 6 hours
 
 // ---- controls
 let hideT;
