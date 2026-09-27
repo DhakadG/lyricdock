@@ -213,7 +213,22 @@ const Lyrics = (() => {
     if (instant) { list.offsetHeight; list.style.transition = ''; }
   }
 
+  // How busy the vocals are around p, 0..1 (null without synced lyrics): drives 'Move with the music' now that
+  // Spotify's audio analysis is gone. Singing = lively, faster words = livelier, instrumental gaps = calm.
+  function energy(p) {
+    if (!synced) return null;
+    let on = false, starts = 0;
+    for (const x of lines) {
+      if (x.dots) continue;
+      if (p >= x.t && p < x.e) on = true;
+      if (x.syl) { for (const w of x.syl) if (w.t <= p && w.t > p - 2000) starts++; }
+      else if (x.t <= p && x.t > p - 2000) starts += 4; // line-synced: a line start counts as a few words
+    }
+    return on ? Math.min(1, 0.45 + starts / 12) : 0.12;
+  }
+
   return {
+    energy,
     build,
     update,
     fromSpicy,

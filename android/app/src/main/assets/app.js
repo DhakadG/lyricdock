@@ -92,8 +92,11 @@ function beatBg(p) {
   if (!kw || performance.now() - beatAt < 200) return;
   beatAt = performance.now();
   const a = S.bgBeat && audio.get(P.id);
+  const e = S.bgBeat && !a ? Lyrics.energy(p) : null; // no audio analysis (Spotify removed it): follow the vocals
   const level = a ? a.loud[Math.max(0, p / 500 | 0)] ?? 0.5 : 0.5;
-  const target = a && P.playing ? S.bgSpeed * Math.min(1.6, Math.max(0.6, a.tempo / 120)) * (0.45 + level * 1.1) : S.bgSpeed;
+  const target = !P.playing ? S.bgSpeed
+    : a ? S.bgSpeed * Math.min(1.6, Math.max(0.6, a.tempo / 120)) * (0.45 + level * 1.1)
+    : e !== null ? S.bgSpeed * (0.4 + e * 1.4) : S.bgSpeed;
   kw.animationSpeed += (target - kw.animationSpeed) * 0.35; // eased, so beats swell rather than jerk
 }
 

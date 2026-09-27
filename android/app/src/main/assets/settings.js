@@ -22,7 +22,7 @@ const Settings = (() => {
     { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
       ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']] },
     { k: 'bgSpeed', label: 'Motion speed', type: 'range', min: 0, max: 1.5, step: 0.05, def: 0.35, when: s => s.bg === 'dynamic' || s.bg === 'artist' },
-    { k: 'bgBeat', label: 'Move with the music', desc: 'Speeds up with the tempo and loud parts (Spotify desktop only)', type: 'toggle', def: true, when: s => s.bg === 'dynamic' || s.bg === 'artist' },
+    { k: 'bgBeat', label: 'Move with the music', desc: 'Livelier while words are sung, calm in instrumental parts', type: 'toggle', def: true, when: s => s.bg === 'dynamic' || s.bg === 'artist' },
     { k: 'bgWarp', label: 'Warp', type: 'range', min: 0, max: 1, step: 0.05, def: 1, when: s => s.bg === 'dynamic' || s.bg === 'artist' },
     { k: 'bgDim', label: 'Dim', type: 'range', min: 0, max: 0.8, step: 0.05, def: 0.2, when: s => s.bg !== 'black' },
 

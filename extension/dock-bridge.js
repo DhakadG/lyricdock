@@ -530,7 +530,8 @@
     const latest = window.__lyricdock?.latest;
     kids.push(h('div', { className: 'ld-row' }, h('div', {}, `LyricDock ${VERSION === 'dev' ? '(development build)' : 'v' + VERSION}`,
       h('div', { className: 'ld-desc' }, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : latest && latest !== VERSION ? `v${latest} downloaded` : 'Up to date - updates install automatically')),
-      ...(latest && latest !== VERSION && VERSION !== 'dev' ? [h('button', { onclick: () => location.reload() }, 'Update now')] : [])));
+      VERSION === 'dev' ? '' : latest && latest !== VERSION ? h('button', { onclick: () => location.reload() }, 'Update now')
+        : h('button', { onclick: e => checkUpdate(e.target) }, 'Check for updates')));
     // pairing (no-adb link): the code the phone shows under its waiting screen / Settings -> Connection
     const pc = pairCode(), codeIn = h('input', { type: 'text', placeholder: 'e.g. K7QX-9MP-2F', value: pc ? `${pc.slice(0, 4)}-${pc.slice(4, 7)}-${pc.slice(7)}` : '' });
     kids.push(h('h3', {}, 'Pair phone'), h('div', { className: 'ld-row' },
@@ -570,6 +571,26 @@
   // isRight: Spicetify gives right-side buttons the class of Spotify's own round action buttons (left ones sit
   // small among the back/forward arrows), so this matches the native top-bar buttons.
   safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel, false, true).element.classList.add('ld-topbar'));
+  // Manual "Check for updates": same as the loader's 30-minute check - download the new build into the loader's
+  // cache (so it's used even if Update isn't clicked), then show the update popup.
+  async function checkUpdate(btn) {
+    const say = t => { if (btn) btn.textContent = t; };
+    say('Checking…');
+    try {
+      const v = (await (await fetch(`https://raw.githubusercontent.com/DhakadG/lyricdock/main/extension/version.json?t=${Date.now()}`, { cache: 'no-store' })).json()).version;
+      const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+      if (!/^\d+\.\d+\.\d+$/.test(v) || !newer(v, VERSION)) { say('Up to date'); setTimeout(() => say('Check for updates'), 3000); return; }
+      say('Downloading…');
+      const r = await fetch(`https://cdn.jsdelivr.net/gh/DhakadG/lyricdock@v${v}/extension/dock-bridge.js`);
+      const code = await r.text();
+      if (!r.ok || !code.includes('function dockBridge')) throw new Error('download failed');
+      localStorage.setItem('lyricdock:build', code);
+      localStorage.setItem('lyricdock:build-version', v);
+      window.__lyricdock.latest = v;
+      dispatchEvent(new Event('lyricdock:update'));
+    } catch (e) { say('Check failed - retry'); }
+  }
+
   // Update notice (the loader has already downloaded the new build; reloading Spotify's page switches to it).
   function showUpdate() {
     const to = window.__lyricdock?.latest;
