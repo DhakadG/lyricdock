@@ -62,6 +62,7 @@ const Settings = (() => {
 
     { group: 'Connection' },
     { label: 'Link', type: 'info', value: () => window.dockStatus?.() ?? '' },
+    { label: 'Pairing code', desc: 'Enter once in Spotify → LyricDock (top bar) → Pair phone', type: 'info', value: () => window.Rtc?.code ?? '' },
   ];
 
   const KEY = 'dock:settings';

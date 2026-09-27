@@ -7,7 +7,8 @@ const EASE = 'cubic-bezier(.2,.8,.2,1)';
 const PLAY = 'M8 5v14l11-7z', PAUSE = 'M6 5h4v14H6zm8 0h4v14h-4z';
 const ms = t => t / S.animSpeed;
 const now = () => P.pos + (P.playing ? performance.now() - P.at : 0) + S.offset;
-const send = o => { try { Dock.send(JSON.stringify(o)); } catch (e) {} };
+// To the desktop bridge over whichever link is up: the adb WebSocket (native) and/or the WebRTC channel (rtc.js).
+const send = o => { const s = JSON.stringify(o); try { Dock.send(s); } catch (e) {} Rtc.send(s); };
 const sleep = t => new Promise(r => setTimeout(r, t));
 
 // ---- art cache: covers are decoded before they're shown, so animations never reveal a half-loaded image
@@ -200,6 +201,7 @@ function onPos(m) {
 const SRC = { bridge: { at: 0, playing: false }, web: { at: 0, playing: false } };
 P.source = 'bridge';
 function dock(m) { route('bridge', m); }
+Rtc.onMessage(m => route('bridge', m)); // same bridge, reached over WebRTC instead of adb
 Web.onMessage(m => route('web', m));
 
 function route(src, m) {
@@ -235,6 +237,7 @@ function handle(m) {
     Settings.setPresets(m.presets);
     P.gotHello = true;
     send({ type: 'schema', schema: Settings.schema(), S }); // lets Spotify's LyricDock panel render these settings
+    if (!m.paired) send({ type: 'pair', code: Rtc.code }); // hand the pairing code over the link we already have
   }
   else if (m.type === 'set') Settings.setRemote(m.k, m.v); // changed from the desktop panel
   else if (m.type === 'load' && m.S && typeof m.S === 'object') Settings.load(m.S);
@@ -281,7 +284,8 @@ $('bar').addEventListener('pointerdown', e => {
 // so the bridge reconnects when these stop arriving.
 window.dockStatus = () => {
   const link = document.body.classList.contains('stale') ? 'Not connected'
-    : P.source === 'web' ? `Spotify account${SRC.web.pos?.device ? ` · ${SRC.web.pos.device}` : ''}` : 'Desktop bridge';
+    : P.source === 'web' ? `Spotify account${SRC.web.pos?.device ? ` · ${SRC.web.pos.device}` : ''}`
+    : `Desktop bridge (${Rtc.open() ? 'direct / WebRTC' : 'adb'})`;
   const api = Api.enabled() ? ` · API key set${Api.lastStatus ? ` (last ${Api.lastStatus})` : ''}` : '';
   return `${link} · phone IP ${myIp || 'none'}${api}`;
 };
@@ -293,7 +297,7 @@ refreshIp();
 setInterval(refreshIp, 10000);
 setInterval(() => {
   send({ type: 'alive', ip: myIp });
-  if (!P.id) $('artist').textContent = `Phone IP ${myIp || 'none'} · waiting for the LyricDock Spicetify bridge`;
+  if (!P.id) $('artist').textContent = `Pair code ${Rtc.code} · enter it in Spotify → LyricDock (top bar)`;
 }, 1000);
 
 // ---- settings + presets live on the desktop too (Spicetify LocalStorage), so a new phone starts configured.

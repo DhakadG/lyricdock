@@ -33,7 +33,7 @@
   function beat() {
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     last = { pos, at: Date.now(), playing };
-    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality(),
+    send({ type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality(), via: ws?.kind,
       volume: safe(() => Math.round(P.getVolume() * 100), undefined) });
   }
 
@@ -62,28 +62,122 @@
     }
   }
 
+  // ---- no-adb link: WebRTC data channel straight to the phone (Wi-Fi, or USB tethering). WebRTC isn't blocked
+  // the way ws:// to a LAN address is. The offer/answer swap goes through ntfy.sh as a dumb mailbox; topic and
+  // AES-GCM key come from the phone's pairing code, so the relay only sees ciphertext. Mirrors the phone's rtc.js.
+  const PAIR_KEY = 'lyricdock:pair', RELAY = 'https://ntfy.sh', CHUNK = 16000;
+  const pairCode = () => (LS.get(PAIR_KEY) || '').toUpperCase().replace(/[^A-Z2-9]/g, '');
+  const te = new TextEncoder(), b64 = u8 => btoa(String.fromCharCode(...u8)), unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  async function sigKeys(code) {
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode('lyricdock-topic:' + code)));
+    const topic = 'ld' + Array.from(h.slice(0, 12), b => b.toString(16).padStart(2, '0')).join('');
+    const key = await crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', te.encode('lyricdock-key:' + code)), 'AES-GCM', false, ['encrypt', 'decrypt']);
+    return { topic, key };
+  }
+  async function seal(key, obj) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    return b64(iv) + '.' + b64(new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, te.encode(JSON.stringify(obj)))));
+  }
+  async function unseal(key, s) {
+    try { const [iv, ct] = s.split('.').map(unb64); return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct))); }
+    catch { return null; }
+  }
+  const gathered = pc => new Promise(r => {
+    if (pc.iceGatheringState === 'complete') return r();
+    pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r();
+    setTimeout(r, 3000);
+  });
+
+  async function rtcOpen() {
+    const code = pairCode();
+    if (code.length !== 10 || typeof RTCPeerConnection === 'undefined') return null;
+    const { topic, key } = await sigKeys(code);
+    const pc = new RTCPeerConnection(), dc = pc.createDataChannel('dock', { ordered: true });
+    try {
+      await pc.setLocalDescription(await pc.createOffer());
+      await gathered(pc);
+      const id = Math.random().toString(36).slice(2);
+      const sub = new WebSocket(`${RELAY.replace('https', 'wss')}/${topic}/ws`);
+      const answer = new Promise(res => {
+        sub.onmessage = async e => {
+          const ev = safe(() => JSON.parse(e.data), {});
+          if (ev.event !== 'message') return;
+          const m = await unseal(key, ev.message);
+          if (m?.t === 'answer' && m.id === id) res(m);
+        };
+        setTimeout(() => res(null), 8000);
+      });
+      await new Promise(r => { sub.onopen = r; setTimeout(r, 3000); });
+      await fetch(`${RELAY}/${topic}`, { method: 'POST', body: await seal(key, { t: 'offer', id, sdp: pc.localDescription }), headers: { Cache: 'no', Firebase: 'no' } });
+      const m = await answer;
+      sub.close();
+      if (!m) throw 0;
+      await pc.setRemoteDescription(m.sdp);
+      const ok = await new Promise(r => { if (dc.readyState === 'open') r(true); dc.onopen = () => r(true); setTimeout(() => r(false), 6000); });
+      if (!ok) throw 0;
+      return rtcWrap(pc, dc);
+    } catch { try { pc.close(); } catch {} return null; }
+  }
+
+  // Looks like a WebSocket to the rest of the bridge; splits big messages (SCTP caps message size).
+  function rtcWrap(pc, dc) {
+    const parts = new Map();
+    const w = { kind: 'rtc', onmessage: null, onclose: null,
+      get readyState() { return dc.readyState === 'open' ? 1 : 3; },
+      send(str) {
+        if (dc.readyState !== 'open') return;
+        if (str.length <= CHUNK) return dc.send(str);
+        const id = Math.random().toString(36).slice(2), n = Math.ceil(str.length / CHUNK);
+        for (let i = 0; i < n; i++) dc.send(JSON.stringify({ _c: id, i, n, d: str.slice(i * CHUNK, (i + 1) * CHUNK) }));
+      },
+      close() { try { pc.close(); } catch {} } };
+    dc.onmessage = e => {
+      const m = safe(() => JSON.parse(e.data), null);
+      if (!m?._c) return w.onmessage?.({ data: e.data });
+      const p = parts.get(m._c) ?? [];
+      p[m.i] = m.d; parts.set(m._c, p);
+      if (p.filter(x => x !== undefined).length === m.n) { parts.delete(m._c); w.onmessage?.({ data: p.join('') }); }
+    };
+    dc.onclose = () => w.onclose?.();
+    pc.onconnectionstatechange = () => { if (['failed', 'closed'].includes(pc.connectionState)) w.onclose?.(); };
+    return w;
+  }
+
+  let nextUsbProbe = 0;
   async function ensureLink() {
     linkState();
     if (ws?.readyState === 1 && Date.now() - lastRx > 2500) drop();
+    // On WebRTC, look for the adb/USB link every 10s and move to it when it appears (developer / wired use).
+    if (!busy && ws?.readyState === 1 && ws.kind === 'rtc' && Date.now() > nextUsbProbe) {
+      nextUsbProbe = Date.now() + 10000;
+      busy = true;
+      const s = await tryOpen(800);
+      busy = false;
+      if (s) { const old = ws; ws = null; old.onclose = null; old.close(); return adopt(s); }
+    }
     if (busy || ws?.readyState === 1) return;
     busy = true;
     try {
-      const s = await tryOpen(1500);
-      if (!s) return;
-      ws = s;
-      s.onclose = () => { if (ws === s) { ws = null; ensureLink(); } };
-      s.onmessage = e => { lastRx = Date.now(); onMessage(e.data); };
-      lastRx = Date.now();
-      console.log('[dock] linked');
-      // `apply`: settings were changed in the desktop panel while the phone was away - push them now.
-      const dirty = LS.get(DIRTY_KEY) === '1';
-      send({ type: 'hello', last: readJson(SETTINGS_KEY, null), presets: readJson(PRESETS_KEY, {}) });
-      if (dirty) { send({ type: 'load', S: readJson(SETTINGS_KEY, {}) }); LS.set(DIRTY_KEY, '0'); }
-      renderPanel();
-      if (track) send(track);
-      if (preload) send(preload);
-      beat();
+      const s = (await tryOpen(1500)) ?? (await rtcOpen());
+      if (s) adopt(s);
     } finally { busy = false; }
+  }
+
+  function adopt(s) {
+    s.kind ??= 'adb';
+    ws = s;
+    s.onclose = () => { if (ws === s) { ws = null; ensureLink(); } };
+    s.onmessage = e => { lastRx = Date.now(); onMessage(e.data); };
+    lastRx = Date.now();
+    console.log('[dock] linked via', s.kind);
+    // `apply`: settings were changed in the desktop panel while the phone was away - push them now.
+    const dirty = LS.get(DIRTY_KEY) === '1';
+    send({ type: 'hello', last: readJson(SETTINGS_KEY, null), presets: readJson(PRESETS_KEY, {}), paired: pairCode().length === 10 });
+    if (dirty) { send({ type: 'load', S: readJson(SETTINGS_KEY, {}) }); LS.set(DIRTY_KEY, '0'); }
+    renderPanel();
+    if (track) send(track);
+    if (preload) send(preload);
+    beat();
   }
 
   // Spotify's page timers get throttled to ~1/min while minimized; a Worker's timers don't, and its messages
@@ -102,7 +196,10 @@
   function onMessage(data) {
     const m = safe(() => JSON.parse(data), null);
     if (!m || typeof m !== 'object') return;
-    if (m.type === 'settings' && okSettings(m.S)) { LS.set(SETTINGS_KEY, JSON.stringify(m.S)); renderPanel(); }
+    if (m.type === 'pair' && /^[A-Z2-9]{10}$/.test(m.code?.replace(/-/g, '') ?? '')) {
+      if (pairCode() !== m.code.replace(/-/g, '')) { LS.set(PAIR_KEY, m.code.replace(/-/g, '')); safe(() => Spicetify.showNotification('LyricDock phone paired')); renderPanel(); }
+    }
+    else if (m.type === 'settings' && okSettings(m.S)) { LS.set(SETTINGS_KEY, JSON.stringify(m.S)); renderPanel(); }
     else if (m.type === 'schema' && Array.isArray(m.schema) && JSON.stringify(m.schema).length < 60000) {
       LS.set(SCHEMA_KEY, JSON.stringify(m.schema));
       if (okSettings(m.S)) LS.set(SETTINGS_KEY, JSON.stringify(m.S));
@@ -323,6 +420,16 @@
     const on = ws?.readyState === 1;
     const kids = [h('div', { className: 'ld-status' + (on ? ' on' : '') }, h('i'),
       on ? 'Phone connected - changes apply instantly' : 'Phone not connected - changes are saved and applied when it connects')];
+    // pairing (no-adb link): the code the phone shows under its waiting screen / Settings -> Connection
+    const pc = pairCode(), codeIn = h('input', { type: 'text', placeholder: 'e.g. K7QX-9MP-2F', value: pc ? `${pc.slice(0, 4)}-${pc.slice(4, 7)}-${pc.slice(7)}` : '' });
+    kids.push(h('h3', {}, 'Pair phone'), h('div', { className: 'ld-row' },
+      h('div', {}, h('div', {}, pc ? `Paired${on ? ` - connected via ${ws.kind === 'rtc' ? 'direct Wi-Fi (WebRTC)' : 'adb'}` : ''}` : 'Not paired'),
+        h('div', { className: 'ld-desc' }, 'Enter the code shown on the phone. No cable or adb needed after this.')),
+      h('div', { className: 'ld-presets' }, codeIn, h('button', { onclick: () => {
+        const c = codeIn.value.toUpperCase().replace(/[^A-Z2-9]/g, '');
+        if (c.length !== 10) return safe(() => Spicetify.showNotification('That code should be 10 characters', true));
+        LS.set(PAIR_KEY, c); drop(); ensureLink(); renderPanel();
+      } }, 'Pair'))));
     // presets
     const names = Object.keys(presets).sort();
     const sel = h('select', {}, ...(names.length ? names.map(n => h('option', { value: n }, n)) : [h('option', { value: '' }, 'No presets yet - save one')]));
