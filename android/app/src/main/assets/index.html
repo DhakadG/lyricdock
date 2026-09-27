@@ -49,8 +49,7 @@
   #quality { display: none; margin-top: 1.2vmin; font-size: 2.1vmin; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .5; }
   body.show-quality #quality:not(:empty) { display: block; }
   #pulse { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; pointer-events: none; }
-  #pulse div { width: 24vmin; height: 24vmin; border-radius: 50%; background: #0007; display: grid; place-items: center;
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  #pulse div { width: 24vmin; height: 24vmin; border-radius: 50%; background: #0009; display: grid; place-items: center; }
   #pulse svg { width: 12vmin; height: 12vmin; fill: #fff; }
   #ripple { position: absolute; left: 50%; top: 50%; width: 20vmin; height: 20vmin; margin: -10vmin; border-radius: 50%;
     border: .6vmin solid #fffc; opacity: 0; pointer-events: none; }
@@ -135,6 +134,8 @@
   body.layout-cinema #art { border-radius: 1vmin; }
   body.layout-cinema #title { font-size: 3vmin; }
   body.layout-cinema #artist { font-size: 2.4vmin; }
+  /* Lines fade out before they reach the now-playing badge in the bottom corner. */
+  body.layout-cinema #lyrics { -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 66%, transparent 84%); }
   body.layout-cinema .ln { text-align: center; transform-origin: center; font-size: calc(var(--lsize) * 1.2); }
 
   body.layout-nowbar #wrap { padding-bottom: calc(var(--sa-b) + 14vmin); }
@@ -186,6 +187,12 @@
     opacity: 0; pointer-events: none; transform: scale(.8); transition: opacity .35s, transform .5s var(--ease); }
   #gear svg { width: 5vmin; height: 5vmin; fill: #fff; }
   body.ui #gear { opacity: 1; pointer-events: auto; transform: none; }
+  /* Invisible (opacity 0) overlays with backdrop-filter still re-blur what's under them every frame - on this phone
+     that cost more CPU than everything else together. Once faded out they become visibility:hidden (no blur work). */
+  #ctl, #gear { visibility: hidden; transition: opacity .35s, transform .5s var(--ease), visibility 0s .35s; }
+  body.ui #ctl, body.ui #gear { visibility: visible; transition: opacity .35s, transform .5s var(--ease), visibility 0s; }
+  #toast:not(.show) { visibility: hidden; transition: opacity .3s, transform .3s var(--ease), visibility 0s .3s; }
+  body:not(.stale) #dot { visibility: hidden; }
 
   /* Progress bar floats just above the edge; its ends stop where the rounded corner would cut it (flat screens:
      --bar-* are 0, so it is a classic full-width edge bar). */
@@ -196,7 +203,7 @@
   body.prog-top #bar::before { top: -1vmin; bottom: -3vmin; }
   body.prog-off #bar { display: none; }
   body.ui #bar { height: 1.5vmin; }
-  #fill { height: 100%; border-radius: inherit; background: #fff; transform-origin: left; transform: scaleX(0); box-shadow: 0 0 2vmin #fff8; }
+  #fill { height: 100%; border-radius: inherit; background: #fff; transform-origin: left; transform: scaleX(0); box-shadow: 0 0 2vmin #fff8; will-change: transform; }
   #times { position: fixed; left: calc(var(--bar-bx) + 2vmin); right: calc(var(--bar-bx) + 2vmin); bottom: calc(var(--bar-by) + 2.4vmin);
     display: none; justify-content: space-between; z-index: 4; font-size: 2.4vmin; font-weight: 600; opacity: .8; font-variant-numeric: tabular-nums; }
   body.times #times { display: flex; }

@@ -27,12 +27,13 @@ function art(url) {
 
 // ---- background
 let kw = null;
-// CSS-pixel resolution (half the device's): invisible under the blur, much cheaper on the Snapdragon 439.
-function sizeBg() { const c = $('bgc'); c.width = innerWidth; c.height = innerHeight; kw?.resize(); }
+// Half the CSS-pixel size (a quarter of the device's): identical under this much blur, and it's what lets the
+// phone's GPU (Adreno 505) hold 60fps - full size ran the whole app at 32-42fps.
+function sizeBg() { const c = $('bgc'); c.width = Math.round(innerWidth / 2); c.height = Math.round(innerHeight / 2); kw?.resize(); }
 function kawarp() {
   if (kw || !window.Kawarp) return kw;
   try {
-    kw = new Kawarp($('bgc'), { animationSpeed: S.bgSpeed, warpIntensity: S.bgWarp, blurPasses: 8, saturation: 1.5,
+    kw = new Kawarp($('bgc'), { animationSpeed: S.bgSpeed, warpIntensity: S.bgWarp, blurPasses: 6, saturation: 1.5,
       tintIntensity: 0, dithering: 0.008, transitionDuration: 1000, scale: 1 });
     sizeBg(); // canvas is 300x150 until told otherwise
   } catch (e) { kw = null; } // no WebGL -> blurred-art fallback below
@@ -209,8 +210,8 @@ function onMeta(m) {
   }
   if (m.quality !== undefined && m.quality !== P.quality) {
     P.quality = m.quality;
-    // Spotify's playbackQuality.bitrateLevel: 1 Low, 2 Normal, 3 High, 4 Very high, 5 Lossless.
-    $('quality').textContent = ({ 1: 'Low', 2: 'Normal', 3: 'High', 4: 'Very high', 5: 'Lossless' })[m.quality] ?? m.quality ?? '';
+    // Spotify's playbackQuality.bitrateLevel: 1 Low, 2 Normal, 3 High, 4 Very high, 5 Lossless, 6 Lossless 24-bit.
+    $('quality').textContent = ({ 1: 'Low', 2: 'Normal', 3: 'High', 4: 'Very high', 5: 'Lossless', 6: 'Lossless' })[m.quality] ?? (m.quality > 6 ? 'Lossless' : m.quality) ?? '';
   }
 }
 
@@ -436,7 +437,7 @@ addEventListener('resize', () => { pullInsets(); Lyrics.refresh(); sizeBg(); });
 
 // ---- frame loop
 const clock = t => { t = Math.max(0, t) / 1000 | 0; return `${t / 60 | 0}:${String(t % 60).padStart(2, '0')}`; };
-let lastT = performance.now(), lastSec = -1;
+let lastT = performance.now(), lastSec = -1, lastFrac = -1;
 const linkLog = window.linkLog = [];
 (function tick(t) {
   const dt = Math.min(0.1, (t - lastT) / 1000) || 0.016;
@@ -449,7 +450,9 @@ const linkLog = window.linkLog = [];
     if (linkLog.length > 50) linkLog.shift();
   }
   const p = now();
-  $('fill').style.transform = `scaleX(${P.dur ? Math.min(1, p / P.dur) : 0})`;
+  // Only when it moved half a pixel (~7 writes/s instead of 60): each write costs a compositor frame.
+  const frac = P.dur ? Math.min(1, p / P.dur) : 0;
+  if (Math.abs(frac - lastFrac) * innerWidth > 0.5) { lastFrac = frac; $('fill').style.transform = `scaleX(${frac})`; }
   if (S.times && (p / 1000 | 0) !== lastSec) {
     lastSec = p / 1000 | 0;
     $('tcur').textContent = clock(p);
