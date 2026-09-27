@@ -410,20 +410,39 @@
   async function extras(it, id) {
     extraMsgs = [];
     const keep = m => { if (item()?.uri === it.uri) { extraMsgs.push(m); send(m); } };
-    const artistId = (it.artists?.[0]?.uri || it.metadata?.artist_uri || '').split(':')[2];
-    if (artistId) Spicetify.CosmosAsync.get(`https://api.spotify.com/v1/artists/${artistId}`).then(a => {
-      const url = [...(a?.images ?? [])].sort((x, y) => y.width - x.width)[0]?.url;
+    const artistUri = it.artists?.[0]?.uri || it.metadata?.artist_uri || '';
+    const errs = [];
+    // Artist picture: Spotify's own GraphQL artist page query first (what Spicy Lyrics uses for its artist
+    // visuals: the header image, else the avatar), then the Web API.
+    (async () => {
+      let url = null;
+      try {
+        const q = Spicetify.GraphQL?.Definitions?.queryArtistOverview;
+        if (q) {
+          const r = await Spicetify.GraphQL.Request(q, { uri: artistUri, locale: '', includePrerelease: false });
+          const v = r?.data?.artistUnion?.visuals;
+          const pick = s => [...(s ?? [])].sort((x, y) => (y.width || 0) - (x.width || 0))[0]?.url;
+          url = pick(v?.headerImage?.sources) || pick(v?.avatarImage?.sources) || null;
+        } else errs.push('artist: no GraphQL definition');
+      } catch (e) { errs.push('artist gql: ' + (e?.message || e)); }
+      if (!url && artistUri) {
+        try {
+          const a = await Spicetify.CosmosAsync.get(`https://api.spotify.com/v1/artists/${artistUri.split(':')[2]}`);
+          url = [...(a?.images ?? [])].sort((x, y) => y.width - x.width)[0]?.url || null;
+        } catch (e) { errs.push('artist web: ' + (e?.message || e)); }
+      }
       if (url) keep({ type: 'artist', id, img: url });
-    }).catch(() => {});
+      else send({ type: 'diag', extras: errs.slice(0, 4) });
+    })();
     try {
       const d = await Spicetify.getAudioData(it.uri);
       const segs = d?.segments ?? [], tempo = d?.track?.tempo;
-      if (!segs.length || !Number.isFinite(tempo)) return;
+      if (!segs.length || !Number.isFinite(tempo)) { send({ type: 'diag', audio: 'no analysis data' }); return; }
       const n = Math.ceil((d.track.duration || segs[segs.length - 1].start + 1) * 2), loud = new Array(n).fill(0);
       for (const g of segs) { const i = Math.floor(g.start * 2); if (i < n) loud[i] = Math.max(loud[i], Math.min(1, Math.max(0, (g.loudness_max + 35) / 30))); }
       for (let i = 1; i < n; i++) if (!loud[i]) loud[i] = loud[i - 1]; // fill 0.5s slots between segments
       keep({ type: 'audio', id, tempo, loud: loud.map(v => Math.round(v * 100) / 100) });
-    } catch {} // older/newer clients without audio analysis: the background just keeps its set speed
+    } catch (e) { send({ type: 'diag', audio: String(e?.message || e).slice(0, 200) }); } // no audio analysis: the background keeps its set speed
   }
 
   // Spicy fetches the playing track itself; its word-synced lyrics replace the fallback as soon as they land.
