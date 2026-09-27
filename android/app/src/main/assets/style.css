@@ -605,7 +605,7 @@ body.clock .fc-wrap { animation: fcIn .6s var(--ease) both; } @keyframes fcIn { 
 .fc-l.bot { clip-path: inset(50% 0 0 0); }
 .fc-l.flap { z-index: 2; visibility: hidden; transform-origin: 50% 50%; backface-visibility: hidden; -webkit-backface-visibility: hidden; will-change: transform; }
 .fc-l.flap.on { visibility: visible; }
-.fc-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }.fc-num { fill: none; stroke: #fff; stroke-opacity: .74; stroke-width: 46.5; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 2.5; }
+.fc-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .fc-ap { font: 700 34px var(--font), system-ui; letter-spacing: .02em; fill: #fff; fill-opacity: .74; }
 .fc-shade, .fc-drop { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
 .fc-l.bot .fc-drop { background: linear-gradient(#000, transparent 70%); }

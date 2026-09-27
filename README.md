@@ -333,7 +333,7 @@ phone screen). Nothing needs it day to day.
 - **Music video background:** Settings → Background → *Music video (YouTube)* plays the song's video muted behind the
   lyrics, in sync. Optional: your own [YouTube Data API key](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
   for more reliable matches (Google Cloud Console → enable *YouTube Data API v3* → Credentials → API key).
-- **Flip clock:** when the music stops, a flip clock takes over: one dark card per digit (designed in Figma, vectors in [design/flipclock](design/flipclock/)), six flip animations (classic, bounce, slow fold, cascade, roll, fade), optional seconds (tap the clock), 12/24 h, dim, size, cards on/off, and optional synthesised flip sounds and vibration. Double-tap to go back.
+- **Flip clock:** when the music stops, a flip clock takes over: one dark card per digit with raised puff-print numerals on paper-grain cards (designed in Figma, baked to `android/app/src/main/assets/fc-*.webp` by `scripts/flip-assets.ps1`), six flip animations (classic, bounce, slow fold, cascade, roll, fade), optional seconds (tap the clock), 12/24 h, dim, size, cards on/off, and optional synthesised flip sounds and vibration. Double-tap to go back.
 - **Lyrics scrolling:** drag the lyrics to read ahead or back (flick to scroll fast); they glide back to the sung line a few seconds after you let go.
 - **Font:** Inter Extra Bold by default, the closest free match to Apple Music's San Francisco (which Apple licenses only for its own devices).
 - **Screen:** clock screen when paused, night mode (dim + warm + black), burn-in protection, battery indicator,

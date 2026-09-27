@@ -1,13 +1,13 @@
 // Flip clock: one dark card per digit that flips like a mechanical clock. Shown full screen when the music stops
 // (or always, as the "Flip clock" layout) and beside the cover in the "Cover + clock" layout.
-// The ten digit cards are designed in Figma (page "LyricDock · Flip Clock", component set "Flip digit") and exported
-// as SVG; D holds each numeral path in the card's 300 x 440 space and CARD the card body (two halves, a 3 px split
-// cut across the digit, vertical gradients, a hairline of light on the top edge). scripts/flip-assets.mjs writes
-// the same SVGs to design/flipclock/.
+// The digit cards are designed in Figma (Dumpyard, page "LyricDock · Flip Clock", frame "Digits — Puff 3D": raised
+// puff-print numerals split at the hinge, paper grain on the cards) and baked to fc-*.webp by scripts/flip-assets.ps1:
+// card-0..9 and card-blank (the whole card) and numeral-0..9 (no card, for "Show the cards" off), all 300 x 440 at 2x.
+// Flat in assets/, not a subfolder: the Windows aapt2 writes subfolder entries with backslashes, which don't load.
 //
 // A card is four layers, each the WHOLE card clipped to one half at exactly the centre line (clip-path), so every
 // layer lines up to the pixel: static top (new digit), static bottom (old digit), top flap (old) and bottom flap
-// (new). A flip only changes numeral paths (no markup rebuilt) and moves the two flaps around the centre line:
+// (new). A flip only changes image sources (no markup rebuilt) and moves the two flaps around the centre line:
 //   fall  the top flap tips over (ease-in, like gravity), darkening, and is hidden once edge-on;
 //   land  the bottom flap - which appears only after it has turned past 70deg, still in shadow, so no bright sliver
 //         pops out at the split - swings down onto the old bottom and settles.
@@ -16,29 +16,18 @@
 const Flip = (() => {
   const $ = id => document.getElementById(id);
   const S = () => Settings.S;
-  const D = {
-    0: 'M150 92.9C196.5 92.9 215.1 127 215.1 173.5V266.5C215.1 313 196.5 347.1 150 347.1C103.5 347.1 84.9 313 84.9 266.5V173.5C84.9 127 103.5 92.9 150 92.9Z',
-    1: 'M109.7 136.3L165.5 92.9V347.1',
-    2: 'M88 158C88 114.6 115.9 92.9 150 92.9C187.2 92.9 212 117.7 212 154.9C212 192.1 193.4 213.8 159.3 247.9L91.1 323.85H221.3',
-    3: 'M88 120.8C101.95 100.65 123.65 92.9 150 92.9C187.2 92.9 212 114.6 212 148.7C212 185.9 187.2 210.7 140.7 210.7C190.3 210.7 215.1 235.5 215.1 275.8C215.1 319.2 187.2 347.1 146.9 347.1C120.55 347.1 98.85 337.8 83.35 317.65',
-    4: 'M187.2 347.1V92.9L84.9 269.6H230.6',
-    5: 'M208.9 116.15H109.7L98.85 210.7C114.35 196.75 131.4 190.55 151.55 190.55C193.4 190.55 215.1 221.55 215.1 266.5C215.1 316.1 187.2 347.1 146.9 347.1C119 347.1 97.3 334.7 83.35 313',
-    6: 'M199.6 114.6C187.2 100.65 170.15 92.9 150 92.9C106.6 92.9 84.9 133.2 84.9 204.5V263.4C84.9 316.1 109.7 347.1 150 347.1C190.3 347.1 215.1 316.1 215.1 269.6C215.1 226.2 190.3 198.3 150 198.3C115.9 198.3 91.1 220 84.9 247.9',
-    7: 'M78.7 116.15H218.2L134.5 347.1',
-    8: 'M150 210.7C115.9 210.7 95.75 189 95.75 151.8C95.75 114.6 119 92.9 150 92.9C181 92.9 204.25 114.6 204.25 151.8C204.25 189 184.1 210.7 150 210.7ZM150 210.7C109.7 210.7 84.9 235.5 84.9 278.9C84.9 319.2 112.8 347.1 150 347.1C187.2 347.1 215.1 319.2 215.1 278.9C215.1 235.5 190.3 210.7 150 210.7Z',
-    9: 'M100.4 325.4C112.8 340.9 129.85 347.1 150 347.1C193.4 347.1 215.1 306.8 215.1 235.5V176.6C215.1 123.9 190.3 92.9 150 92.9C109.7 92.9 84.9 123.9 84.9 170.4C84.9 213.8 109.7 241.7 150 241.7C184.1 241.7 208.9 220 215.1 192.1',
-  };
-  // Gradients once for the page: ids repeated in every card re-resolve whenever one changes, which flashed.
-  const DEFS = '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="fcT" x1="0" y1="0" x2="0" y2="219" gradientUnits="userSpaceOnUse"><stop stop-color="#191919"/><stop offset="1" stop-color="#121212"/></linearGradient>'
-    + '<linearGradient id="fcB" x1="0" y1="221" x2="0" y2="440" gradientUnits="userSpaceOnUse"><stop stop-color="#111"/><stop offset="1" stop-color="#0A0A0A"/></linearGradient></defs></svg>';
-  const CARD = '<path d="M0 40C0 17.9 17.9 0 40 0H260C282.1 0 300 17.9 300 40V219H0V40Z" fill="url(#fcT)"/>'
-    + '<path d="M0 221H300V400C300 422.1 282.1 440 260 440H40C17.9 440 0 422.1 0 400V221Z" fill="url(#fcB)"/>'
-    + '<rect x="40" width="220" height="1" fill="#fff" fill-opacity=".06"/>';
-  const layerSvg = () => `<svg class="fc-svg" viewBox="0 0 300 440" aria-hidden="true">${S().clockCards ? CARD : ''}`
-    + '<path class="fc-num" transform="translate(150 220) scale(1.15) translate(-150 -220)" d=""/><rect y="218.5" width="300" height="3" fill="#000"/><text class="fc-ap" x="30" y="62"></text></svg>';
+  const DIGITS = '0123456789';
+  const src = d => (S().clockCards ? `fc-card-${DIGITS.includes(d) ? d : 'blank'}.webp` : DIGITS.includes(d) ? `fc-numeral-${d}.webp` : '');
+  // Decode every image once up front (and keep them referenced), so the first flip to a digit never shows a gap.
+  let preload = null;
+  const warm = () => { preload ??= [...DIGITS].flatMap(d => [`fc-card-${d}.webp`, `fc-numeral-${d}.webp`]).concat('fc-card-blank.webp')
+    .map(u => { const i = new Image(); i.src = u; i.decode?.().catch(() => {}); return i; }); };
+  const layerSvg = () => '<svg class="fc-svg" viewBox="0 0 300 440" aria-hidden="true"><image class="fc-num" width="300" height="440"/>'
+    + '<rect y="218.5" width="300" height="3" fill="#000"/><text class="fc-ap" x="30" y="62"></text></svg>';
   // Point a layer at a digit (and the AM / PM mark): only attributes change.
   function paint(layer, d, label) {
-    layer.num.setAttribute('d', D[d] || '');
+    const u = src(d);
+    if (layer.num.getAttribute('href') !== u) u ? layer.num.setAttribute('href', u) : layer.num.removeAttribute('href');
     if (layer.ap.textContent !== (label || '')) { layer.ap.textContent = label || ''; layer.ap.setAttribute('y', label === 'PM' ? 412 : 62); }
   }
   const EASE = { in: 'cubic-bezier(.5,0,.85,.35)', out: 'cubic-bezier(.15,.75,.35,1)' };
@@ -111,7 +100,7 @@ const Flip = (() => {
 
   function build(blank) {
     if (!root) return;
-    if (!document.getElementById('fcT')) document.body.insertAdjacentHTML('beforeend', DEFS);
+    warm();
     const v = parts(), units = showSecs() ? ['h', 'm', 's'] : ['h', 'm'];
     root.querySelector('.fc-wrap')?.remove();
     const wrap = document.createElement('div');
@@ -282,5 +271,5 @@ const Flip = (() => {
   setInterval(tick, 250);
   return { show, hide, leave, onTap, mount, layout, isShown: () => shown,
     // Structural settings (cards, 12/24 h, seconds, arrangement, animation) rebuild; size / dim only restyle.
-    rebuild: () => { if (shown && !busy) { build(false); lastKey = ''; } }, digits: D, cardSvg: CARD };
+    rebuild: () => { if (shown && !busy) { build(false); lastKey = ''; } } };
 })();

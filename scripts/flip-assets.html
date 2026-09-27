@@ -1,0 +1,78 @@
+<!doctype html><html><head><style>html,body{margin:0;background:transparent}svg{display:block}</style></head><body><script>
+// Ports the Figma "Digits — Puff 3D" effect stack (Dumpyard, page "LyricDock · Flip Clock") to SVG filters.
+// Rendered by scripts/flip-assets.ps1: #card-3 / #numeral-3 / #card-blank
+const D = {
+  0: 'M150 92.9C196.5 92.9 215.1 127 215.1 173.5V266.5C215.1 313 196.5 347.1 150 347.1C103.5 347.1 84.9 313 84.9 266.5V173.5C84.9 127 103.5 92.9 150 92.9Z',
+  1: 'M109.7 136.3L165.5 92.9V347.1',
+  2: 'M88 158C88 114.6 115.9 92.9 150 92.9C187.2 92.9 212 117.7 212 154.9C212 192.1 193.4 213.8 159.3 247.9L91.1 323.85H221.3',
+  3: 'M88 120.8C101.95 100.65 123.65 92.9 150 92.9C187.2 92.9 212 114.6 212 148.7C212 185.9 187.2 210.7 140.7 210.7C190.3 210.7 215.1 235.5 215.1 275.8C215.1 319.2 187.2 347.1 146.9 347.1C120.55 347.1 98.85 337.8 83.35 317.65',
+  4: 'M187.2 347.1V92.9L84.9 269.6H230.6',
+  5: 'M208.9 116.15H109.7L98.85 210.7C114.35 196.75 131.4 190.55 151.55 190.55C193.4 190.55 215.1 221.55 215.1 266.5C215.1 316.1 187.2 347.1 146.9 347.1C119 347.1 97.3 334.7 83.35 313',
+  6: 'M199.6 114.6C187.2 100.65 170.15 92.9 150 92.9C106.6 92.9 84.9 133.2 84.9 204.5V263.4C84.9 316.1 109.7 347.1 150 347.1C190.3 347.1 215.1 316.1 215.1 269.6C215.1 226.2 190.3 198.3 150 198.3C115.9 198.3 91.1 220 84.9 247.9',
+  7: 'M78.7 116.15H218.2L134.5 347.1',
+  8: 'M150 210.7C115.9 210.7 95.75 189 95.75 151.8C95.75 114.6 119 92.9 150 92.9C181 92.9 204.25 114.6 204.25 151.8C204.25 189 184.1 210.7 150 210.7ZM150 210.7C109.7 210.7 84.9 235.5 84.9 278.9C84.9 319.2 112.8 347.1 150 347.1C187.2 347.1 215.1 319.2 215.1 278.9C215.1 235.5 190.3 210.7 150 210.7Z',
+  9: 'M100.4 325.4C112.8 340.9 129.85 347.1 150 347.1C193.4 347.1 215.1 306.8 215.1 235.5V176.6C215.1 123.9 190.3 92.9 150 92.9C109.7 92.9 84.9 123.9 84.9 170.4C84.9 213.8 109.7 241.7 150 241.7C184.1 241.7 208.9 220 215.1 192.1',
+};
+const [kind, d] = location.hash.slice(1).split('-');
+const seed = d === 'blank' ? 11 : +d + 1;
+let uid = 0;
+const K = '0,0,0', W = '255,255,255';
+// Figma effect -> filter primitives. Blur radius r ~ 2 sigma.
+function filter(id, effects) {
+  const under = [], over = [];
+  let s = '';
+  for (const e of effects) {
+    const n = 'r' + uid++;
+    if (e.t === 'ds') {
+      s += `<feGaussianBlur in="SourceAlpha" stdDeviation="${e.r / 2}"/><feOffset dx="${e.x}" dy="${e.y}" result="${n}o"/>`
+        + `<feFlood flood-color="rgb(${K})" flood-opacity="${e.a}"/><feComposite in2="${n}o" operator="in" result="${n}"/>`;
+      under.push(n);
+    } else if (e.t === 'is') {
+      s += `<feComponentTransfer in="SourceAlpha"><feFuncA type="table" tableValues="1 0"/></feComponentTransfer>`
+        + `<feOffset dx="${e.x}" dy="${e.y}"/><feGaussianBlur stdDeviation="${Math.max(e.r / 2, 0.01)}" result="${n}b"/>`
+        + `<feFlood flood-color="rgb(${e.c})" flood-opacity="${e.a}"/><feComposite in2="${n}b" operator="in"/>`
+        + `<feComposite in2="SourceAlpha" operator="in" result="${n}"/>`;
+      over.push(n);
+    } else if (e.t === 'noise') { // MONOTONE noise: specks of one colour covering ~density of the shape
+      const t = 0.5 + (0.5 - e.d) * 0.28;
+      s += `<feTurbulence type="fractalNoise" baseFrequency="${0.95 / e.s}" numOctaves="2" seed="${seed * 7 + uid}" stitchTiles="stitch"/>`
+        + `<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0"/>`
+        + `<feComponentTransfer><feFuncA type="linear" slope="14" intercept="${-14 * t}"/></feComponentTransfer><feComposite in2="SourceAlpha" operator="in" result="${n}m"/>`
+        + `<feFlood flood-color="rgb(${e.c})" flood-opacity="${e.a}"/><feComposite in2="${n}m" operator="in" result="${n}"/>`;
+      over.push(n);
+    }
+  }
+  return `<filter id="${id}" filterUnits="userSpaceOnUse" x="-40" y="-40" width="380" height="520" color-interpolation-filters="sRGB">${s}`
+    + `<feMerge>${under.reverse().map(n => `<feMergeNode in="${n}"/>`).join('')}<feMergeNode in="SourceGraphic"/>${over.map(n => `<feMergeNode in="${n}"/>`).join('')}</feMerge></filter>`;
+}
+const ds = (x, y, r, a) => ({ t: 'ds', x, y, r, a });
+const is = (c, x, y, r, a) => ({ t: 'is', c, x, y, r, a });
+const noise = (c, a, d, s) => ({ t: 'noise', c, a, d, s });
+const puff = l => [ds(0, 1.5, 1.5, 0.85), ds(0, 5 * l, 8 * l, 0.55), ds(0, 14 * l, 26 * l, 0.45),
+  is(W, 0, 3, 2, 0.9), is(W, 0, 7, 10, 0.35), is(K, 0, -5, 8, 0.5), is(K, 0, 0, 24, 0.34),
+  noise(K, 0.13, 0.5, 0.6), noise(W, 0.10, 0.35, 0.6), noise(K, 0.06, 0.3, 2)];
+const paper = [noise(W, 0.055, 0.45, 0.8), noise(W, 0.025, 0.3, 2.5), noise(K, 0.5, 0.55, 0.8)];
+const cardTop = [is(W, 0, 1.5, 0, 0.09), is(K, 0, -6, 10, 0.35), ...paper];
+const cardBot = [is(W, 0, 1, 0, 0.05), is(K, 0, -3, 5, 0.7), ...paper];
+
+const cards = kind === 'card';
+const num = d !== 'blank' ? D[d] : null;
+const NT = 'transform="translate(150 220) scale(1.15) translate(-150 -220)"';
+const half = (clip, grad, f) => `<g filter="url(#${f})"><g clip-path="url(#${clip})"><path ${NT} d="${num}" fill="none" stroke="url(#${grad})" stroke-width="46.5" stroke-miterlimit="2.5"/></g></g>`;
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="440" viewBox="0 0 300 440"><defs>
+<linearGradient id="fcT" x1="0" y1="0" x2="0" y2="219" gradientUnits="userSpaceOnUse"><stop stop-color="#1D1D1D"/><stop offset="1" stop-color="#131313"/></linearGradient>
+<linearGradient id="fcB" x1="0" y1="221" x2="0" y2="440" gradientUnits="userSpaceOnUse"><stop stop-color="#131313"/><stop offset="1" stop-color="#080808"/></linearGradient>
+<linearGradient id="nT" x1="0" y1="85" x2="0" y2="220" gradientUnits="userSpaceOnUse"><stop stop-color="#F6F4EE"/><stop offset="1" stop-color="#CCC9C4"/></linearGradient>
+<linearGradient id="nB" x1="0" y1="220" x2="0" y2="355" gradientUnits="userSpaceOnUse"><stop stop-color="#BDBAB5"/><stop offset="1" stop-color="#8F8D8A"/></linearGradient>
+<linearGradient id="cast" x1="0" y1="221" x2="0" y2="243" gradientUnits="userSpaceOnUse"><stop stop-opacity=".55"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="fall" x1="0" y1="205" x2="0" y2="219" gradientUnits="userSpaceOnUse"><stop stop-opacity="0"/><stop offset="1" stop-opacity=".3"/></linearGradient>
+<clipPath id="card"><rect width="300" height="440" rx="40"/></clipPath>
+<clipPath id="hT"><rect width="300" height="219"/></clipPath><clipPath id="hB"><rect y="221" width="300" height="219"/></clipPath>
+${filter('fT', cardTop)}${filter('fB', cardBot)}${filter('pT', puff(1))}${filter('pB', puff(0.8))}
+</defs><g ${cards ? 'clip-path="url(#card)"' : ''}>
+${cards ? '<path filter="url(#fT)" d="M0 40C0 17.9 17.9 0 40 0H260C282.1 0 300 17.9 300 40V219H0V40Z" fill="url(#fcT)"/><path filter="url(#fB)" d="M0 221H300V400C300 422.1 282.1 440 260 440H40C17.9 440 0 422.1 0 400V221Z" fill="url(#fcB)"/>' : ''}
+${num ? half('hT', 'nT', 'pT') + half('hB', 'nB', 'pB') : ''}
+${cards ? '<rect y="221" width="300" height="22" fill="url(#cast)"/><rect y="205" width="300" height="14" fill="url(#fall)"/><rect x="40" width="220" height="1" fill="#fff" fill-opacity=".08"/><rect y="221.5" width="300" height="1" fill="#fff" fill-opacity=".045"/>' : ''}
+</g></svg>`;
+document.body.innerHTML = svg;
+</script></body></html>
