@@ -591,10 +591,17 @@
     card.innerHTML = `<div class="cc-top"><i class="cc-dot${linked ? ' on' : P.source === 'web' ? ' mid' : ''}"></i><div><b>${esc(state)}</b><small>${esc(how)}</small></div></div>
       <div class="cc-grid">
         <div><small>Find it from Spotify</small><b>LyricDock button → Devices → Find devices</b><span>${vis.network ? '✓ Visible on this network' : '… checking the network'}${vis.account ? ' · ✓ your Spotify account' : ' · sign in (Playback source) to be found anywhere'}</span></div>
-        <div><small>Or type this pairing code</small><b class="cc-code">${esc(Rtc.code)}</b><span>Spotify → LyricDock → Devices → Pairing code</span></div>
+        <div><small>Or type this pairing code</small><div class="cc-coderow"><b class="cc-code">${esc(Rtc.code)}</b><button class="cc-copy" type="button">Copy</button></div><span>Spotify → LyricDock → Devices → Pairing code</span></div>
       </div>`;
+    card.querySelector('.cc-copy').onclick = e => { e.stopPropagation(); copyText(Rtc.code.replace(/-/g, '')); e.target.textContent = 'Copied'; setTimeout(() => { e.target.textContent = 'Copy'; }, 1500); };
     return card;
   };
+  // Clipboard from a file:// page: the async API may be refused, so fall back to a selected textarea + copy.
+  function copyText(t) {
+    const fallback = () => { const a = Object.assign(document.createElement('textarea'), { value: t }); a.style.position = 'fixed'; a.style.opacity = '0'; document.body.append(a); a.select(); try { document.execCommand('copy'); } catch (x) {} a.remove(); };
+    try { navigator.clipboard.writeText(t).catch(fallback); } catch (x) { fallback(); }
+    window.notice?.('Pairing code copied', 1500);
+  }
   let mediaKey = null;
   function hardware(h) {
     const inNight = S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo;

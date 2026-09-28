@@ -180,7 +180,17 @@ const Settings = (() => {
       desc: 'From developer.spotify.com - redirect URI http://127.0.0.1:8976/callback. No client secret needed.',
       help: 'developer.spotify.com/dashboard → Create app → Web API, redirect URI http://127.0.0.1:8976/callback → copy the Client ID. Development mode allows 5 users; the app owner needs Premium.' },
     { label: 'Spotify account', type: 'action', text: () => (window.Web?.loggedIn() ? 'Sign out' : 'Sign in'),
-      run: () => (Web.loggedIn() ? Web.logout() : Web.login()), info: () => window.Web?.status() ?? '',
+      run: () => {
+        if (Web.loggedIn()) return Web.logout();
+        if (!/^[0-9a-f]{32}$/.test((S.spClientId || '').trim())) {
+          window.notice?.('Add your Spotify Client ID first (tap the i next to it for how)', 5000);
+          const r = document.querySelector('#settings [data-row="spClientId"]');
+          r?.scrollIntoView({ block: 'center', behavior: 'smooth' }); r?.classList.add('flash'); setTimeout(() => r?.classList.remove('flash'), 1600);
+          r?.querySelector('input')?.focus();
+          return;
+        }
+        Web.login();
+      }, info: () => window.Web?.status() ?? '',
       help: 'Signs in on this phone (you type your password into Spotify\'s own page). Also lets Spotify on your computer find this phone without a code.' },
 
     { group: 'Presets', icon: 'layers', cat: 'Source', desc: 'Built-in looks and your own, saved on the computer so every phone can use them.' },
@@ -417,6 +427,7 @@ const Settings = (() => {
     c.append(control(x));
     row.append(lw, c);
     if (x.help) row.append(el('div', 'sl-sp-help', x.help)); // full row width, under the label + control
+    if (x.k) row.dataset.row = x.k;
     return row;
   }
   function go(g) { cur = g; query = ''; const f = document.getElementById('sfind'); if (f) f.value = ''; render(); }

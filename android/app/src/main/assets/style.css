@@ -724,3 +724,18 @@ body.art-dragging #left { position: relative; z-index: 3; }
   body.layout-cinema #lyrics, body.layout-nowbar #lyrics { margin-bottom: 16vmin; }
   #clockScreen.flip #clkNext { font-size: 3.4vmin; }
 }
+
+/* Pairing code with its Copy button; flash for "take me to this setting" */
+.cc-coderow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 3px 0; }
+.cc-coderow .cc-code { margin: 0; }
+.cc-copy { flex: none; border: 0; border-radius: 999px; padding: 6px 14px; font: 600 .74rem var(--font), system-ui; color: #000; background: #fff; }
+.cc-copy:active { transform: scale(.96); }
+#settings .sl-sp-row.flash { animation: rowFlash 1.6s ease-out; }
+@keyframes rowFlash { 0%, 35% { background: rgba(var(--acc), .2); } }
+/* Portrait settings header: title and buttons on one line, search on its own full-width line below */
+@media (orientation: portrait) {
+  .sl-modal-header { flex-wrap: wrap; row-gap: 10px; }
+  .sl-modal-header h1 { flex: 1 1 auto; }
+  #sfind { order: 10; flex: 1 1 100%; }
+  .sl-modal-header .sl-text-btn { white-space: nowrap; }
+}
