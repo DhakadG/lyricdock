@@ -264,7 +264,22 @@
   // Flip clock: tap toggles seconds, double tap goes back to the lyrics (the simple clock: any tap goes back).
   // In the Flip clock layout a double tap goes back to the layout used before it (Default if none this session).
   let layoutBeforeClock = 'split';
+  // Long press (0.6 s) on the flip clock: swap the card colour (the cards flip over). The click after it is ignored.
+  let lp = null, lpAt = 0;
+  $('clockScreen').addEventListener('touchstart', e => {
+    clearTimeout(lp?.timer); lp = null;
+    if (e.touches.length !== 1 || !$('clockScreen').classList.contains('flip')) return;
+    const t = e.touches[0];
+    lp = { x: t.clientX, y: t.clientY, timer: setTimeout(() => {
+      lpAt = performance.now();
+      window.notice?.(Flip.toggleTheme() === 'light' ? 'Light cards' : 'Dark cards', 1400);
+      call('vibrate', 30);
+    }, 600) };
+  }, { passive: true });
+  $('clockScreen').addEventListener('touchmove', e => { const t = e.touches[0]; if (lp && Math.hypot(t.clientX - lp.x, t.clientY - lp.y) > 12) clearTimeout(lp.timer); }, { passive: true });
+  $('clockScreen').addEventListener('touchend', () => clearTimeout(lp?.timer), { passive: true });
   $('clockScreen').onclick = () => {
+    if (performance.now() - lpAt < 800) return;
     if (S.layout === 'clock') { if (Flip.onTap() === 'dismiss') { clockDismissedAt = Date.now(); Settings.set('layout', layoutBeforeClock); } return; }
     if (S.clockStyle === 'flip' && Flip.onTap() !== 'dismiss') return;
     clockDismissedAt = Date.now(); setClock(false);
@@ -277,7 +292,7 @@
     clockOn = on;
     const b = document.body;
     const flip = S.clockStyle === 'flip';
-    if (on) { b.classList.add('clock'); if (flip) { Flip.mount($('clockScreen')); Flip.show(); } window.notice?.('Double-tap to go back', 1800); return; }
+    if (on) { b.classList.add('clock'); if (flip) { Flip.mount($('clockScreen')); Flip.show(); } window.notice?.('Double-tap to go back · hold to change colour', 2200); return; }
     const go = () => { if (!clockOn) b.classList.remove('clock'); };
     if (flip && Flip.isShown()) { clockBusy = Flip.leave().then(go); } else go();
   }

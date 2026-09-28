@@ -7,11 +7,11 @@
 //
 // A card is four layers, each the WHOLE card clipped to one half at exactly the centre line (clip-path), so every
 // layer lines up to the pixel: static top (new digit), static bottom (old digit), top flap (old) and bottom flap
-// (new). A flip only changes image sources and moves the two flaps around the centre line, on a simulated path
-// (see PATH): the top flap tips over slowly and speeds up, is hidden once edge-on, and the bottom flap - which
-// appears only after it has turned past 72deg, in shadow, so no bright sliver pops out at the split - comes down at
-// full speed, hits the stack and bounces a little.
-// Variants: classic, bounce (bigger bounces), fold (slow, sheen), cascade (digit by digit), roll, fade.
+// (new). A flip only changes image sources and moves the two flaps around the centre line (see motion()): the top
+// flap tips over and is hidden once edge-on, and the bottom flap - which appears only after it has turned past
+// ~70deg, in shadow, so no bright sliver pops out at the split - comes down and lands.
+// Variants: classic, snappy, bounce, fold (slow, sheen), cascade (digit by digit) on eased curves; gravity on a
+// simulated fall with a small bounce off the stack; roll, fade. A colour change flips every card over (retheme).
 // Coming in / going out (clockIntro): the airport board (every card rolls flap by flap from 0 to the time, and on to
 // 0 when leaving), a flip from / to blank, or nothing.
 // Sound is synthesised (Web Audio, no files): each card clacks as it lands; haptics at the landing.
@@ -19,51 +19,66 @@ const Flip = (() => {
   const $ = id => document.getElementById(id);
   const S = () => Settings.S;
   const DIGITS = '0123456789';
-  // Two themes: dark cards with light numerals (fc-*) and light cards with dark numerals (fc-light-*).
-  const pre = () => (S().clockTheme === 'light' ? 'fc-light-' : 'fc-');
-  const src = d => (S().clockCards ? `${pre()}card-${DIGITS.includes(d) ? d : 'blank'}.webp` : DIGITS.includes(d) ? `${pre()}numeral-${d}.webp` : '');
+  // Two themes: dark cards with light numerals (fc-*) and light cards with dark numerals (fc-light-*). Automatic:
+  // light by day, dark during the night-mode hours (Settings -> Night), whether or not night mode itself is on.
+  const nightNow = () => { const h = new Date().getHours(), a = S().nightFrom ?? 22, b = S().nightTo ?? 7; return a < b ? h >= a && h < b : h >= a || h < b; };
+  const theme = () => (S().clockTheme === 'auto' ? (nightNow() ? 'dark' : 'light') : S().clockTheme === 'light' ? 'light' : 'dark');
+  const pre = (t = theme()) => (t === 'light' ? 'fc-light-' : 'fc-');
+  const src = (d, p = pre()) => (S().clockCards ? `${p}card-${DIGITS.includes(d) ? d : 'blank'}.webp` : DIGITS.includes(d) ? `${p}numeral-${d}.webp` : '');
   // Decode the theme's images once up front (and keep them referenced), so the first flip to a digit never shows a gap.
   const preload = {};
-  const warm = () => { const p = pre(); preload[p] ??= [...DIGITS].flatMap(d => [`${p}card-${d}.webp`, `${p}numeral-${d}.webp`]).concat(`${p}card-blank.webp`)
+  const warm = (p = pre()) => { preload[p] ??= [...DIGITS].flatMap(d => [`${p}card-${d}.webp`, `${p}numeral-${d}.webp`]).concat(`${p}card-blank.webp`)
     .map(u => { const i = new Image(); i.src = u; i.decode?.().catch(() => {}); return i; }); };
   const layerSvg = () => '<svg class="fc-svg" viewBox="0 0 300 440" aria-hidden="true"><image class="fc-num" width="300" height="440"/>'
     + '<rect y="218.5" width="300" height="3" fill="#000"/><text class="fc-ap" x="30" y="62"></text></svg>';
   // Point a layer at a digit (and the AM / PM mark): only attributes change.
-  function paint(layer, d, label) {
-    const u = src(d);
+  function paint(layer, d, label, p) {
+    const u = src(d, p);
     if (layer.num.getAttribute('href') !== u) u ? layer.num.setAttribute('href', u) : layer.num.removeAttribute('href');
     if (layer.ap.textContent !== (label || '')) { layer.ap.textContent = label || ''; layer.ap.setAttribute('y', label === 'PM' ? 412 : 62); }
   }
   const EASE = { in: 'cubic-bezier(.5,0,.85,.35)', out: 'cubic-bezier(.15,.75,.35,1)' };
-  // ---- gravity: the flap's path, simulated once. Released just past upright, it swings down about its hinge;
-  // gravity's pull grows with the angle (sin), plus a small kick from the latch letting go, so it starts slowly and is
-  // fastest at the bottom, where it hits the stack and bounces a little (fixed heights, each smaller).
-  // PATH: [time 0..1, angle 0..180deg] from release to impact; T90 = the time it passes horizontal (top -> bottom flap).
+  // ---- how a flap moves. Two families:
+  // Eased (classic, snappy, bounce, fold, cascade): the top flap falls on an ease-in curve, the bottom flap lands on
+  //   an ease-out one, with an overshoot for the springy ones. Smooth and predictable.
+  // Gravity: the path simulated once - released just past upright, the flap swings down about its hinge, pulled
+  //   harder the further it tips (sin) plus a kick from the latch letting go; fastest at the bottom, where it hits the
+  //   stack and bounces a little. PATH: [time 0..1, angle 0..180deg]; T90 = when it passes horizontal.
   const PATH = (() => {
-    const all = []; let a = 0.06, w = 0, t = 0;
-    while (a < Math.PI) { all.push([t, a]); w += (Math.sin(a) + 0.35) * 0.001; a += w * 0.001; t += 0.001; }
+    const all = []; let a = 0.18, w = 0, t = 0;
+    while (a < Math.PI) { all.push([t, a]); w += (Math.sin(a) + 0.9) * 0.001; a += w * 0.001; t += 0.001; }
     all.push([t, Math.PI]);
     const at = x => { const i = Math.min(all.length - 1, Math.round(x * (all.length - 1))); return all[i][1] * 180 / Math.PI; };
     return Array.from({ length: 33 }, (_, i) => [i / 32, at(i / 32)]); // 32 steps is smooth at 60 fps
   })();
   const T90 = (() => { const i = PATH.findIndex(([, a]) => a >= 90); const [t0, a0] = PATH[i - 1], [t1, a1] = PATH[i]; return t0 + (t1 - t0) * (90 - a0) / (a1 - a0); })();
-  // Per variant: time from release to impact (ms at speed 1) and the bounce heights (deg).
-  const PHYS = { classic: [240, [7, 2]], cascade: [240, [7, 2]], bounce: [250, [15, 6, 2]], fold: [430, [4]] };
-  // Keyframes for one flip, scaled to ms: top flap 0 -> -90deg, bottom flap 90 -> 0deg then the bounces.
+  const TOP = [{ transform: 'rotateX(0)', opacity: 1 }, { transform: 'rotateX(-89deg)', opacity: 1, offset: 0.985 }, { transform: 'rotateX(-90deg)', opacity: 0 }];
+  const settle = over => [{ transform: 'rotateX(90deg)', opacity: 0 }, { transform: 'rotateX(70deg)', opacity: 0, offset: 0.1 }, { transform: 'rotateX(64deg)', opacity: 1, offset: 0.14 },
+    ...(over ? [{ transform: 'rotateX(-12deg)', opacity: 1, offset: 0.62 }, { transform: 'rotateX(5deg)', opacity: 1, offset: 0.82 }] : [{ transform: 'rotateX(-3deg)', opacity: 1, offset: 0.82 }]),
+    { transform: 'rotateX(0)', opacity: 1 }];
+  // Eased variants: [fall ms, land ms, springy]. Gravity: time from release to impact (ms) and bounce heights (deg).
+  const EASED = { classic: [180, 210], snappy: [110, 150], bounce: [170, 420, true], fold: [300, 340], cascade: [160, 300, true] };
+  const GRAVITY = [230, [5, 1.5]];
+  const baseMs = anim => (EASED[anim] ? EASED[anim][0] + EASED[anim][1] : GRAVITY[0] * 1.5);
+  // Keyframes for one flip, in ms: top flap 0 -> -90deg over `fall`, then the bottom flap 90 -> 0deg over `dur`,
+  // hitting the stack `hit` ms into it (when the click sounds).
   function motion(anim, sp) {
-    const [ms, hops] = PHYS[anim] || PHYS.classic, j = 0.93 + Math.random() * 0.14; // a little uneven, like real flaps
+    if (EASED[anim]) {
+      const [f, l, over] = EASED[anim];
+      return { top: TOP, bot: settle(over), fall: f * sp, dur: l * sp, hit: l * sp * (over ? 0.62 : 0.82), topEase: EASE.in, botEase: over ? 'ease-out' : EASE.out };
+    }
+    const [ms, hops] = GRAVITY, j = 0.93 + Math.random() * 0.14; // a little uneven, like real flaps
     const total = ms * sp * j, fall = total * T90, drop = total - fall;
     const top = PATH.filter(([t]) => t / T90 < 0.97).map(([t, a]) => ({ transform: `rotateX(${-a.toFixed(2)}deg)`, opacity: 1, offset: t / T90 }));
     top.push({ transform: 'rotateX(-89deg)', opacity: 1, offset: 0.985 }, { transform: 'rotateX(-90deg)', opacity: 0, offset: 1 }); // hidden edge-on
-    // Bounces: constant deceleration g (deg/ms^2), sized so the first one takes ~70 ms at speed 1.
+    // Bounces: constant deceleration g (deg/ms^2), sized so a 7deg bounce takes ~70 ms at speed 1.
     const g = (2 * 7) / (35 * 35) / (sp * sp), hopMs = hops.map(h => 2 * Math.sqrt((2 * h * j) / g));
-    const dur = drop + hopMs.reduce((x, y) => x + y, 0), bot = [];
-    bot.push({ transform: 'rotateX(90deg)', opacity: 0, offset: 0 });
+    const dur = drop + hopMs.reduce((x, y) => x + y, 0), bot = [{ transform: 'rotateX(90deg)', opacity: 0, offset: 0 }];
     for (const [t, a] of PATH.filter(([t]) => t > T90)) { const deg = 180 - a; bot.push({ transform: `rotateX(${deg.toFixed(2)}deg)`, opacity: deg > 72 ? 0 : 1, offset: ((t - T90) * total) / dur }); }
     let at = drop;
     hops.forEach((h, i) => { for (let k = 1; k <= 6; k++) { const u = k / 6, x = hopMs[i] * u; bot.push({ transform: `rotateX(${(h * j * 4 * u * (1 - u)).toFixed(2)}deg)`, opacity: 1, offset: (at + x) / dur }); } at += hopMs[i]; });
     bot[bot.length - 1].offset = 1;
-    return { top, bot, fall, drop, dur };
+    return { top, bot, fall, dur, hit: drop, topEase: 'linear', botEase: 'linear' };
   }
   // The system's reduce-motion preference turns every flip into a quiet crossfade.
   const rm = matchMedia('(prefers-reduced-motion: reduce)'), reduced = () => rm.matches;
@@ -146,7 +161,8 @@ const Flip = (() => {
   function build(fill = null) {
     if (!root) return;
     warm();
-    root.classList.toggle('fc-light', S().clockTheme === 'light');
+    painted = theme();
+    root.classList.toggle('fc-light', painted === 'light');
     root.classList.toggle('fc-bare', !S().clockCards);
     const v = parts(), units = showSecs() ? ['h', 'm', 's'] : ['h', 'm'];
     root.querySelector('.fc-wrap')?.remove();
@@ -192,18 +208,19 @@ const Flip = (() => {
   //   fall .. fall+land    bottom flap (new) appears past 70deg in shadow and swings down; the old bottom under it
   //                        is only repainted when it has landed.
   // Returns { fall, land }: seconds from now until the flap lets go and until it hits (0 for crossfades).
-  function flip(cell, d, label, delay, speed = 1, anims = [], forceAnim = null) {
+  // fromPre: paint the digit being left in another theme's images (a colour change flips the cards over).
+  function flip(cell, d, label, delay, speed = 1, anims = [], forceAnim = null, fromPre) {
     const { top, bot, ft, fb } = cell, from = cell.d, fromLabel = cell.label;
     const anim = reduced() ? 'fade' : forceAnim || S().clockAnim;
     for (const x of [ft, fb, top, bot]) x.el.getAnimations({ subtree: true }).forEach(a => a.cancel());
     ft.el.classList.remove('on'); fb.el.classList.remove('on'); // a flip cut short by this one leaves no flap behind
     // Settled start: halves show the digit we leave, the flaps carry the two digits.
-    paint(bot, from, fromLabel); paint(ft, from, fromLabel);
+    paint(bot, from, fromLabel, fromPre); paint(ft, from, fromLabel, fromPre);
     paint(top, d, label); paint(fb, d, label);
     cell.d = d; cell.label = label;
     // Speed: the setting (clamped), and never so slow that a flip outlives the next second (it would be cut short).
     let sp = 1 / (Math.min(3, Math.max(0.3, S().animSpeed || 1)) * speed);
-    if (showSecs()) sp = Math.min(sp, 820 / (((PHYS[anim] || PHYS.classic)[0] * 1.4) + delay));
+    if (showSecs()) sp = Math.min(sp, 820 / (baseMs(anim) + delay));
     const o = { fill: 'both' };
     if (anim === 'roll' || anim === 'fade') {
       const land = 420 * sp;
@@ -214,15 +231,15 @@ const Flip = (() => {
     }
     const m = motion(anim, sp);
     ft.el.classList.add('on'); fb.el.classList.add('on');
-    anims.push(ft.el.animate(m.top, { duration: m.fall, delay, easing: 'linear', ...o }));
+    anims.push(ft.el.animate(m.top, { duration: m.fall, delay, easing: m.topEase, ...o }));
     ft.el.querySelector('.fc-shade').animate([{ opacity: 0 }, { opacity: 0.65 }], { duration: m.fall, delay, easing: EASE.in, ...o });
-    bot.el.querySelector('.fc-drop').animate([{ opacity: 0 }, { opacity: 0.35 }, { opacity: 0 }], { duration: m.fall + m.drop * 2, delay, easing: 'ease-in-out' });
+    bot.el.querySelector('.fc-drop').animate([{ opacity: 0 }, { opacity: 0.35 }, { opacity: 0 }], { duration: m.fall + m.hit * 1.5, delay, easing: 'ease-in-out' });
     if (anim === 'fold') ft.el.querySelector('.fc-sheen').animate([{ opacity: 0, transform: 'translateY(-60%)' }, { opacity: 0.5, transform: 'translateY(40%)' }], { duration: m.fall, delay, easing: 'linear', ...o });
-    const landing = fb.el.animate(m.bot, { duration: m.dur, delay: delay + m.fall, easing: 'linear', ...o });
+    const landing = fb.el.animate(m.bot, { duration: m.dur, delay: delay + m.fall, easing: m.botEase, ...o });
     landing.onfinish = () => { paint(bot, d, label); ft.el.classList.remove('on'); fb.el.classList.remove('on'); ft.el.getAnimations().forEach(a => a.cancel()); landing.cancel(); };
     anims.push(landing);
-    fb.el.querySelector('.fc-shade').animate([{ opacity: 0.85 }, { opacity: 0 }], { duration: m.drop * 1.6, delay: delay + m.fall, easing: EASE.out, ...o });
-    return { fall: delay / 1000, land: (delay + m.fall + m.drop) / 1000 };
+    fb.el.querySelector('.fc-shade').animate([{ opacity: 0.85 }, { opacity: 0 }], { duration: m.hit * 1.3, delay: delay + m.fall, easing: EASE.out, ...o });
+    return { fall: delay / 1000, land: (delay + m.fall + m.hit) / 1000 };
   }
 
   // On screen = the full-screen clock is up, or the Cover + clock layout is showing its pane. Explicit, not inferred.
@@ -230,9 +247,27 @@ const Flip = (() => {
   // busy: entering or leaving - one owner per card, so a tick never starts a competing flip on the same cards.
   let busy = false;
   // 4x a second: flip whatever changed (flips land on the second, not up to 1s late). Nothing while hidden.
+  // A colour change (the setting, a long press, or Automatic at the night-mode hours): every card flips over, left to
+  // right, from the old colour to the new one - the digits stay. Off screen or mid-animation it just rebuilds.
+  let painted = null; // the theme the cards show
+  function retheme() {
+    const t = theme();
+    if (t === painted) return;
+    if (!shown || busy || !groups.length) { if (root?.querySelector('.fc-wrap')) build(); return; }
+    const from = pre(painted), anims = [];
+    painted = t; busy = true;
+    warm();
+    root.classList.toggle('fc-light', t === 'light');
+    groups.flatMap(g => g.cells).filter(c => !c.el.classList.contains('gone')).forEach((c, i) => {
+      const hit = flip(c, c.d, c.label, i * 70, 1, anims, flapAnim(), from);
+      sound(hit.fall, hit.land, 0.7);
+    });
+    settled(anims).then(() => { busy = false; lastKey = ''; });
+  }
   function tick() {
     if (!shown || !groups.length || busy || document.hidden) return;
     if (!onScreen()) { shown = false; return; } // left the screen without leave(): stop for good, no invisible ticking
+    if (theme() !== painted) return retheme();
     const v = parts(), key = keyOf(v);
     if (key === lastKey) return;
     if (key.slice(0, 4) !== lastKey.slice(0, 4)) announce(v);
@@ -271,18 +306,19 @@ const Flip = (() => {
     const my = ++gen, cells = groups.flatMap(g => g.cells).filter(c => !c.el.classList.contains('gone'));
     return Promise.all(cells.map((cell, i) => new Promise(res => {
       const { d: target, label } = targets(cell);
-      const pace = 3 + Math.random() * 0.8; // x normal speed: ~70 ms a flap
+      const pace = 3.7 + Math.random() * 0.8; // x normal speed: ~60 ms a flap
       const step = () => {
         if (my !== gen) return res();
         if (cell.d === target || !DIGITS.includes(target)) return res();
         const next = DIGITS[(DIGITS.indexOf(cell.d) + 1) % 10] ?? '0', anims = [];
-        const t = flip(cell, next, label, 0, pace, anims, 'classic');
+        const t = flip(cell, next, label, 0, pace, anims, flapAnim());
         if (withSound) sound(t.fall, t.land, 0.55);
         if (next === target) { haptic(t.land); settled(anims).then(res); } else setTimeout(step, t.land * 1000);
       };
-      setTimeout(step, i * 55 + Math.random() * 60);
+      setTimeout(step, i * 40 + Math.random() * 45);
     })));
   }
+  const flapAnim = () => (['roll', 'fade'].includes(S().clockAnim) ? 'classic' : S().clockAnim); // the board always flaps
   const intro = () => (reduced() ? 'none' : S().clockIntro || 'roll');
 
   // Enter. roll: every card starts on 0 and rolls forward to the time. flip: blank cards flip to the time.
@@ -348,5 +384,7 @@ const Flip = (() => {
   setInterval(tick, 250);
   return { show, hide, leave, onTap, mount, layout, isShown: () => shown,
     // Structural settings (cards, 12/24 h, seconds, arrangement, animation) rebuild; size / dim only restyle.
-    rebuild: () => { if (shown && !busy) { build(); lastKey = ''; } } };
+    rebuild: () => { if (theme() !== painted) return retheme(); if (shown && !busy) { build(); lastKey = ''; } },
+    // Long press: swap the card colour (Automatic becomes the opposite of what it shows now).
+    toggleTheme: () => { Settings.set('clockTheme', theme() === 'light' ? 'dark' : 'light', false); return theme(); } };
 })();
