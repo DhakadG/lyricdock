@@ -29,7 +29,7 @@ function Warn($t) { Write-Host "             $t" -ForegroundColor Yellow }
 # NativeCommandError. Run it with errors as plain text and keep the exit code.
 function Spice {
     $ErrorActionPreference = 'Continue'
-    $o = & $script:spicetify @args 2>&1 | ForEach-Object { "$_" }
+    $o = '' | & $script:spicetify @args 2>&1 | ForEach-Object { "$_" }
     $script:SpiceCode = $LASTEXITCODE
     $o
 }
@@ -52,6 +52,33 @@ if ($latest -notmatch '^\d+\.\d+\.\d+$') { Fail "GitHub returned an unexpected v
 Ok 'Network connected'
 
 Step 2 'Checking Spicetify installation...'
+# Spotify from the Microsoft Store: Spicetify only half supports it (it stops to ask, and the patched app can't be
+# started from its own tile). Offer to swap it for Spotify's regular installer - the account, playlists and
+# settings live online; only offline downloads have to be downloaded again.
+$appx = Get-AppxPackage -Name '*SpotifyMusic*' -ErrorAction SilentlyContinue
+if ($appx) {
+    Warn 'Spotify is the Microsoft Store version, which Spicetify (and so LyricDock) does not support properly.'
+    Info 'It can be replaced with the regular Spotify from spotify.com. You stay signed in to the same account;'
+    Info 'only songs downloaded for offline listening need downloading again.'
+    $a = Read-Host '             Replace it now? [Y/n]'
+    if ($a -match '^[nN]') { Fail 'Install Spotify from https://www.spotify.com/download (not the Microsoft Store), sign in, then run this again.' }
+    Info 'Removing the Microsoft Store version...'
+    Stop-Process -Name Spotify -Force -ErrorAction SilentlyContinue
+    try { $appx | Remove-AppxPackage -ErrorAction Stop } catch { Fail "Couldn't remove it ($($_.Exception.Message)). Uninstall Spotify in Settings -> Apps, then run this again." }
+    Info 'Downloading Spotify from spotify.com...'
+    $setup = Join-Path $env:TEMP 'SpotifySetup.exe'
+    try { Invoke-WebRequest -UseBasicParsing 'https://download.scdn.co/SpotifySetup.exe' -OutFile $setup }
+    catch { Fail "Couldn't download Spotify ($($_.Exception.Message)). Install it from https://www.spotify.com/download, then run this again." }
+    Start-Process $setup '/silent' -Wait
+    Remove-Item $setup -ErrorAction SilentlyContinue
+    if (-not (Test-Path "$env:APPDATA\Spotify\Spotify.exe")) { Fail 'Spotify did not install. Install it from https://www.spotify.com/download, then run this again.' }
+    if (-not (Get-Process Spotify -ErrorAction SilentlyContinue)) { Start-Process "$env:APPDATA\Spotify\Spotify.exe" }
+    Ok 'Spotify installed'
+    Write-Host ''
+    Write-Host '  Sign in to Spotify in the window that just opened, then come back here and press Enter.' -ForegroundColor Yellow
+    [void](Read-Host)
+    $script:repointSpicetify = $true
+}
 $spicetify = (Get-Command spicetify -ErrorAction SilentlyContinue).Source
 if (-not $spicetify -and (Test-Path "$env:LOCALAPPDATA\spicetify\spicetify.exe")) { $spicetify = "$env:LOCALAPPDATA\spicetify\spicetify.exe" }
 if (-not $spicetify) {
@@ -82,6 +109,10 @@ if (-not $spicetify) {
     $spicetify = "$dir\spicetify.exe"
     Spice | Out-Null # first run writes its config file
     Ok "Spicetify $($rel.tag_name) installed"
+}
+if ($script:repointSpicetify) {
+    Spice config spotify_path "$env:APPDATA\Spotify" | Out-Null
+    Spice config prefs_path "$env:APPDATA\Spotify\prefs" | Out-Null
 }
 $ext = Join-Path (Split-Path (Spice -c | Select-Object -Last 1)) 'Extensions'
 Ok 'Spicetify found'
@@ -133,6 +164,10 @@ $out = Spice apply
 if ($SpiceCode) {
     Info 'Spotify probably updated and wiped Spicetify - restoring...'
     $out = Spice backup apply
+}
+if ($SpiceCode) {
+    Info 'Resetting an old Spicetify backup...'
+    $out = Spice restore backup apply
 }
 if ($SpiceCode) { $out | ForEach-Object { Info "$_" }; Fail 'spicetify apply failed (output above).' }
 Ok 'Spicetify applied - Spotify is starting'
