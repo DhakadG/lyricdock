@@ -1,26 +1,30 @@
-// Flip clock: one dark card per digit that flips like a mechanical clock. Shown full screen when the music stops
+// Flip clock: one card per digit that flips like a mechanical clock. Shown full screen when the music stops
 // (or always, as the "Flip clock" layout) and beside the cover in the "Cover + clock" layout.
-// The digit cards are designed in Figma (Dumpyard, page "LyricDock · Flip Clock", frame "Digits — Puff 3D": raised
-// puff-print numerals split at the hinge, paper grain on the cards) and baked to fc-*.webp by scripts/flip-assets.ps1:
-// card-0..9 and card-blank (the whole card) and numeral-0..9 (no card, for "Show the cards" off), all 300 x 440 at 2x.
+// The digit cards are designed in Figma (Dumpyard, page "LyricDock · Flip Clock", frames "Digits — Puff 3D" and "Digits — Light":
+// raised puff-print numerals split at the hinge, paper grain on the cards) and baked to fc-*.webp / fc-light-*.webp by
+// scripts/flip-assets.ps1: card-0..9, card-blank (the whole card) and numeral-0..9 (no card), all 300 x 440 at 2x.
 // Flat in assets/, not a subfolder: the Windows aapt2 writes subfolder entries with backslashes, which don't load.
 //
 // A card is four layers, each the WHOLE card clipped to one half at exactly the centre line (clip-path), so every
 // layer lines up to the pixel: static top (new digit), static bottom (old digit), top flap (old) and bottom flap
-// (new). A flip only changes image sources (no markup rebuilt) and moves the two flaps around the centre line:
-//   fall  the top flap tips over (ease-in, like gravity), darkening, and is hidden once edge-on;
-//   land  the bottom flap - which appears only after it has turned past 70deg, still in shadow, so no bright sliver
-//         pops out at the split - swings down onto the old bottom and settles.
-// Variants: classic, bounce (overshoot), fold (slow, sheen + cast shadow), cascade (digit by digit), roll, fade.
-// Sound is synthesised (Web Audio, no files): a whoosh as the flap falls, a click as it lands; haptics at the landing.
+// (new). A flip only changes image sources and moves the two flaps around the centre line, on a simulated path
+// (see PATH): the top flap tips over slowly and speeds up, is hidden once edge-on, and the bottom flap - which
+// appears only after it has turned past 72deg, in shadow, so no bright sliver pops out at the split - comes down at
+// full speed, hits the stack and bounces a little.
+// Variants: classic, bounce (bigger bounces), fold (slow, sheen), cascade (digit by digit), roll, fade.
+// Coming in / going out (clockIntro): the airport board (every card rolls flap by flap from 0 to the time, and on to
+// 0 when leaving), a flip from / to blank, or nothing.
+// Sound is synthesised (Web Audio, no files): each card clacks as it lands; haptics at the landing.
 const Flip = (() => {
   const $ = id => document.getElementById(id);
   const S = () => Settings.S;
   const DIGITS = '0123456789';
-  const src = d => (S().clockCards ? `fc-card-${DIGITS.includes(d) ? d : 'blank'}.webp` : DIGITS.includes(d) ? `fc-numeral-${d}.webp` : '');
-  // Decode every image once up front (and keep them referenced), so the first flip to a digit never shows a gap.
-  let preload = null;
-  const warm = () => { preload ??= [...DIGITS].flatMap(d => [`fc-card-${d}.webp`, `fc-numeral-${d}.webp`]).concat('fc-card-blank.webp')
+  // Two themes: dark cards with light numerals (fc-*) and light cards with dark numerals (fc-light-*).
+  const pre = () => (S().clockTheme === 'light' ? 'fc-light-' : 'fc-');
+  const src = d => (S().clockCards ? `${pre()}card-${DIGITS.includes(d) ? d : 'blank'}.webp` : DIGITS.includes(d) ? `${pre()}numeral-${d}.webp` : '');
+  // Decode the theme's images once up front (and keep them referenced), so the first flip to a digit never shows a gap.
+  const preload = {};
+  const warm = () => { const p = pre(); preload[p] ??= [...DIGITS].flatMap(d => [`${p}card-${d}.webp`, `${p}numeral-${d}.webp`]).concat(`${p}card-blank.webp`)
     .map(u => { const i = new Image(); i.src = u; i.decode?.().catch(() => {}); return i; }); };
   const layerSvg = () => '<svg class="fc-svg" viewBox="0 0 300 440" aria-hidden="true"><image class="fc-num" width="300" height="440"/>'
     + '<rect y="218.5" width="300" height="3" fill="#000"/><text class="fc-ap" x="30" y="62"></text></svg>';
@@ -31,6 +35,36 @@ const Flip = (() => {
     if (layer.ap.textContent !== (label || '')) { layer.ap.textContent = label || ''; layer.ap.setAttribute('y', label === 'PM' ? 412 : 62); }
   }
   const EASE = { in: 'cubic-bezier(.5,0,.85,.35)', out: 'cubic-bezier(.15,.75,.35,1)' };
+  // ---- gravity: the flap's path, simulated once. Released just past upright, it swings down about its hinge;
+  // gravity's pull grows with the angle (sin), plus a small kick from the latch letting go, so it starts slowly and is
+  // fastest at the bottom, where it hits the stack and bounces a little (fixed heights, each smaller).
+  // PATH: [time 0..1, angle 0..180deg] from release to impact; T90 = the time it passes horizontal (top -> bottom flap).
+  const PATH = (() => {
+    const all = []; let a = 0.06, w = 0, t = 0;
+    while (a < Math.PI) { all.push([t, a]); w += (Math.sin(a) + 0.35) * 0.001; a += w * 0.001; t += 0.001; }
+    all.push([t, Math.PI]);
+    const at = x => { const i = Math.min(all.length - 1, Math.round(x * (all.length - 1))); return all[i][1] * 180 / Math.PI; };
+    return Array.from({ length: 33 }, (_, i) => [i / 32, at(i / 32)]); // 32 steps is smooth at 60 fps
+  })();
+  const T90 = (() => { const i = PATH.findIndex(([, a]) => a >= 90); const [t0, a0] = PATH[i - 1], [t1, a1] = PATH[i]; return t0 + (t1 - t0) * (90 - a0) / (a1 - a0); })();
+  // Per variant: time from release to impact (ms at speed 1) and the bounce heights (deg).
+  const PHYS = { classic: [240, [7, 2]], cascade: [240, [7, 2]], bounce: [250, [15, 6, 2]], fold: [430, [4]] };
+  // Keyframes for one flip, scaled to ms: top flap 0 -> -90deg, bottom flap 90 -> 0deg then the bounces.
+  function motion(anim, sp) {
+    const [ms, hops] = PHYS[anim] || PHYS.classic, j = 0.93 + Math.random() * 0.14; // a little uneven, like real flaps
+    const total = ms * sp * j, fall = total * T90, drop = total - fall;
+    const top = PATH.filter(([t]) => t / T90 < 0.97).map(([t, a]) => ({ transform: `rotateX(${-a.toFixed(2)}deg)`, opacity: 1, offset: t / T90 }));
+    top.push({ transform: 'rotateX(-89deg)', opacity: 1, offset: 0.985 }, { transform: 'rotateX(-90deg)', opacity: 0, offset: 1 }); // hidden edge-on
+    // Bounces: constant deceleration g (deg/ms^2), sized so the first one takes ~70 ms at speed 1.
+    const g = (2 * 7) / (35 * 35) / (sp * sp), hopMs = hops.map(h => 2 * Math.sqrt((2 * h * j) / g));
+    const dur = drop + hopMs.reduce((x, y) => x + y, 0), bot = [];
+    bot.push({ transform: 'rotateX(90deg)', opacity: 0, offset: 0 });
+    for (const [t, a] of PATH.filter(([t]) => t > T90)) { const deg = 180 - a; bot.push({ transform: `rotateX(${deg.toFixed(2)}deg)`, opacity: deg > 72 ? 0 : 1, offset: ((t - T90) * total) / dur }); }
+    let at = drop;
+    hops.forEach((h, i) => { for (let k = 1; k <= 6; k++) { const u = k / 6, x = hopMs[i] * u; bot.push({ transform: `rotateX(${(h * j * 4 * u * (1 - u)).toFixed(2)}deg)`, opacity: 1, offset: (at + x) / dur }); } at += hopMs[i]; });
+    bot[bot.length - 1].offset = 1;
+    return { top, bot, fall, drop, dur };
+  }
   // The system's reduce-motion preference turns every flip into a quiet crossfade.
   const rm = matchMedia('(prefers-reduced-motion: reduce)'), reduced = () => rm.matches;
 
@@ -41,7 +75,7 @@ const Flip = (() => {
   function audio() {
     if (!ac) {
       try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
-      noise = ac.createBuffer(1, ac.sampleRate * 0.25, ac.sampleRate);
+      noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); // 1 s: long enough for any burst from any offset
       const d = noise.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
@@ -57,28 +91,38 @@ const Flip = (() => {
     f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + len);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
     src.connect(f).connect(g).connect(a.destination);
-    src.start(t, Math.random() * 0.1, len + 0.02);
+    src.start(t, Math.random() * 0.5, len + 0.02);
   }
-  function thump(vol, at) {
+  function thump(vol, at, f = 140) {
     const a = audio();
     if (!a) return;
     const t = a.currentTime + at, o = a.createOscillator(), g = a.createGain();
-    o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.05);
+    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.45, t + 0.05);
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
     o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.07);
   }
-  function sound(fall, land) {
-    const kind = S().clockSound, v = S().clockVolume;
+  const jit = () => 0.85 + Math.random() * 0.3; // no two flaps sound exactly alike
+  // A flap hitting the stack: a sharp plastic tick, a short hollow body and a dull knock.
+  function clack(at, v) {
+    burst({ type: 'highpass', f0: 4200 * jit(), vol: 0.9 * v, attack: 0.0008, len: 0.012, at });
+    burst({ type: 'bandpass', f0: 1700 * jit(), q: 5, vol: 0.6 * v, attack: 0.001, len: 0.04, at: at + 0.002 });
+    thump(0.3 * v, at, 190 * jit());
+  }
+  // The flap sweeping down: a soft rush of air that swells until it lands.
+  const air = (from, to, v) => burst({ type: 'bandpass', f0: 500, f1: 1400, q: 0.7, vol: 0.28 * v, attack: Math.max(0.03, (to - from) * 0.8), len: Math.max(0.05, to - from) + 0.02, at: from });
+  // One card's sound: fall = when its flap lets go, land = when it hits (s from now).
+  function sound(fall, land, scale = 1) {
+    const kind = S().clockSound, v = S().clockVolume * scale;
     if (kind === 'off' || v <= 0 || document.hidden || document.body.classList.contains('night')) return;
-    if (kind === 'mechanical') {
-      burst({ type: 'bandpass', f0: 900, f1: 2600, q: 0.8, vol: 0.18 * v, attack: 0.02, len: Math.max(0.05, land - fall), at: fall });
-      burst({ type: 'highpass', f0: 3200, vol: 0.9 * v, len: 0.016, at: land });
-      burst({ type: 'bandpass', f0: 1800, q: 2, vol: 0.35 * v, len: 0.03, at: land + 0.012 });
-    } else if (kind === 'click') burst({ type: 'highpass', f0: 3500, vol: 0.8 * v, len: 0.014, at: land });
-    else if (kind === 'whoosh') burst({ type: 'bandpass', f0: 500, f1: 3000, q: 0.7, vol: 0.3 * v, attack: 0.03, len: Math.max(0.05, land - fall) + 0.04, at: fall });
+    if (kind === 'solari') { clack(land, v); clack(land + 0.016 + Math.random() * 0.01, v * 0.45); } // the airport board: a flap, and the next one rattling
+    else if (kind === 'mechanical') { air(fall, land, v * 0.7); clack(land, v); }
+    else if (kind === 'click') clack(land, v * 0.8);
+    else if (kind === 'whoosh') { air(fall, land, v); burst({ type: 'lowpass', f0: 900, vol: 0.25 * v, len: 0.03, at: land }); }
     else if (kind === 'soft') { burst({ type: 'lowpass', f0: 1200, vol: 0.5 * v, len: 0.04, at: land }); thump(0.35 * v, land); }
   }
-  const haptic = at => { if (S().clockHaptic) setTimeout(() => { try { Dock.vibrate(12); } catch (e) {} }, at * 1000); };
+  // A basic vibration motor needs ~30 ms to be felt at all (12 ms ran but was imperceptible).
+  const haptic = at => { const ms = { light: 30, firm: 50 }[S().clockHaptic];
+    if (ms) setTimeout(() => { try { Dock.vibrate(ms); } catch (e) {} }, at * 1000); };
 
   // ---- DOM: a group per unit (hours, minutes, seconds), a card per digit, four full-card layers per card
   const cellHtml = () => { const svg = layerSvg();
@@ -98,9 +142,12 @@ const Flip = (() => {
   const labelFor = (v, u, i) => (v && u === 'h' && i === apIndex(v) ? v.ampm : '');
   const keyOf = v => `${v.h}${v.m}${showSecs() ? v.s : ''}${v.ampm}`;
 
-  function build(blank) {
+  // fill: null = the time; ' ' = blank cards; '0' = every card on 0 (the airport-board entry starts there).
+  function build(fill = null) {
     if (!root) return;
     warm();
+    root.classList.toggle('fc-light', S().clockTheme === 'light');
+    root.classList.toggle('fc-bare', !S().clockCards);
     const v = parts(), units = showSecs() ? ['h', 'm', 's'] : ['h', 'm'];
     root.querySelector('.fc-wrap')?.remove();
     const wrap = document.createElement('div');
@@ -109,7 +156,8 @@ const Flip = (() => {
     root.prepend(wrap);
     groups = [...wrap.querySelectorAll('.fc-group')].map(el => ({ el, u: el.dataset.u, cells: [...el.querySelectorAll('.fc-cell')].map((c, i) => {
       const L = [...c.children].map(x => ({ el: x, num: x.querySelector('.fc-num'), ap: x.querySelector('.fc-ap') }));
-      const cell = { el: c, top: L[0], bot: L[1], ft: L[2], fb: L[3], d: blank ? ' ' : v[el.dataset.u][i], label: blank ? '' : labelFor(v, el.dataset.u, i) };
+      const t = v[el.dataset.u][i], d = fill === null || t === ' ' ? t : fill;
+      const cell = { el: c, top: L[0], bot: L[1], ft: L[2], fb: L[3], d, label: fill === ' ' ? '' : labelFor(v, el.dataset.u, i) };
       for (const x of L) paint(x, cell.d, cell.label);
       if (el.dataset.u === 'h' && i === 0 && tensBlank(v)) c.classList.add('gone');
       return cell;
@@ -143,41 +191,38 @@ const Flip = (() => {
   //   0 .. fall            top flap (old) tips over, darkening; hidden on its last frame (edge-on)
   //   fall .. fall+land    bottom flap (new) appears past 70deg in shadow and swings down; the old bottom under it
   //                        is only repainted when it has landed.
-  function flip(cell, d, label, delay, speed = 1, anims = []) {
+  // Returns { fall, land }: seconds from now until the flap lets go and until it hits (0 for crossfades).
+  function flip(cell, d, label, delay, speed = 1, anims = [], forceAnim = null) {
     const { top, bot, ft, fb } = cell, from = cell.d, fromLabel = cell.label;
-    const anim = reduced() ? 'fade' : S().clockAnim;
+    const anim = reduced() ? 'fade' : forceAnim || S().clockAnim;
     for (const x of [ft, fb, top, bot]) x.el.getAnimations({ subtree: true }).forEach(a => a.cancel());
     ft.el.classList.remove('on'); fb.el.classList.remove('on'); // a flip cut short by this one leaves no flap behind
     // Settled start: halves show the digit we leave, the flaps carry the two digits.
     paint(bot, from, fromLabel); paint(ft, from, fromLabel);
     paint(top, d, label); paint(fb, d, label);
     cell.d = d; cell.label = label;
-    const T = { classic: [180, 210], bounce: [170, 420], fold: [300, 340], cascade: [160, 300], roll: [0, 420], fade: [0, 420] }[anim] || [180, 210];
     // Speed: the setting (clamped), and never so slow that a flip outlives the next second (it would be cut short).
     let sp = 1 / (Math.min(3, Math.max(0.3, S().animSpeed || 1)) * speed);
-    if (showSecs()) sp = Math.min(sp, 820 / (T[0] + T[1] + delay));
-    const fall = T[0] * sp, land = T[1] * sp, o = { fill: 'both' };
+    if (showSecs()) sp = Math.min(sp, 820 / (((PHYS[anim] || PHYS.classic)[0] * 1.4) + delay));
+    const o = { fill: 'both' };
     if (anim === 'roll' || anim === 'fade') {
+      const land = 420 * sp;
       paint(bot, d, label);
       const kf = anim === 'roll' ? [{ transform: 'translateY(-30%) rotateX(55deg)', opacity: 0 }, { transform: 'none', opacity: 1 }] : [{ opacity: 0 }, { opacity: 1 }];
       for (const h of [top, bot]) anims.push(h.el.firstElementChild.animate(kf, { duration: land, delay, easing: EASE.out, fill: 'backwards' }));
-      return (delay + land) / 1000;
+      return { fall: delay / 1000, land: (delay + land) / 1000 };
     }
+    const m = motion(anim, sp);
     ft.el.classList.add('on'); fb.el.classList.add('on');
-    anims.push(ft.el.animate([{ transform: 'rotateX(0)', opacity: 1 }, { transform: 'rotateX(-89deg)', opacity: 1, offset: 0.985 }, { transform: 'rotateX(-90deg)', opacity: 0 }],
-      { duration: fall, delay, easing: EASE.in, ...o }));
-    ft.el.querySelector('.fc-shade').animate([{ opacity: 0 }, { opacity: 0.65 }], { duration: fall, delay, easing: EASE.in, ...o });
-    bot.el.querySelector('.fc-drop').animate([{ opacity: 0 }, { opacity: 0.35 }, { opacity: 0 }], { duration: fall + land * 0.6, delay, easing: 'ease-in-out' });
-    if (anim === 'fold') ft.el.querySelector('.fc-sheen').animate([{ opacity: 0, transform: 'translateY(-60%)' }, { opacity: 0.5, transform: 'translateY(40%)' }], { duration: fall, delay, easing: 'linear', ...o });
-    const springy = anim === 'bounce' || anim === 'cascade';
-    const kf = [{ transform: 'rotateX(90deg)', opacity: 0 }, { transform: 'rotateX(70deg)', opacity: 0, offset: 0.1 }, { transform: 'rotateX(64deg)', opacity: 1, offset: 0.14 },
-      ...(springy ? [{ transform: 'rotateX(-12deg)', opacity: 1, offset: 0.62 }, { transform: 'rotateX(5deg)', opacity: 1, offset: 0.82 }] : [{ transform: 'rotateX(-3deg)', opacity: 1, offset: 0.82 }]),
-      { transform: 'rotateX(0)', opacity: 1 }];
-    const landing = fb.el.animate(kf, { duration: land, delay: delay + fall, easing: springy ? 'ease-out' : EASE.out, ...o });
+    anims.push(ft.el.animate(m.top, { duration: m.fall, delay, easing: 'linear', ...o }));
+    ft.el.querySelector('.fc-shade').animate([{ opacity: 0 }, { opacity: 0.65 }], { duration: m.fall, delay, easing: EASE.in, ...o });
+    bot.el.querySelector('.fc-drop').animate([{ opacity: 0 }, { opacity: 0.35 }, { opacity: 0 }], { duration: m.fall + m.drop * 2, delay, easing: 'ease-in-out' });
+    if (anim === 'fold') ft.el.querySelector('.fc-sheen').animate([{ opacity: 0, transform: 'translateY(-60%)' }, { opacity: 0.5, transform: 'translateY(40%)' }], { duration: m.fall, delay, easing: 'linear', ...o });
+    const landing = fb.el.animate(m.bot, { duration: m.dur, delay: delay + m.fall, easing: 'linear', ...o });
     landing.onfinish = () => { paint(bot, d, label); ft.el.classList.remove('on'); fb.el.classList.remove('on'); ft.el.getAnimations().forEach(a => a.cancel()); landing.cancel(); };
     anims.push(landing);
-    fb.el.querySelector('.fc-shade').animate([{ opacity: 0.85 }, { opacity: 0.4, offset: 0.3 }, { opacity: 0 }], { duration: land, delay: delay + fall, easing: EASE.out, ...o });
-    return (delay + fall + (springy ? land * 0.62 : land * 0.82)) / 1000;
+    fb.el.querySelector('.fc-shade').animate([{ opacity: 0.85 }, { opacity: 0 }], { duration: m.drop * 1.6, delay: delay + m.fall, easing: EASE.out, ...o });
+    return { fall: delay / 1000, land: (delay + m.fall + m.drop) / 1000 };
   }
 
   // On screen = the full-screen clock is up, or the Cover + clock layout is showing its pane. Explicit, not inferred.
@@ -195,50 +240,82 @@ const Flip = (() => {
     turn(v, S().clockAnim === 'cascade' ? 110 : 35, true);
   }
   // Flip every card that differs from v (right to left, the order a real clock turns); v = null flips all to blank.
+  // Each card makes its own sound as it lands, so several changing at once rattle like a real board.
   function turn(v, stagger, withSound, speed, anims = []) {
-    let landAt = -1, fallAt = 0, n = 0, big = false;
-    const tens = groups.find(g => g.u === 'h')?.cells[0];
+    let landAt = -1, n = 0, big = false;
+    const tens = groups.find(g => g.u === 'h')?.cells[0], hits = [];
     if (tens && v && tens.el.classList.toggle('gone', tensBlank(v)) !== tens.wasGone) { tens.wasGone = tensBlank(v); layout(); }
     for (const g of [...groups].reverse()) {
       for (let i = g.cells.length - 1; i >= 0; i--) {
         const cell = g.cells[i], d = v ? v[g.u][i] : ' ', label = labelFor(v, g.u, i);
         if (d === undefined || (d === cell.d && label === cell.label)) continue;
-        const delay = n * stagger;
         if (g.u !== 's') big = true;
-        const l = flip(cell, d, label, delay, speed, anims);
-        if (landAt < 0) fallAt = delay / 1000;
-        landAt = Math.max(landAt, l);
+        const t = flip(cell, d, label, n * stagger, speed, anims);
+        hits.push(t);
+        landAt = Math.max(landAt, t.land);
         n++;
       }
     }
-    if (withSound && landAt >= 0 && onScreen() && (!showSecs() || S().clockSoundEvery === 'all' || big)) { sound(fallAt, landAt); haptic(landAt); }
+    if (withSound && hits.length && onScreen() && (!showSecs() || S().clockSoundEvery === 'all' || big)) {
+      for (const t of hits) sound(t.fall, t.land, hits.length > 1 ? 0.8 : 1);
+      haptic(landAt);
+    }
     return Math.max(0, landAt);
   }
   const settled = anims => Promise.all(anims.map(a => a.finished.catch(() => {})));
 
-  // Enter: the cards start blank and flip to the time one after another. Resolves when they have landed.
+  // The airport board: every card turns forward one flap at a time until it shows its target, each at its own pace
+  // (a slightly random start and speed), clacking at every flap. The next flap lets go as the previous one lands.
+  let gen = 0; // a newer enter / leave stops an older one's rolling
+  function roll(targets, withSound) {
+    const my = ++gen, cells = groups.flatMap(g => g.cells).filter(c => !c.el.classList.contains('gone'));
+    return Promise.all(cells.map((cell, i) => new Promise(res => {
+      const { d: target, label } = targets(cell);
+      const pace = 3 + Math.random() * 0.8; // x normal speed: ~70 ms a flap
+      const step = () => {
+        if (my !== gen) return res();
+        if (cell.d === target || !DIGITS.includes(target)) return res();
+        const next = DIGITS[(DIGITS.indexOf(cell.d) + 1) % 10] ?? '0', anims = [];
+        const t = flip(cell, next, label, 0, pace, anims, 'classic');
+        if (withSound) sound(t.fall, t.land, 0.55);
+        if (next === target) { haptic(t.land); settled(anims).then(res); } else setTimeout(step, t.land * 1000);
+      };
+      setTimeout(step, i * 55 + Math.random() * 60);
+    })));
+  }
+  const intro = () => (reduced() ? 'none' : S().clockIntro || 'roll');
+
+  // Enter. roll: every card starts on 0 and rolls forward to the time. flip: blank cards flip to the time.
+  // Resolves when they have landed.
   function show() {
     if (!root) return Promise.resolve();
     if (shown && root.querySelector('.fc-wrap')) return Promise.resolve();
     shown = true; busy = true;
     secs = S().clockSeconds;
-    build(true);
-    const v = parts();
+    const how = intro(), v = parts();
+    build(how === 'roll' ? '0' : how === 'flip' ? ' ' : null);
     lastKey = keyOf(v);
     announce(v);
+    const done = () => { busy = false; lastKey = ''; }; // lastKey '' = catch up on a second that passed meanwhile
+    if (how === 'none') { done(); return Promise.resolve(); }
     return new Promise(res => requestAnimationFrame(() => {
+      if (how === 'roll') { roll(c => { const g = groups.find(x => x.cells.includes(c)); return { d: v[g.u][g.cells.indexOf(c)], label: c.label }; }, true).then(() => { done(); res(); }); return; }
       const anims = [];
       turn(v, 70, false, 1.2, anims);
-      settled(anims).then(() => { busy = false; lastKey = ''; res(); }); // lastKey '' = catch up on a second that passed meanwhile
+      settled(anims).then(() => { done(); res(); });
     }));
   }
-  // Leave: the cards flip to blank quickly; resolves on the real animations, so the song view comes back after.
+  // Leave. roll: every card rolls forward to 0 (through 9, the way a board only turns one way). flip: to blank.
+  // Resolves on the real animations, so the song view comes back after.
   function leave() {
     if (!root || !shown) return Promise.resolve();
     shown = false; busy = true;
+    const how = intro(), done = () => { busy = false; };
+    if (how === 'none') { done(); return Promise.resolve(); }
+    if (how === 'roll') return roll(c => ({ d: '0', label: c.label }), true).then(done);
     const anims = [];
     turn(null, 35, false, 1.6, anims);
-    return settled(anims).then(() => { busy = false; });
+    return settled(anims).then(done);
   }
   function hide() { shown = false; }
   // Move the clock to another container (full screen, or beside the cover); a changed seconds option rebuilds.
@@ -247,7 +324,7 @@ const Flip = (() => {
   function mount(el, opts = {}) {
     const next = opts.secs ?? null, secsChanged = next !== forceSecs;
     forceSecs = next;
-    if (root === el) { if (secsChanged && shown) { build(false); lastKey = ''; } return; }
+    if (root === el) { if (secsChanged && shown) { build(); lastKey = ''; } return; }
     root?.querySelector('.fc-wrap')?.remove();
     ro?.disconnect();
     root = el;
@@ -264,12 +341,12 @@ const Flip = (() => {
     const now = performance.now();
     if (now - tapT < 320) { tapT = 0; return 'dismiss'; }
     tapT = now;
-    setTimeout(() => { if (tapT === now && shown && !busy && forceSecs === null) { secs = !secs; Settings.set('clockSeconds', secs, false); build(false); lastKey = ''; } }, 330);
+    setTimeout(() => { if (tapT === now && shown && !busy && forceSecs === null) { secs = !secs; Settings.set('clockSeconds', secs, false); build(); lastKey = ''; } }, 330);
     return null;
   }
   if (!ro) addEventListener('resize', layout);
   setInterval(tick, 250);
   return { show, hide, leave, onTap, mount, layout, isShown: () => shown,
     // Structural settings (cards, 12/24 h, seconds, arrangement, animation) rebuild; size / dim only restyle.
-    rebuild: () => { if (shown && !busy) { build(false); lastKey = ''; } } };
+    rebuild: () => { if (shown && !busy) { build(); lastKey = ''; } } };
 })();

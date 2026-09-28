@@ -98,13 +98,13 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     @JavascriptInterface
     public void setVolKeys(boolean on) { volKeys = on; }
 
-    // Flip clock haptics: a very short tick (5..40 ms), light amplitude where the motor supports it.
+    // Flip clock haptics: a short tick (5..80 ms; a basic motor needs ~30 ms to be felt), light amplitude where supported.
     @JavascriptInterface
     @SuppressWarnings("deprecation")
     public void vibrate(int ms) {
         android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
         if (v == null || !v.hasVibrator()) return;
-        int t = Math.max(5, Math.min(40, ms));
+        int t = Math.max(5, Math.min(80, ms));
         if (Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createOneShot(t, v.hasAmplitudeControl() ? 90 : android.os.VibrationEffect.DEFAULT_AMPLITUDE));
         else v.vibrate(t);
     }

@@ -1,6 +1,6 @@
 <!doctype html><html><head><style>html,body{margin:0;background:transparent}svg{display:block}</style></head><body><script>
 // Ports the Figma "Digits — Puff 3D" effect stack (Dumpyard, page "LyricDock · Flip Clock") to SVG filters.
-// Rendered by scripts/flip-assets.ps1: #card-3 / #numeral-3 / #card-blank
+// Rendered by scripts/flip-assets.ps1: #card-3 / #numeral-3 / #card-blank, and #light-card-3 etc. for the light theme
 const D = {
   0: 'M150 92.9C196.5 92.9 215.1 127 215.1 173.5V266.5C215.1 313 196.5 347.1 150 347.1C103.5 347.1 84.9 313 84.9 266.5V173.5C84.9 127 103.5 92.9 150 92.9Z',
   1: 'M109.7 136.3L165.5 92.9V347.1',
@@ -13,7 +13,9 @@ const D = {
   8: 'M150 210.7C115.9 210.7 95.75 189 95.75 151.8C95.75 114.6 119 92.9 150 92.9C181 92.9 204.25 114.6 204.25 151.8C204.25 189 184.1 210.7 150 210.7ZM150 210.7C109.7 210.7 84.9 235.5 84.9 278.9C84.9 319.2 112.8 347.1 150 347.1C187.2 347.1 215.1 319.2 215.1 278.9C215.1 235.5 190.3 210.7 150 210.7Z',
   9: 'M100.4 325.4C112.8 340.9 129.85 347.1 150 347.1C193.4 347.1 215.1 306.8 215.1 235.5V176.6C215.1 123.9 190.3 92.9 150 92.9C109.7 92.9 84.9 123.9 84.9 170.4C84.9 213.8 109.7 241.7 150 241.7C184.1 241.7 208.9 220 215.1 192.1',
 };
-const [kind, d] = location.hash.slice(1).split('-');
+const parts = location.hash.slice(1).split('-'), light = parts[0] === 'light';
+if (light) parts.shift();
+const [kind, d] = parts;
 const seed = d === 'blank' ? 11 : +d + 1;
 let uid = 0;
 const K = '0,0,0', W = '255,255,255';
@@ -48,31 +50,47 @@ function filter(id, effects) {
 const ds = (x, y, r, a) => ({ t: 'ds', x, y, r, a });
 const is = (c, x, y, r, a) => ({ t: 'is', c, x, y, r, a });
 const noise = (c, a, d, s) => ({ t: 'noise', c, a, d, s });
-const puff = l => [ds(0, 1.5, 1.5, 0.85), ds(0, 5 * l, 8 * l, 0.55), ds(0, 14 * l, 26 * l, 0.45),
-  is(W, 0, 3, 2, 0.9), is(W, 0, 7, 10, 0.35), is(K, 0, -5, 8, 0.5), is(K, 0, 0, 24, 0.34),
-  noise(K, 0.13, 0.5, 0.6), noise(W, 0.10, 0.35, 0.6), noise(K, 0.06, 0.3, 2)];
-const paper = [noise(W, 0.055, 0.45, 0.8), noise(W, 0.025, 0.3, 2.5), noise(K, 0.5, 0.55, 0.8)];
-const cardTop = [is(W, 0, 1.5, 0, 0.09), is(K, 0, -6, 10, 0.35), ...paper];
-const cardBot = [is(W, 0, 1, 0, 0.05), is(K, 0, -3, 5, 0.7), ...paper];
+// Dark: off-white ink on black paper. Light: black ink on off-white paper - softer shadows (they fall on a light
+// surface), and the raised ink catches the light as a faint sheen on its top edge instead of a bright rim.
+const TH = light ? {
+  puff: l => [ds(0, 1.5, 1.5, 0.45), ds(0, 4 * l, 7 * l, 0.28), ds(0, 12 * l, 24 * l, 0.2),
+    is(W, 0, 2.5, 2, 0.32), is(W, 0, 7, 10, 0.1), is(K, 0, -4, 7, 0.55), is(K, 0, 0, 22, 0.3),
+    noise(W, 0.09, 0.45, 0.6), noise(K, 0.2, 0.35, 0.6), noise(W, 0.04, 0.3, 2)],
+  paper: [noise(K, 0.09, 0.5, 0.8), noise(K, 0.04, 0.3, 2.5), noise(W, 0.35, 0.5, 0.8)],
+  top: [is(W, 0, 1.5, 0, 0.8), is(K, 0, -6, 10, 0.08)], bot: [is(W, 0, 1, 0, 0.5), is(K, 0, -3, 5, 0.22)],
+  card: [['#F1EEE7', '#E3DFD7'], ['#D9D5CC', '#CBC6BC']], ink: [['#2B2B2A', '#1D1D1C'], ['#1A1A19', '#101010']],
+  cast: 0.28, fall: 0.12, hair: ['#fff', 0.7], hinge: ['#fff', 0.35],
+} : {
+  puff: l => [ds(0, 1.5, 1.5, 0.85), ds(0, 5 * l, 8 * l, 0.55), ds(0, 14 * l, 26 * l, 0.45),
+    is(W, 0, 3, 2, 0.9), is(W, 0, 7, 10, 0.35), is(K, 0, -5, 8, 0.5), is(K, 0, 0, 24, 0.34),
+    noise(K, 0.13, 0.5, 0.6), noise(W, 0.10, 0.35, 0.6), noise(K, 0.06, 0.3, 2)],
+  paper: [noise(W, 0.055, 0.45, 0.8), noise(W, 0.025, 0.3, 2.5), noise(K, 0.5, 0.55, 0.8)],
+  top: [is(W, 0, 1.5, 0, 0.09), is(K, 0, -6, 10, 0.35)], bot: [is(W, 0, 1, 0, 0.05), is(K, 0, -3, 5, 0.7)],
+  card: [['#1D1D1D', '#131313'], ['#131313', '#080808']], ink: [['#F6F4EE', '#CCC9C4'], ['#BDBAB5', '#8F8D8A']],
+  cast: 0.55, fall: 0.3, hair: ['#fff', 0.08], hinge: ['#fff', 0.045],
+};
+const puff = TH.puff;
+const cardTop = [...TH.top, ...TH.paper];
+const cardBot = [...TH.bot, ...TH.paper];
 
 const cards = kind === 'card';
 const num = d !== 'blank' ? D[d] : null;
 const NT = 'transform="translate(150 220) scale(1.15) translate(-150 -220)"';
 const half = (clip, grad, f) => `<g filter="url(#${f})"><g clip-path="url(#${clip})"><path ${NT} d="${num}" fill="none" stroke="url(#${grad})" stroke-width="46.5" stroke-miterlimit="2.5"/></g></g>`;
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="440" viewBox="0 0 300 440"><defs>
-<linearGradient id="fcT" x1="0" y1="0" x2="0" y2="219" gradientUnits="userSpaceOnUse"><stop stop-color="#1D1D1D"/><stop offset="1" stop-color="#131313"/></linearGradient>
-<linearGradient id="fcB" x1="0" y1="221" x2="0" y2="440" gradientUnits="userSpaceOnUse"><stop stop-color="#131313"/><stop offset="1" stop-color="#080808"/></linearGradient>
-<linearGradient id="nT" x1="0" y1="85" x2="0" y2="220" gradientUnits="userSpaceOnUse"><stop stop-color="#F6F4EE"/><stop offset="1" stop-color="#CCC9C4"/></linearGradient>
-<linearGradient id="nB" x1="0" y1="220" x2="0" y2="355" gradientUnits="userSpaceOnUse"><stop stop-color="#BDBAB5"/><stop offset="1" stop-color="#8F8D8A"/></linearGradient>
-<linearGradient id="cast" x1="0" y1="221" x2="0" y2="243" gradientUnits="userSpaceOnUse"><stop stop-opacity=".55"/><stop offset="1" stop-opacity="0"/></linearGradient>
-<linearGradient id="fall" x1="0" y1="205" x2="0" y2="219" gradientUnits="userSpaceOnUse"><stop stop-opacity="0"/><stop offset="1" stop-opacity=".3"/></linearGradient>
+<linearGradient id="fcT" x1="0" y1="0" x2="0" y2="219" gradientUnits="userSpaceOnUse"><stop stop-color="${TH.card[0][0]}"/><stop offset="1" stop-color="${TH.card[0][1]}"/></linearGradient>
+<linearGradient id="fcB" x1="0" y1="221" x2="0" y2="440" gradientUnits="userSpaceOnUse"><stop stop-color="${TH.card[1][0]}"/><stop offset="1" stop-color="${TH.card[1][1]}"/></linearGradient>
+<linearGradient id="nT" x1="0" y1="85" x2="0" y2="220" gradientUnits="userSpaceOnUse"><stop stop-color="${TH.ink[0][0]}"/><stop offset="1" stop-color="${TH.ink[0][1]}"/></linearGradient>
+<linearGradient id="nB" x1="0" y1="220" x2="0" y2="355" gradientUnits="userSpaceOnUse"><stop stop-color="${TH.ink[1][0]}"/><stop offset="1" stop-color="${TH.ink[1][1]}"/></linearGradient>
+<linearGradient id="cast" x1="0" y1="221" x2="0" y2="243" gradientUnits="userSpaceOnUse"><stop stop-opacity="${TH.cast}"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="fall" x1="0" y1="205" x2="0" y2="219" gradientUnits="userSpaceOnUse"><stop stop-opacity="0"/><stop offset="1" stop-opacity="${TH.fall}"/></linearGradient>
 <clipPath id="card"><rect width="300" height="440" rx="40"/></clipPath>
 <clipPath id="hT"><rect width="300" height="219"/></clipPath><clipPath id="hB"><rect y="221" width="300" height="219"/></clipPath>
 ${filter('fT', cardTop)}${filter('fB', cardBot)}${filter('pT', puff(1))}${filter('pB', puff(0.8))}
 </defs><g ${cards ? 'clip-path="url(#card)"' : ''}>
 ${cards ? '<path filter="url(#fT)" d="M0 40C0 17.9 17.9 0 40 0H260C282.1 0 300 17.9 300 40V219H0V40Z" fill="url(#fcT)"/><path filter="url(#fB)" d="M0 221H300V400C300 422.1 282.1 440 260 440H40C17.9 440 0 422.1 0 400V221Z" fill="url(#fcB)"/>' : ''}
 ${num ? half('hT', 'nT', 'pT') + half('hB', 'nB', 'pB') : ''}
-${cards ? '<rect y="221" width="300" height="22" fill="url(#cast)"/><rect y="205" width="300" height="14" fill="url(#fall)"/><rect x="40" width="220" height="1" fill="#fff" fill-opacity=".08"/><rect y="221.5" width="300" height="1" fill="#fff" fill-opacity=".045"/>' : ''}
+${cards ? `<rect y="221" width="300" height="22" fill="url(#cast)"/><rect y="205" width="300" height="14" fill="url(#fall)"/><rect x="40" width="220" height="1" fill="${TH.hair[0]}" fill-opacity="${TH.hair[1]}"/><rect y="221.5" width="300" height="1" fill="${TH.hinge[0]}" fill-opacity="${TH.hinge[1]}"/>` : ''}
 </g></svg>`;
 document.body.innerHTML = svg;
 </script></body></html>

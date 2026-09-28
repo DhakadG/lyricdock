@@ -8,7 +8,7 @@ const Settings = (() => {
     { group: 'Layout', icon: 'layout', cat: 'View', desc: 'Where the cover, title, controls and lyrics sit, and which gestures work.' },
     { k: 'layout', label: 'Layout', type: 'choice', def: 'split', opts: [
       ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['clocksplit', 'Cover + clock'], ['clock', 'Flip clock']],
-      help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds; tap again for the controls).' },
+      help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds, double-tap to go back to the layout before).' },
     { k: 'artSide', label: 'Cover side', type: 'choice', def: 'left', opts: [['left', 'Cover left, lyrics right'], ['right', 'Lyrics left, cover right']],
       when: s => ['split', 'tv', 'clocksplit'].includes(s.layout), help: 'Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top.' },
     { k: 'progress', label: 'Progress bar', type: 'choice', def: 'bottom', opts: [['bottom', 'Bottom'], ['top', 'Top'], ['off', 'Off']],
@@ -139,29 +139,35 @@ const Settings = (() => {
 
     { group: 'Clock', icon: 'clock', cat: 'Device', desc: 'The flip clock that takes over when the music stops.' },
     { k: 'clock', label: 'Clock screen', type: 'choice', def: 'paused', opts: [['off', 'Off'], ['paused', 'When paused'], ['idle', 'When nothing is playing']],
-      help: 'A full-screen clock after a while without music. It goes away by itself when music plays; double-tap to go back sooner.' },
+      help: 'A full-screen clock after a while without music. It goes away by itself when music plays; double-tap it to go back sooner.' },
     { k: 'clockAfter', label: 'Show the clock after', type: 'range', min: 1, max: 30, step: 1, def: 3, unit: ' min', when: s => s.clock !== 'off', help: 'Minutes without music before the clock appears.' },
     { k: 'clockStyle', label: 'Style', type: 'choice', def: 'flip', opts: [['flip', 'Flip cards'], ['simple', 'Simple (time and date)']], when: s => s.clock !== 'off',
-      help: 'Flip cards: big white numerals on dark cards that flip like a mechanical clock. Tap to show or hide seconds, double-tap to go back. Simple: a thin time with the date.' },
-    { k: 'clockAnim', label: 'Flip animation', type: 'choice', def: 'classic', opts: [['classic', 'Classic'], ['bounce', 'Bounce'], ['fold', 'Slow fold'], ['cascade', 'Cascade (per digit)'], ['roll', 'Roll'], ['fade', 'Fade']],
+      help: 'Flip cards: big raised numerals on cards that flip like a mechanical clock. Tap to show or hide seconds, double-tap to go back. Simple: a thin time with the date.' },
+    { k: 'clockTheme', label: 'Card colour', type: 'choice', def: 'dark', opts: [['dark', 'Dark cards, light numerals'], ['light', 'Light cards, dark numerals']], when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout),
+      help: 'Dark: off-white puff-print numerals on black paper cards. Light: black numerals on off-white paper cards.' },
+    { k: 'clockIntro', label: 'Coming in and going out', type: 'choice', def: 'roll', opts: [['roll', 'Airport board (roll from 0 / to 0)'], ['flip', 'Flip from blank'], ['none', 'None']],
+      when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout),
+      help: 'Airport board: coming in, every card starts on 0 and rolls forward flap by flap to the time; going out, every card rolls on to 0, like a departure board changing. Flip from blank: the cards flip from and to blank. None: no animation.' },
+    { k: 'clockAnim', label: 'Flip animation', type: 'choice', def: 'classic', opts: [['classic', 'Classic (gravity)'], ['bounce', 'Bouncy'], ['fold', 'Slow fold'], ['cascade', 'Cascade (per digit)'], ['roll', 'Roll'], ['fade', 'Fade']],
       when: s => s.clock !== 'off' && s.clockStyle === 'flip',
-      help: 'Classic: the top half falls, the new bottom half lands. Bounce: the flap overshoots and settles. Slow fold: slower, with a light sheen and a shadow on the half below. Cascade: every digit is its own card and flips a beat after the one before (departure board). Roll: the digit rolls down a drum. Fade: a quiet crossfade.' },
+      help: 'Classic: the flap falls like a real one, slow to let go and fastest at the bottom, then bounces off the stack a little. Bouncy: livelier bounces. Slow fold: slower, with a light sheen. Cascade: every digit flips a beat after the one before (departure board). Roll: the digit rolls down a drum. Fade: a quiet crossfade.' },
     { k: 'clockSeconds', label: 'Show seconds', type: 'toggle', def: false, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'A third card for seconds. Tapping the clock toggles it too.' },
     { k: 'clock24', label: 'Time format', type: 'choice', def: '12', opts: [['12', '12-hour (AM / PM)'], ['24', '24-hour']], when: s => s.clock !== 'off', help: '12-hour shows AM or PM in the corner of the hours card.' },
     { k: 'clockLayout', label: 'Arrangement', type: 'choice', def: 'auto', opts: [['auto', 'Follow the screen'], ['side', 'Side by side'], ['stacked', 'Stacked']], when: s => s.clock !== 'off' && s.clockStyle === 'flip',
       help: 'Follow the screen: cards side by side in landscape, stacked in portrait.' },
-    { k: 'clockCards', label: 'Show the cards', type: 'toggle', def: true, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'Off: only the numerals on black (the flip still moves them).' },
+    { k: 'clockCards', label: 'Show the cards', type: 'toggle', def: true, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'Off: only the numerals (on black, or on paper with light cards); the flip still moves them.' },
     { k: 'clockScale', label: 'Size', type: 'range', min: 0.5, max: 1, step: 0.01, def: 0.96, unit: '×', when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout), help: 'How much of the screen the cards fill (1 = edge to edge). Also sizes the clock in the Cover + clock layout.' },
     { k: 'clockDigitGap', label: 'Gap between digits', type: 'range', min: 0, max: 0.2, step: 0.01, def: 0.03, when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout), help: 'Space between the two cards of the hours, the minutes and the seconds (as a share of a card\'s width).' },
     { k: 'clockGroupGap', label: 'Gap between hours and minutes', type: 'range', min: 0, max: 0.6, step: 0.01, def: 0.14, when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout), help: 'Space between the hours, minutes and seconds groups (as a share of a card\'s width).' },
     { k: 'clockDim', label: 'Dim', type: 'range', min: 0, max: 0.85, step: 0.05, def: 0, when: s => s.clock !== 'off', help: 'Darkens the clock (for a bedroom at night).' },
-    { k: 'clockSound', label: 'Flip sound', type: 'choice', def: 'off', opts: [['off', 'Off'], ['mechanical', 'Mechanical (whoosh + click)'], ['click', 'Click'], ['whoosh', 'Whoosh'], ['soft', 'Soft tap']],
+    { k: 'clockSound', label: 'Flip sound', type: 'choice', def: 'off', opts: [['off', 'Off'], ['solari', 'Airport board (clack)'], ['mechanical', 'Mechanical (air + clack)'], ['click', 'Click'], ['whoosh', 'Whoosh (air)'], ['soft', 'Soft tap']],
       when: s => s.clock !== 'off' && s.clockStyle === 'flip',
-      help: 'A small sound made on the phone (no audio files) timed to the flap: the whoosh as it falls, the click as it lands. Silent during night mode.' },
+      help: 'Made on the phone (no audio files) and timed to each flap: every card clacks as it lands, so several changing at once rattle like a departure board. Airport board: a sharp plastic clack with the next flap rattling. Mechanical: the rush of the falling flap, then the clack. Silent during night mode.' },
     { k: 'clockVolume', label: 'Sound volume', type: 'range', min: 0.05, max: 1, step: 0.05, def: 0.4, when: s => s.clock !== 'off' && s.clockSound !== 'off', help: 'Loudness of the flip sound (relative to the phone\'s media volume).' },
     { k: 'clockSoundEvery', label: 'Sound with seconds on', type: 'choice', def: 'minute', opts: [['minute', 'Only when the minute changes'], ['all', 'Every flip']], when: s => s.clock !== 'off' && s.clockSound !== 'off' && s.clockSeconds,
       help: 'A tick every second gets tiring: by default only the minute flip makes a sound.' },
-    { k: 'clockHaptic', label: 'Vibrate on flip', type: 'toggle', def: false, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'A very short tick of the vibration motor as the flap lands.' },
+    { k: 'clockHaptic', label: 'Vibrate on flip', type: 'choice', def: 'off', opts: [['off', 'Off'], ['light', 'Light'], ['firm', 'Firm']], when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout),
+      help: 'A tick of the vibration motor as the flap lands (on entering and leaving, as each card settles).' },
     { k: 'clockCaption', label: 'Paused song under the clock', type: 'toggle', def: true, when: s => s.clock !== 'off', help: 'Shows "Paused · song" in small text below the clock.' },
     { group: 'Performance', icon: 'gauge', cat: 'Device', desc: 'Background resolution, blur and frame rate: trade looks for smoothness on slower phones.' },
     { k: 'bgRes', label: 'Background resolution', type: 'range', min: 0.2, max: 1, step: 0.05, def: 0.5, unit: '×',
@@ -258,6 +264,7 @@ const Settings = (() => {
   try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
   const fresh = !saved; // first run on this phone: take the desktop's last settings when the bridge sends them
   const S = { ...defaults, ...saved };
+  if (typeof S.clockHaptic === 'boolean') S.clockHaptic = S.clockHaptic ? 'light' : 'off'; // was a toggle
   const listeners = [];
   let presets = {}, presetHook = () => {};
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };

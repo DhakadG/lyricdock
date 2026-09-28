@@ -76,8 +76,11 @@
   // Touch events, not pointer events: the WebView fires pointercancel as soon as it takes a drag for a pan, so a
   // pointer-based swipe never finished. Works anywhere, including on the album art (Default / TV view).
   let down = null, lastTap = 0;
+  // While the clock is up it owns every tap (seconds, double-tap to leave): no skip swipes, no double-tap like.
+  const clockUp = () => document.body.classList.contains('clock');
   addEventListener('touchstart', e => {
     const t = e.touches[0];
+    if (clockUp()) { down = null; return; }
     const onCover = swipeLayouts.includes(S.layout) && e.target.closest?.('#artbox');
     down = e.touches.length !== 1 || interactive(e) ? null : { x: t.clientX, y: t.clientY, t: performance.now(), cover: onCover };
   }, { capture: true, passive: true });
@@ -259,8 +262,10 @@
   let lastPlayAt = Date.now(), clockDismissedAt = 0, shift = 0;
   const call = (fn, ...a) => { try { return Dock[fn](...a); } catch (e) { return null; } };
   // Flip clock: tap toggles seconds, double tap goes back to the lyrics (the simple clock: any tap goes back).
+  // In the Flip clock layout a double tap goes back to the layout used before it (Default if none this session).
+  let layoutBeforeClock = 'split';
   $('clockScreen').onclick = () => {
-    if (S.layout === 'clock') { Flip.onTap(); return; } // the clock IS the layout: taps only toggle seconds
+    if (S.layout === 'clock') { if (Flip.onTap() === 'dismiss') { clockDismissedAt = Date.now(); Settings.set('layout', layoutBeforeClock); } return; }
     if (S.clockStyle === 'flip' && Flip.onTap() !== 'dismiss') return;
     clockDismissedAt = Date.now(); setClock(false);
   };
@@ -272,11 +277,12 @@
     clockOn = on;
     const b = document.body;
     const flip = S.clockStyle === 'flip';
-    if (on) { b.classList.add('clock'); if (flip) { Flip.mount($('clockScreen')); Flip.show(); } return; }
+    if (on) { b.classList.add('clock'); if (flip) { Flip.mount($('clockScreen')); Flip.show(); } window.notice?.('Double-tap to go back', 1800); return; }
     const go = () => { if (!clockOn) b.classList.remove('clock'); };
     if (flip && Flip.isShown()) { clockBusy = Flip.leave().then(go); } else go();
   }
   function everySecond() {
+    if (S.layout !== 'clock') layoutBeforeClock = S.layout;
     const tNow = Date.now(), idleMin = (tNow - lastPlayAt) / 60000, h = new Date().getHours();
     // chip
     const left = P.dur - now();
@@ -532,6 +538,7 @@
     // Cover + clock: the flip clock (HH:MM) lives where the lyrics would be.
     if (!k || k === '*' || k === 'layout') {
       if (S.layout === 'clocksplit') { Flip.mount($('clockPane'), { secs: false }); Flip.show(); }
+      else if (clockOn && S.layout !== 'clock') setClock(false); // leaving the Flip clock layout: the cards roll out first
       else { Flip.hide(); Flip.mount($('clockScreen')); clockOn = false; document.body.classList.remove('clock'); }
       setTimeout(() => Flip.layout(), 60);
     }
