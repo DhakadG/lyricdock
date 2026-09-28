@@ -29,7 +29,7 @@ async function refresh() {
   $('ext-badge').className = `badge ${cls}`;
   $('ext-badge').textContent = !st.spicetify ? 'Spicetify missing' : ok ? 'Installed' : st.loader_installed ? 'Not enabled' : 'Not installed';
   $('ext-title').textContent = ok ? 'Ready' : 'Needs attention';
-  $('ext-sub').textContent = !st.spicetify ? 'Install Spicetify first, then click Install / repair.'
+  $('ext-sub').textContent = !st.spicetify ? 'Click Install / repair: it installs Spicetify and LyricDock together.'
     : ok ? 'The auto-updating loader is installed and enabled in Spicetify.' : 'Click Install / repair to set it up.';
   $('banner-spicetify').hidden = !!st.spicetify;
   const chip = (k, v) => `<span class="chip">${k} <b>${v}</b></span>`;

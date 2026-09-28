@@ -214,6 +214,7 @@ const Lyrics = (() => {
     drag = { x: e.touches[0].clientX, y: e.touches[0].clientY, y0: curY, on: false, t: performance.now(), v: 0, ly: e.touches[0].clientY };
   }, { passive: true });
   box().addEventListener('touchmove', e => {
+    if (drag && e.touches.length > 1) { if (drag.on) release(); drag = null; } // a multi-finger gesture: not a scroll
     if (!drag) return;
     const t = e.touches[0], dx = t.clientX - drag.x, dy = t.clientY - drag.y;
     if (!drag.on) {

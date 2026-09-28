@@ -32,5 +32,7 @@ git add extension/version.json helper/src-tauri/tauri.conf.json helper/src-tauri
 git diff --cached --quiet; if ($LASTEXITCODE) { git commit -q -m "Release v$Version" } # first release: version.json already matches
 git tag "v$Version"
 git push -q --atomic origin main "v$Version"
-gh release create "v$Version" $apk $helperExe --title "LyricDock v$Version$(if ($Beta) { ' (beta)' })" --notes $Notes @(if ($Beta) { '--prerelease' })
+# The Spicetify extension too, for manual installs: lyricdock.js is the self-updating loader (recommended),
+# dock-bridge.js the full extension pinned to this version.
+gh release create "v$Version" $apk $helperExe "$root\extension\lyricdock.js#Spicetify loader (lyricdock.js, auto-updates)" "$root\extension\dock-bridge.js#Spicetify extension (dock-bridge.js, this version)" --title "LyricDock v$Version$(if ($Beta) { ' (beta)' })" --notes $Notes @(if ($Beta) { '--prerelease' })
 Write-Host "Released v$Version - Spotify picks it up on next start (or within 30 min), phones within 6 h."

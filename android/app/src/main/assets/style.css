@@ -193,10 +193,10 @@ body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / 
   opacity: 0; pointer-events: none; z-index: 5; }
 /* Inside the cover: explicit width - absolutely positioned at left:50% it otherwise only gets half the cover and
    the buttons wrap into a lopsided stack. */
-#art > #ctl { position: absolute; left: 50%; bottom: 4%; width: 84%; transform: translate(-50%, 3vmin) scale(.94); }
+#artbox > #ctl { position: absolute; left: 50%; top: var(--ctl-top, 100%); width: 100%; transform: translate(-50%, 4vmin) scale(.96); }
 body > #ctl { position: fixed; left: 50%; top: 50%; width: min(64vmin, 80vw); transform: translate(-50%, -50%) scale(.9); }
 body.ui #ctl { opacity: 1; pointer-events: auto; }
-body.ui #art > #ctl { transform: translate(-50%, 0) scale(1); }
+body.ui #artbox > #ctl { transform: translate(-50%, 0) scale(1); }
 body.ui > #ctl { transform: translate(-50%, -50%) scale(1); }
 #ctl button { flex: none; width: 11vmin; height: 11vmin; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center;
   transition: transform .18s var(--ease), background .25s, box-shadow .25s; }
@@ -428,7 +428,7 @@ body.hide-lists #lists { display: none; }
 /* One compact button scale everywhere (over the cover, centred, in the deck): shuffle, prev, play, next, repeat
    always fit on one row; volume and the list buttons take their own rows. */
 #ctl { gap: .6vmin; padding: 1.4vmin 1.8vmin; justify-content: space-evenly; }
-#art > #ctl { width: 90%; }
+#artbox > #ctl { width: 100%; }
 body > #ctl { width: min(92vmin, 94vw); max-width: 520px; }
 #ctl button { width: 9.4vmin; height: 9.4vmin; }
 #ctl button svg { width: 5.4vmin; height: 5.4vmin; }
@@ -559,7 +559,7 @@ body.times #nextChip { bottom: calc(var(--sa-b) + var(--bar-by) + 8.5vmin); }
 #srcBadge { position: fixed; top: calc(var(--sa-t) + 3vmin); left: calc(var(--sa-l) + 3vmin); z-index: 4; font-size: 1.9vmin; font-weight: 700;
   letter-spacing: .04em; padding: .5vmin 1.4vmin; border-radius: 1vmin; background: rgba(0, 0, 0, .35); color: rgba(255, 255, 255, .7); display: none; }
 #srcBadge.show { display: block; }
-#batt { position: fixed; top: calc(var(--sa-t) + 3vmin); right: calc(var(--sa-r) + 15vmin); z-index: 4; display: none; align-items: center; gap: 1vmin;
+#batt { position: fixed; top: calc(var(--sa-t) + var(--bar-ty) + 4vmin + 3.2vmin); right: calc(var(--sa-r) + var(--bar-tx) + 4.4vmin); z-index: 4; display: none; align-items: center; gap: 1vmin; flex-direction: row-reverse; transition: transform .5s var(--ease), opacity .35s;
   font-size: 2.1vmin; font-weight: 700; opacity: .65; font-variant-numeric: tabular-nums; }
 #batt.show { display: flex; }
 #batt i { width: 4.4vmin; height: 2.2vmin; border-radius: .5vmin; box-shadow: inset 0 0 0 .25vmin currentColor; position: relative; }
@@ -711,7 +711,7 @@ body.layout-clock #gear { z-index: 9; }
 #artPeek { position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 1; border-radius: 2.4vmin; background: #1a1a1d center/cover;
   opacity: 0; pointer-events: none; z-index: 0; box-shadow: 0 3vmin 8vmin -1vmin rgba(0, 0, 0, .7); will-change: transform, opacity; }
 #art { z-index: 1; }
-body.art-dragging #art { transition: none; }
+body.art-dragging #art, body.art-dragging.art-ctl.ui #art { transition: none; }
 body.art-dragging #left { position: relative; z-index: 3; }
 .art-x { position: absolute; inset: 0; border-radius: inherit; background: center/cover; pointer-events: none; z-index: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -787,3 +787,15 @@ body.art-dragging #left { position: relative; z-index: 3; }
   #setup .su-card { grid-template-columns: minmax(0, 1fr); gap: 22px; align-content: center; }
   #setup p { max-width: none; }
 }
+
+/* ---- cover + controls: a tap shrinks the cover towards its top edge (translate + scale about the centre, so the
+   paused shrink keeps working) and the controls take the space freed under it; showUi() sets --art-mini to fit. */
+body.art-ctl.ui #art { transform: translateY(calc((var(--art-mini, .78) - 1) * 50%)) scale(var(--art-mini, .78));
+  transition: transform .55s var(--spring), box-shadow .6s, border-radius .4s; }
+body.art-ctl #artbox > #ctl { margin: 0; }
+/* Free-scrolling lyrics: every line is drawn, not just the ones near the sung line. */
+#lyrics.free .ln.far { visibility: visible; }/* Battery: status-bar style in the top-right corner, level then the icon (with its nub), on the gear's row; it
+   steps aside when the gear appears. */
+#batt i::after { content: ''; position: absolute; right: -.7vmin; top: 50%; width: .45vmin; height: 1vmin; margin-top: -.5vmin; border-radius: 0 .3vmin .3vmin 0; background: currentColor; opacity: .6; }
+body.ui #batt { transform: translateX(-11vmin); }body.art-ctl #meta { transition: opacity .3s, transform .45s var(--ease); }
+body.art-ctl.ui #meta { opacity: 0; transform: translateY(3vmin); pointer-events: none; }

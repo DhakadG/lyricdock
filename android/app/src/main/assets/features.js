@@ -67,7 +67,7 @@
     down = e.touches.length !== 1 || interactive(e) ? null : { x: t.clientX, y: t.clientY, t: performance.now(), cover: onCover };
   }, { capture: true, passive: true });
   addEventListener('touchend', e => {
-    if (!down) return;
+    if (!down || e.touches.length) { down = null; return; }
     const t = e.changedTouches[0], dx = t.clientX - down.x, dy = t.clientY - down.y, dt = performance.now() - down.t, d0 = down;
     down = null;
     if (S.swipe && !d0.cover && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 800) { swipeFx(dx < 0 ? -1 : 1); $(dx < 0 ? 'next' : 'prev').click(); return; }
@@ -77,81 +77,114 @@
       else lastTap = now2;
     }
   }, { capture: true, passive: true });
-  // ---- cover swipe (Default / TV / Cover + clock): the cover follows the finger 1:1 while the next (or previous)
-  // cover slides in beside it. Past a third of the width (or a quick flick) it commits: the covers finish the move and
-  // the song changes (app.js then leaves the cover alone - it is already the new one). Let go early: it springs back.
+  // ---- the cover (Default / TV / Cover + clock). A tap toggles the controls: the cover shrinks towards its top edge
+  // and the controls slide into the space under it. A drag is a swipe: the cover follows the finger 1:1 with the
+  // next (or previous) cover beside it, and the controls never show. Let go past a third of the width, or flick, and
+  // it carries on at the finger's speed into place while the song changes (for "next" the preloaded song is swapped
+  // in at once, so title, lyrics and colours land with the cover). Let go early and it springs back.
   const peek = document.createElement('div');
   peek.id = 'artPeek';
   $('artbox').append(peek);
   const swipeLayouts = ['split', 'tv', 'clocksplit'];
-  let cs = null, csRevert = 0;
+  const artEl = $('art'), body = document.body;
+  let cs = null, busy = false, csRevert = 0, tapT = 0;
   const artUrl = u => u ? `url("${u}")` : 'none';
+  const scaleOf = el => { const t = getComputedStyle(el).transform; return t && t !== 'none' ? Math.hypot(...new DOMMatrix(t).toFloat32Array().slice(0, 2)) : 1; };
+  // After a gesture the cover's CSS transition must not replay the last drag frame: drop inline styles first,
+  // re-enable transitions two frames later.
+  const settle = () => {
+    for (const el of [artEl, peek]) { el.getAnimations().forEach(a => a.cancel()); el.style.transform = ''; el.style.opacity = ''; }
+    requestAnimationFrame(() => requestAnimationFrame(() => { body.classList.remove('art-dragging'); busy = false; }));
+  };
   $('artbox').addEventListener('touchstart', e => {
-    if (!S.swipe || !swipeLayouts.includes(S.layout) || e.touches.length !== 1 || e.target.closest('button, input, #ctl')) return;
-    const t = e.touches[0], w = $('art').offsetWidth;
-    cs = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, on: false, w, gap: w * 0.08, lx: t.clientX, lt: performance.now(), v: 0 };
+    if (busy || !swipeLayouts.includes(S.layout) || e.touches.length !== 1 || e.target.closest('button, input, #ctl')) { cs = null; return; }
+    const t = e.touches[0], w = artEl.offsetWidth;
+    cs = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, on: false, w, gap: w * 0.08, lx: t.clientX, lt: performance.now(), v: 0, s0: 1 };
   }, { passive: true });
   $('artbox').addEventListener('touchmove', e => {
-    if (!cs) return;
+    if (!cs || e.touches.length !== 1) { if (cs?.on) endSwipe(); cs = null; return; }
     const t = e.touches[0], dx = t.clientX - cs.x, dy = t.clientY - cs.y;
     if (!cs.on) {
-      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { cs = null; return; } // a vertical drag: not ours
+      if (!S.swipe || (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx))) { cs = null; return; } // vertical: not ours
       if (Math.abs(dx) < 8) return;
       cs.on = true;
-      document.body.classList.add('art-dragging');
+      cs.x = t.clientX; // start from here: no jump by the 8 px it took to decide
+      cs.s0 = scaleOf(artEl); // shrunk (controls open) or paused: the cover keeps that size and place while it moves
+      const m = getComputedStyle(artEl).transform; cs.base = m && m !== 'none' ? m + ' ' : '';
+      body.classList.add('art-dragging');
+      clearTimeout(tapT);
     }
-    const now2 = performance.now();
-    cs.v = (t.clientX - cs.lx) / Math.max(1, now2 - cs.lt); cs.lx = t.clientX; cs.lt = now2;
-    cs.dx = dx;
-    const dir = dx < 0 ? 1 : -1; // 1 = next (comes from the right), -1 = previous
+    const now2 = performance.now(), ddx = t.clientX - cs.x;
+    cs.v = cs.v * 0.4 + 0.6 * (t.clientX - cs.lx) / Math.max(1, now2 - cs.lt); cs.lx = t.clientX; cs.lt = now2;
+    cs.dx = ddx;
+    const dir = ddx < 0 ? 1 : -1; // 1 = next (comes from the right), -1 = previous
     const nextArt = dir > 0 ? P.next?.art : P.prevArt;
     if (peek.dataset.url !== (nextArt || '')) { peek.dataset.url = nextArt || ''; peek.style.backgroundImage = artUrl(nextArt); }
-    const p = Math.min(1, Math.abs(dx) / cs.w);
-    $('art').style.transform = `translateX(${dx}px) rotate(${dx / cs.w * 4}deg) scale(${1 - p * 0.06})`;
-    peek.style.transform = `translateX(${dir * (cs.w + cs.gap) + dx}px) scale(${0.94 + p * 0.06})`;
+    const p = Math.min(1, Math.abs(ddx) / cs.w);
+    artEl.style.transform = `${cs.base}translateX(${ddx / cs.s0}px) rotate(${ddx / cs.w * 4}deg) scale(${1 - p * 0.06})`;
+    peek.style.transform = `${cs.base}translateX(${(dir * (cs.w + cs.gap) + ddx) / cs.s0}px) scale(${0.94 + p * 0.06})`;
     peek.style.opacity = Math.min(1, p * 1.6);
   }, { passive: true });
-  const endSwipe = () => {
-    if (!cs) return;
+  function endSwipe() {
     const s = cs; cs = null;
-    if (!s.on) return;
-    const dir = s.dx < 0 ? 1 : -1, p = Math.abs(s.dx) / s.w, fast = Math.abs(s.v) > 0.6 && Math.sign(s.v) === Math.sign(s.dx);
-    const art = $('art'), ease = 'cubic-bezier(.2,.8,.2,1)';
-    if (p > 0.33 || (fast && p > 0.1)) {
-      const d = 260;
-      art.animate([{ transform: art.style.transform }, { transform: `translateX(${-dir * (s.w + s.gap)}px) rotate(${-dir * 4}deg) scale(.94)` }], { duration: d, easing: ease, fill: 'forwards' });
-      peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: 'none', opacity: 1 }], { duration: d, easing: ease, fill: 'forwards' }).onfinish = () => {
-        // Hand over: the cover element becomes the new cover in place, the peek goes away - no visible jump.
-        if (peek.dataset.url) art.style.backgroundImage = artUrl(peek.dataset.url);
-        art.getAnimations().forEach(a => a.cancel()); peek.getAnimations().forEach(a => a.cancel());
-        art.style.transform = ''; peek.style.transform = ''; peek.style.opacity = '';
-        document.body.classList.remove('art-dragging');
-        window.__swipe = { dir, at: performance.now() };
-        $(dir > 0 ? 'next' : 'prev').click();
-        // "Previous" can just restart the song: if nothing changes, put the real cover back.
-        const id = P.id;
+    if (!s?.on) return;
+    busy = true;
+    const dir = s.dx < 0 ? 1 : -1, p = Math.abs(s.dx) / s.w, fast = Math.abs(s.v) > 0.5 && Math.sign(s.v) === Math.sign(s.dx);
+    if (p > 0.33 || (fast && p > 0.08)) {
+      // Carry on at the finger's speed: an ease-out starts at ~3.3x its average speed, so pick the duration that
+      // makes that equal the release speed (clamped so a slow drag still finishes briskly).
+      const left = s.w + s.gap - Math.abs(s.dx), v = Math.max(Math.abs(s.v), 1);
+      const d = Math.round(Math.min(360, Math.max(170, 3.3 * left / v))), ease = 'cubic-bezier(.2,.75,.25,1)';
+      const url = peek.dataset.url, id = P.id;
+      P.artHold = true; // the cover element keeps the old image until the new one is in place
+      window.__swipe = { dir, at: performance.now() };
+      window.swipeCommit(dir);
+      artEl.animate([{ transform: artEl.style.transform }, { transform: `${s.base}translateX(${-dir * (s.w + s.gap) / s.s0}px) rotate(${-dir * 4}deg) scale(.94)` }], { duration: d, easing: ease, fill: 'forwards' });
+      peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: s.base || "none", opacity: 1 }], { duration: d, easing: ease, fill: 'forwards' }).onfinish = () => {
+        // Hand over in one frame: the cover element takes the new image where the peek is, the peek goes.
+        P.artHold = false;
+        const now = P.id !== id ? P.art : url; // swapped already (next) or still waiting for Spotify (previous)
+        artEl.style.backgroundImage = artUrl(now || url);
+        settle();
+        // "Previous" can just restart the song: if nothing changed, crossfade the real cover back.
         clearTimeout(csRevert);
-        csRevert = setTimeout(() => { if (P.id === id) { window.__swipe = null; art.style.backgroundImage = artUrl(P.art); } }, 2500);
+        if (P.id === id) csRevert = setTimeout(() => { if (P.id === id && url !== P.art) { window.__swipe = null; artEl.style.backgroundImage = artUrl(P.art); artFadeFrom(url, 400); } }, 2500);
       };
     } else {
-      art.animate([{ transform: art.style.transform }, { transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.3,1.4,.5,1)' });
-      peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: `translateX(${dir * (s.w + s.gap)}px) scale(.94)`, opacity: 0 }], { duration: 300, easing: ease });
-      art.style.transform = ''; peek.style.transform = ''; peek.style.opacity = '';
-      document.body.classList.remove('art-dragging');
+      const k = { duration: 380, easing: 'cubic-bezier(.3,1.3,.5,1)', fill: 'forwards' };
+      artEl.animate([{ transform: artEl.style.transform }, { transform: s.base || "none" }], k).onfinish = settle;
+      peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: `${s.base}translateX(${dir * (s.w + s.gap) / s.s0}px) scale(.94)`, opacity: 0 }], { ...k, duration: 260, easing: 'ease-out' });
     }
-  };
-  $('artbox').addEventListener('touchend', endSwipe, { passive: true });
+  }
+  $('artbox').addEventListener('touchend', e => {
+    const s = cs;
+    if (s && !s.on && !e.target.closest('button, input, #ctl')) {
+      // A tap: show / hide the controls. Waits out a possible second tap when double-tap-to-like is on.
+      const t = e.changedTouches[0];
+      if (Math.abs(t.clientX - s.x) < 12 && Math.abs(t.clientY - s.y) < 12 && performance.now() - s.t < 350) {
+        const toggle = () => window.showUi(!body.classList.contains('ui'));
+        if (S.doubleTapLike && S.showLiked) { if (tapT) { clearTimeout(tapT); tapT = 0; } else tapT = setTimeout(() => { tapT = 0; toggle(); }, 300); }
+        else toggle();
+      }
+    }
+    endSwipe();
+  }, { passive: true });
   $('artbox').addEventListener('touchcancel', endSwipe, { passive: true });
 
-  // ---- three-finger swipe switches layouts (with a notice naming it): up / down in landscape (next / previous),
-  // left / right in portrait. Single-finger gestures ignore multi-touch, so this never also skips or scrolls.
-  let tri = null;
+  // ---- four-finger swipe switches layouts (with a notice naming it): up / down in landscape (next / previous),
+  // left / right in portrait. Four, not three: many phones take a three-finger swipe for screenshots. While more
+  // than one finger is down, single-finger gestures (lyrics scroll, taps, cover swipe) stand down.
+  let quad = null;
   const mid = ts => [...ts].reduce((a, t) => ({ x: a.x + t.clientX / ts.length, y: a.y + t.clientY / ts.length }), { x: 0, y: 0 });
-  addEventListener('touchstart', e => { if (e.touches.length === 3) { const m = mid(e.touches); tri = { x: m.x, y: m.y, dx: 0, dy: 0, t: performance.now() }; } }, { capture: true, passive: true });
-  addEventListener('touchmove', e => { if (tri && e.touches.length === 3) { const m = mid(e.touches); tri.dx = m.x - tri.x; tri.dy = m.y - tri.y; } }, { capture: true, passive: true });
+  addEventListener('touchstart', e => {
+    body.classList.toggle('multi', e.touches.length > 1);
+    if (e.touches.length === 4) { const m = mid(e.touches); quad = { x: m.x, y: m.y, dx: 0, dy: 0, t: performance.now() }; }
+  }, { capture: true, passive: true });
+  addEventListener('touchmove', e => { if (quad && e.touches.length === 4) { const m = mid(e.touches); quad.dx = m.x - quad.x; quad.dy = m.y - quad.y; } }, { capture: true, passive: true });
   addEventListener('touchend', e => {
-    if (!tri || e.touches.length) return;
-    const s = tri; tri = null;
+    if (!e.touches.length) body.classList.remove('multi');
+    if (!quad || e.touches.length) return;
+    const s = quad; quad = null;
     const land = innerWidth > innerHeight, main = land ? s.dy : s.dx, cross = land ? s.dx : s.dy;
     if (Math.abs(main) < 50 || Math.abs(main) < Math.abs(cross) * 1.2 || performance.now() - s.t > 1200) return;
     const opts = Settings.schema().find(x => x.k === 'layout')?.opts || [];

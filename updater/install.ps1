@@ -25,6 +25,14 @@ function Step($n, $t) { Write-Host "     [*] ($n/$Steps) $t" -ForegroundColor Wh
 function Ok($t) { Write-Host "             $t" -ForegroundColor Green }
 function Info($t) { Write-Host "             $t" -ForegroundColor Gray }
 function Warn($t) { Write-Host "             $t" -ForegroundColor Yellow }
+# Spicetify prints progress on stderr; with 'Stop' + 2>&1, Windows PowerShell 5.1 turns that into a terminating
+# NativeCommandError. Run it with errors as plain text and keep the exit code.
+function Spice {
+    $ErrorActionPreference = 'Continue'
+    $o = & $script:spicetify @args 2>&1 | ForEach-Object { "$_" }
+    $script:SpiceCode = $LASTEXITCODE
+    $o
+}
 function Fail($t) {
     Write-Host ''
     Write-Host "  [!] $t" -ForegroundColor Red
@@ -46,8 +54,36 @@ Ok 'Network connected'
 Step 2 'Checking Spicetify installation...'
 $spicetify = (Get-Command spicetify -ErrorAction SilentlyContinue).Source
 if (-not $spicetify -and (Test-Path "$env:LOCALAPPDATA\spicetify\spicetify.exe")) { $spicetify = "$env:LOCALAPPDATA\spicetify\spicetify.exe" }
-if (-not $spicetify) { Fail 'Spicetify is not installed (LyricDock runs inside it). Install it from https://spicetify.app, then run this again.' }
-$ext = Join-Path (Split-Path (& $spicetify -c)) 'Extensions'
+if (-not $spicetify) {
+    # Same as Spicetify's own installer (spicetify.app), minus its prompts: latest CLI from GitHub into
+    # %LOCALAPPDATA%\spicetify, added to the user PATH.
+    if (Get-AppxPackage -Name '*SpotifyMusic*' -ErrorAction SilentlyContinue) {
+        Fail 'Spotify from the Microsoft Store can''t run Spicetify. Uninstall it, install Spotify from https://www.spotify.com/download, open it once, then run this again.'
+    }
+    if (-not (Test-Path "$env:APPDATA\Spotify\Spotify.exe")) {
+        Fail 'Spotify desktop isn''t installed. Install it from https://www.spotify.com/download, open it once and sign in, then run this again.'
+    }
+    Info 'Spicetify is not installed - installing it...'
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } elseif ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x32' }
+    try {
+        $rel = Invoke-RestMethod 'https://api.github.com/repos/spicetify/cli/releases/latest' -TimeoutSec 20
+        $asset = $rel.assets | Where-Object { $_.name -like "*windows-$arch.zip" } | Select-Object -First 1
+        if (-not $asset) { throw "no Windows $arch build in $($rel.tag_name)" }
+        $zip = Join-Path $env:TEMP $asset.name
+        Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $zip
+        $dir = "$env:LOCALAPPDATA\spicetify"
+        New-Item -ItemType Directory -Force $dir | Out-Null
+        Expand-Archive $zip $dir -Force
+        Remove-Item $zip -ErrorAction SilentlyContinue
+    } catch { Fail "Couldn't install Spicetify ($($_.Exception.Message)). Install it from https://spicetify.app, then run this again." }
+    $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+    if (($userPath -split ';') -notcontains $dir) { [Environment]::SetEnvironmentVariable('PATH', "$userPath;$dir", 'User') }
+    $env:PATH += ";$dir"
+    $spicetify = "$dir\spicetify.exe"
+    Spice | Out-Null # first run writes its config file
+    Ok "Spicetify $($rel.tag_name) installed"
+}
+$ext = Join-Path (Split-Path (Spice -c | Select-Object -Last 1)) 'Extensions'
 Ok 'Spicetify found'
 Info "Extensions folder: $ext"
 
@@ -90,15 +126,15 @@ Set-ItemProperty "$key\shell\open\command" '(default)' "powershell.exe -NoProfil
 Ok 'Updater protocol registered'
 
 Step 7 'Applying Spicetify configuration...'
-& $spicetify config extensions 'dock-bridge.js-' 2>&1 | Out-Null # a development copy must not run alongside
-& $spicetify config extensions lyricdock.js 2>&1 | Out-Null
+Spice config extensions 'dock-bridge.js-' | Out-Null # a development copy must not run alongside
+Spice config extensions lyricdock.js | Out-Null
 Info 'Extension enabled'
-$out = & $spicetify apply 2>&1
-if ($LASTEXITCODE) {
+$out = Spice apply
+if ($SpiceCode) {
     Info 'Spotify probably updated and wiped Spicetify - restoring...'
-    $out = & $spicetify backup apply 2>&1
+    $out = Spice backup apply
 }
-if ($LASTEXITCODE) { $out | ForEach-Object { Info "$_" }; Fail 'spicetify apply failed (output above).' }
+if ($SpiceCode) { $out | ForEach-Object { Info "$_" }; Fail 'spicetify apply failed (output above).' }
 Ok 'Spicetify applied - Spotify is starting'
 
 # v1.0.x installers also put an adb companion app here; LyricDock no longer uses adb, so take it out again.
@@ -120,7 +156,7 @@ Info 'Phone not set up yet? Do this once, either way:'
 Info '  - on the phone: install the APK from https://github.com/DhakadG/lyricdock/releases/latest'
 Info '  - or from this PC over USB (also turns on full-screen kiosk mode):'
 Info '      iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/setup-phone.ps1 | iex'
-Info 'Then pair once: type the code the phone shows into Spotify -> LyricDock (top-bar button) -> Pair.'
+Info 'Then connect once: Spotify -> LyricDock (top-bar button) -> Devices -> Find devices, and tap Allow on the phone.'
 Info 'After that the phone app updates itself.'
 
 Write-Host ''

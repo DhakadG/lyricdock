@@ -54,7 +54,10 @@ function kawarp() {
   return kw;
 }
 
+const colCache = new Map();
 function colours(im) {
+  const hit = colCache.get(im.src);
+  if (hit) return hit;
   const c = document.createElement('canvas'), n = 12;
   c.width = c.height = n;
   const g = c.getContext('2d');
@@ -65,7 +68,10 @@ function colours(im) {
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const i = (y * n + x) * 4; r += px[i]; gg += px[i + 1]; b += px[i + 2]; k++; }
     return `rgb(${r / k | 0},${gg / k | 0},${b / k | 0})`;
   };
-  return [avg(0, 0, 6, 6), avg(3, 3, 9, 9), avg(6, 6, 12, 12)];
+  const r = [avg(0, 0, 6, 6), avg(3, 3, 9, 9), avg(6, 6, 12, 12)];
+  colCache.set(im.src, r);
+  if (colCache.size > 12) colCache.delete(colCache.keys().next().value);
+  return r;
 }
 
 // 'artist' is the dynamic background fed the artist's picture instead of the cover (falls back to the cover).
@@ -167,7 +173,7 @@ function swap(m, im, lyr) {
   P.artistImg = artistImgs.get(m.id) ?? null;
   $('title').textContent = m.title || '';
   $('artist').textContent = m.artist || '';
-  $('art').style.backgroundImage = m.art ? `url("${m.art}")` : 'none';
+  if (!P.artHold) $('art').style.backgroundImage = m.art ? `url("${m.art}")` : 'none';
   background(m.art, im);
   Lyrics.build(lyr);
   window.afterSwap?.(m);
@@ -195,6 +201,7 @@ async function onTrack(m) {
   if (!/^https:\/\/[^"'()\\\s]+$/.test(m.art || '')) m.art = null;
   m.lyrics = norm(m.lyrics);
   if (m.id === P.id) { // same song: lyrics arrived after the track, or better ones replaced a fallback
+    P.optimistic = 0;
     offerLyrics(m.id, m.lyrics);
     topUp(m.id);
     return;
@@ -239,7 +246,7 @@ function onPreload(m) {
   m.lyrics = norm(m.lyrics);
   pre.set(m.id, m);
   if (pre.size > 6) pre.delete(pre.keys().next().value);
-  art(m.art); // warm the decode now
+  art(m.art).then(im => { try { if (im) colours(im); } catch (e) {} }); // warm the decode and the colours now
   window.afterPreload?.(m);
   // Warm the API cache for the next song too, and keep whichever is better for when it starts.
   if (Api.enabled() && Lyrics.rank(m.lyrics) < 3) Api.get(m.id).then(l => { if (Lyrics.rank(l) > Lyrics.rank(m.lyrics)) m.lyrics = l; });
@@ -278,6 +285,7 @@ function setPlaying(p, animate) {
 }
 
 function onPos(m) {
+  if (performance.now() < P.optimistic && +m.pos > 3000) return onMeta(m);
   const had = P.at > 0;
   P.pos = +m.pos || 0;
   P.at = performance.now();
@@ -376,15 +384,36 @@ setInterval(autoUpdate, 6 * 3600 * 1000); // and every 6 hours
 
 // ---- controls
 let hideT;
+window.showUi = on => {
+  clearTimeout(hideT);
+  if (on && document.body.classList.contains('art-ctl')) {
+    // The cover shrinks (from its top edge) just enough for the controls to fit under it.
+    // The controls take the title's place under the cover (it fades out), and the cover gives up only what's missing.
+    const box = $('artbox').getBoundingClientRect(), meta = $('meta').getBoundingClientRect(), w = box.width, h = $('ctl').offsetHeight, gap = w * 0.04;
+    const room = (meta.height && meta.top >= box.bottom - 2 ? meta.bottom : box.bottom) - box.top;
+    const s = w ? Math.min(0.94, Math.max(0.5, (room - h - gap) / w)) : 0.9;
+    document.documentElement.style.setProperty('--art-mini', s.toFixed(3));
+    document.documentElement.style.setProperty('--ctl-top', `${(s * w + gap).toFixed(1)}px`);
+  }
+  document.body.classList.toggle('ui', on);
+  if (on) hideT = setTimeout(() => document.body.classList.remove('ui'), S.hideAfter * 1000);
+};
 document.addEventListener('pointerdown', e => {
   if (e.target.closest?.('#settings')) return;
-  document.body.classList.add('ui');
-  clearTimeout(hideT);
-  hideT = setTimeout(() => document.body.classList.remove('ui'), S.hideAfter * 1000);
+  if (document.body.classList.contains('art-ctl') && e.target.closest?.('#artbox') && !e.target.closest('#ctl')) return;
+  showUi(true);
 }, true);
 // Commands go to whichever source is on screen.
 const control = (c, arg) => P.source === 'web' ? Web.control(c, arg) : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
 const cmd = (c, dir) => { control(c); if (dir) { P.dir = dir; P.dirAt = performance.now(); } };
+window.swipeCommit = dir => {
+  cmd(dir > 0 ? 'next' : 'prev', dir);
+  const n = dir > 0 && P.next;
+  if (!n?.id || n.id === P.id) return;
+  P.optimistic = performance.now() + 2500;
+  P.pos = 0; P.at = performance.now(); P.dur = n.dur || P.dur;
+  onTrack({ ...n, type: 'track', dir: 1 });
+};
 $('prev').onclick = () => cmd('prev', -1);
 $('next').onclick = () => cmd('next', 1);
 $('pp').onclick = () => { P.pos = now() - S.offset; P.at = performance.now(); P.lockUntil = P.at + 400; setPlaying(!P.playing, true); cmd('toggle'); };
@@ -483,7 +512,9 @@ function apply(k) {
   r.setProperty('--lop', S.lineOpacity);
   r.setProperty('--blur', S.blurAmount + 'px');
   // Controls: over the cover (Default/TV), in the always-visible deck (Player card), centred on screen otherwise.
-  (['split', 'tv', 'clocksplit'].includes(S.layout) ? $('art') : S.layout === 'player' ? $('deck') : b).appendChild($('ctl'));
+  const artCtl = ['split', 'tv', 'clocksplit'].includes(S.layout);
+  b.classList.toggle('art-ctl', artCtl);
+  (artCtl ? $('artbox') : S.layout === 'player' ? $('deck') : b).appendChild($('ctl'));
   if (kw) { kw.animationSpeed = S.bgSpeed; kw.warpIntensity = S.bgWarp; kw.blurPasses = S.bgBlur; kw.saturation = S.bgSaturation; kw.transitionDuration = S.bgFade; }
   if (!k || k === '*' || k === 'bg') art(P.art).then(im => background(P.art, im));
   if (kw && k === 'bgBeat') kw.animationSpeed = S.bgSpeed;
