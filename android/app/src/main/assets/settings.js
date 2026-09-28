@@ -208,6 +208,7 @@ const Settings = (() => {
 
     { group: 'Connection', icon: 'link', cat: 'Ops', desc: 'How the phone and Spotify find each other: pairing, signalling server, TURN, kiosk mode.' },
     { label: 'Status', type: 'custom', render: () => window.connCard?.() },
+    { label: 'Setup guide', type: 'action', text: () => 'Open', desc: 'The first-run screen: sign in with Spotify or connect Spotify on your computer.', run: () => { Settings.close(); window.Setup?.open(); } },
     { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
       help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer\'s internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection.' },
     { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'ntfy.sh (public)'], ['custom', 'My own ntfy server'], ['helper', 'LyricDock Helper on my PC']],

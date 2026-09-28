@@ -739,3 +739,51 @@ body.art-dragging #left { position: relative; z-index: 3; }
   #sfind { order: 10; flex: 1 1 100%; }
   .sl-modal-header .sl-text-btn { white-space: nowrap; }
 }
+
+/* ---- first-run setup */
+#setup { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 60; display: grid; place-items: center; padding: 16px; box-sizing: border-box;
+  background: radial-gradient(120% 90% at 0% 0%, #16241b 0%, #0b0b0c 55%) #0b0b0c; color: #fff; animation: suIn .3s ease-out; }
+@keyframes suIn { from { opacity: 0; } }
+#setup .su-card { width: min(720px, calc(100vw - 32px)); max-height: 100%; display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 28px; align-items: center; overflow: auto; }
+#setup h1 { margin: 0 0 8px; font-size: 1.55rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+#setup p { margin: 0; font-size: .86rem; line-height: 1.45; color: rgba(255,255,255,.6); max-width: 32ch; }
+#setup svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.su-logo { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 16px; color: #1ed760;
+  background: linear-gradient(160deg, #262626, #121212); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+.su-logo svg { width: 22px; height: 22px; stroke-width: 2.2; }
+.su-skip, .su-back { border: 0; background: none; color: rgba(255,255,255,.55); font: 600 .8rem var(--font), system-ui; padding: 0; margin-top: 18px; }
+.su-back { display: grid; place-items: center; width: 34px; height: 34px; margin: 0 0 10px -8px; border-radius: 50%; }
+.su-back svg { width: 20px; height: 20px; }
+.su-back:active, .su-skip:active { color: #fff; }
+.su-main { display: grid; gap: 10px; }
+.su-opt { display: flex; align-items: center; gap: 14px; text-align: left; border: 0; border-radius: 16px; padding: 14px 16px; color: #fff;
+  background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,.07); font: inherit; transition: transform .12s, background .15s; }
+.su-opt:active { transform: scale(.98); background: rgba(255,255,255,.1); }
+.su-opt span { flex: 1; display: grid; gap: 3px; }
+.su-opt b { font-size: .95rem; font-weight: 650; }
+.su-opt small { font-size: .74rem; line-height: 1.4; color: rgba(255,255,255,.55); }
+.su-opt em { font-style: normal; font-size: 1.4rem; color: rgba(255,255,255,.35); }
+.su-ico { flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; }
+.su-ico svg { width: 22px; height: 22px; }
+.su-ico.g { background: #1ed760; color: #000; } .su-ico.b { background: #0a84ff; color: #fff; }
+.su-steps { margin: 0; padding: 0 0 0 1.2em; display: grid; gap: 6px; font-size: .82rem; line-height: 1.4; color: rgba(255,255,255,.75); }
+.su-steps b { color: #fff; font-weight: 600; }
+.su-steps code { font: .74rem ui-monospace, monospace; background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 5px; user-select: all; }
+.su-field { display: flex; gap: 8px; margin-top: 6px; }
+.su-field input { flex: 1; min-width: 0; border: 0; border-radius: 12px; padding: 11px 13px; font: .85rem ui-monospace, monospace; color: #fff;
+  background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); outline: none; }
+.su-field input:focus { box-shadow: inset 0 0 0 1.5px #1ed760; }
+.su-go { flex: none; border: 0; border-radius: 999px; padding: 10px 18px; font: 700 .82rem var(--font), system-ui; color: #000; background: #1ed760; white-space: nowrap; }
+.su-go:active { transform: scale(.96); }
+.su-pc .su-go { background: #fff; }
+.su-msg { min-height: 1.2em; font-size: .74rem; color: rgba(255,255,255,.55); display: flex; align-items: center; gap: 8px; }
+.su-msg.bad { color: #ff6b6b; }
+.su-code { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 12px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.06); margin-top: 4px; }
+.su-code small { grid-column: 1 / -1; font-size: .7rem; color: rgba(255,255,255,.5); }
+.su-code b { font: 700 1.3rem ui-monospace, monospace; letter-spacing: .06em; }
+.su-spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; animation: suSpin .9s linear infinite; }
+@keyframes suSpin { to { transform: rotate(360deg); } }
+@media (orientation: portrait) {
+  #setup .su-card { grid-template-columns: minmax(0, 1fr); gap: 22px; align-content: center; }
+  #setup p { max-width: none; }
+}

@@ -602,6 +602,81 @@
     try { navigator.clipboard.writeText(t).catch(fallback); } catch (x) { fallback(); }
     window.notice?.('Pairing code copied', 1500);
   }
+
+  // First run: until this phone has ever been connected (desktop bridge or a Spotify sign-in), show a setup screen
+  // with the two ways in instead of a bare "waiting for Spotify". Once either works it goes away for good.
+  const setup = (() => {
+    let el = null, view = 'home', skipped = false, forced = false, wasIn = false;
+    const LS = 'dock:linked';
+    const ever = () => { try { return !!localStorage.getItem(LS); } catch (e) { return false; } };
+    const mark = () => { try { localStorage.setItem(LS, '1'); } catch (e) {} };
+    const back = '<button class="su-back" data-a="home" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>';
+    const views = {
+      home: () => `<div class="su-side"><div class="su-logo"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h11M4 17h7"/></svg></div>
+          <h1>Set up LyricDock</h1><p>Pick how this screen follows your music. You can change it later in Settings.</p>
+          <button class="su-skip" data-a="skip">Skip for now</button></div>
+        <div class="su-main">
+          <button class="su-opt" data-a="web"><i class="su-ico g"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.5 9.5c3-1 6.5-.7 9 .8M8 12.8c2.5-.7 5.3-.4 7.3.7M8.6 15.8c2-.5 4-.3 5.6.5"/></svg></i>
+            <span><b>Sign in with Spotify</b><small>Follows whatever you play: phone, speaker or web player. Needs your own free Client ID.</small></span><em>›</em></button>
+          <button class="su-opt" data-a="pc"><i class="su-ico b"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></i>
+            <span><b>Use Spotify on your computer</b><small>Best lyrics and instant sync. Needs the LyricDock extension in Spotify desktop.</small></span><em>›</em></button>
+        </div>`,
+      web: () => `<div class="su-side">${back}<h1>Sign in with Spotify</h1><p>Spotify needs a Client ID from an app you create. It's free and takes a minute. No secret needed.</p></div>
+        <div class="su-main"><ol class="su-steps">
+            <li>Open <b>developer.spotify.com/dashboard</b> → <b>Create app</b></li>
+            <li>Redirect URI <code>http://127.0.0.1:8976/callback</code>, tick <b>Web API</b></li>
+            <li>Copy the <b>Client ID</b> and paste it here</li></ol>
+          <div class="su-field"><input id="suCid" placeholder="Client ID (32 characters)" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(S.spClientId || '')}">
+            <button class="su-go" data-a="login">Sign in</button></div>
+          <small class="su-msg" id="suMsg"></small></div>`,
+      pc: () => `<div class="su-side">${back}<h1>Use Spotify on your computer</h1><p>Install LyricDock on the PC (github.com/DhakadG/lyricdock), then open Spotify.</p></div>
+        <div class="su-main"><ol class="su-steps">
+            <li>In Spotify, click the <b>LyricDock</b> button</li>
+            <li><b>Devices</b> → <b>Find devices</b>, then tap <b>Allow</b> here</li></ol>
+          <div class="su-code"><small>Or enter this pairing code</small><b>${esc(Rtc.code)}</b><button class="su-go" data-a="copy">Copy</button></div>
+          <small class="su-msg"><i class="su-spin"></i>Looking for Spotify…</small></div>`,
+    };
+    function draw() {
+      el.className = 'su-' + view;
+      el.innerHTML = `<div class="su-card">${views[view]()}</div>`;
+    }
+    function open() {
+      if (el) return;
+      el = document.createElement('div');
+      el.id = 'setup';
+      el.setAttribute('role', 'dialog');
+      el.setAttribute('aria-label', 'Set up LyricDock');
+      el.addEventListener('click', e => {
+        const a = e.target.closest('[data-a]')?.dataset.a;
+        if (!a) return;
+        if (a === 'skip') { skipped = true; close(); }
+        else if (a === 'copy') { copyText(Rtc.code.replace(/-/g, '')); e.target.textContent = 'Copied'; }
+        else if (a === 'login') {
+          const v = el.querySelector('#suCid').value.trim().toLowerCase(), msg = el.querySelector('#suMsg');
+          if (!/^[0-9a-f]{32}$/.test(v)) { msg.textContent = 'That doesn\'t look like a Client ID: it is 32 letters and numbers (0-9, a-f).'; msg.classList.add('bad'); return; }
+          Settings.set('spClientId', v);
+          msg.classList.remove('bad');
+          Web.login();
+        } else { view = a; draw(); }
+      });
+      el.addEventListener('touchstart', e => e.stopPropagation(), { passive: true }); // no layout / skip swipes underneath
+      draw();
+      document.body.append(el);
+    }
+    function close() { el?.remove(); el = null; view = 'home'; forced = false; }
+    // ponytail: 1 s poll, the same cadence as the "alive" beat; the grace period lets a known bridge reconnect first.
+    setInterval(() => {
+      const bridge = Rtc.open?.() || P.gotHello, linked = bridge || Web.loggedIn() || !!P.id;
+      if (bridge || Web.loggedIn()) mark();
+      if (forced) { if (Web.loggedIn() && !wasIn) return close(); } // opened from Settings: stays until done or skipped
+      else if (linked || ever() || skipped || performance.now() < 3000) return close();
+      else open();
+      const msg = el?.querySelector('#suMsg');
+      if (msg && !msg.classList.contains('bad')) msg.textContent = Web.status() === 'Not signed in' ? '' : Web.status();
+    }, 1000);
+    return { open: () => { forced = true; wasIn = Web.loggedIn(); view = 'home'; open(); }, close };
+  })();
+  window.Setup = setup;
   let mediaKey = null;
   function hardware(h) {
     const inNight = S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo;
