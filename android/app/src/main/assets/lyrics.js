@@ -104,16 +104,20 @@ const Lyrics = (() => {
     lines = [];
     anchor = -2;
     const box = $('lyrics'), list = $('lines');
-    box.classList.remove('static');
+    box.classList.remove('static', 'placeholder');
+    document.body.classList.toggle('nolyrics', !!lyr && (lyr.kind === 'none' || !lyr.lines?.length));
+    window.fitArt?.();
     list.style.transition = 'none';
     list.style.transform = '';
     if (!lyr) {
       synced = false;
+      box.classList.add('placeholder');
       list.replaceChildren(...[.9, .7, .8].map(w => { const s = div('ln skel'); s.style.width = w * 100 + '%'; return s; }));
       return;
     }
     if (lyr.kind === 'none' || !lyr.lines?.length) {
       synced = false;
+      box.classList.add('placeholder');
       list.replaceChildren(div('ln empty', 'No lyrics for this song'));
       return;
     }

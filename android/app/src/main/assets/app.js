@@ -206,6 +206,8 @@ async function onTrack(m) {
     topUp(m.id);
     return;
   }
+  // Spotify confirming a song a swipe is still bringing in: let that swap finish, then treat this as the same song.
+  if (m.id === P.incoming) { P.incomingP.then(() => onTrack(m)); return; }
   const token = ++P.token;
   // Next slides left, previous slides right. The bridge knows which (history), a phone tap knows too.
   const outStyle = S.trackAnim, d = m.dir ?? (performance.now() - P.dirAt < 3000 ? P.dir : 1);
@@ -213,22 +215,26 @@ async function onTrack(m) {
   // style instead of fading out to nothing, so a cover is always on screen.
   const sw = window.__swipe && performance.now() - window.__swipe.at < 4000 ? window.__swipe : null;
   window.__swipe = null;
+  let arrived = () => {};
+  if (sw) { P.incoming = m.id; P.incomingP = new Promise(r => { arrived = () => { if (P.incoming === m.id) P.incoming = null; r(); }; }); }
   const xfade = !sw && (outStyle === 'fade' || outStyle === 'blur') && P.art && m.art;
   const oldArt = P.art;
   const parts = sw || xfade ? [$('meta'), $('lyrics')] : [$('artbox'), $('meta'), $('lyrics')];
   // Out-animation and cover decode run in parallel; the new cover is ready before it comes in.
-  const outDone = outStyle !== 'none' && P.shown
+  // A swipe: no song-change animation at all - the cover already moved; everything else switches the moment it lands.
+  const outDone = sw ? (sw.landed || Promise.resolve()) : outStyle !== 'none' && P.shown
     ? Promise.all(parts.map((el, i) => el.animate(OUT[outStyle](d), { duration: ms(240), delay: ms(i * 30), easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished))
     : Promise.resolve();
   const [im] = await Promise.all([Promise.race([art(m.art), sleep(900).then(() => null)]), outDone]);
-  if (token !== P.token) return; // skipped again meanwhile
+  if (token !== P.token) return arrived(); // skipped again meanwhile
   const preLyr = pre.get(m.id)?.lyrics;
   swap(m, im, Lyrics.rank(m.lyrics) >= Lyrics.rank(preLyr) ? m.lyrics : preLyr ?? null);
+  arrived();
   if (xfade) artFadeFrom(oldArt, ms(520));
   topUp(m.id);
   parts.forEach((el, i) => {
     el.getAnimations().forEach(a => a.cancel());
-    if (outStyle !== 'none') el.animate(IN[outStyle](d), { duration: ms(560), delay: ms(i * 55), easing: EASE, fill: 'backwards' });
+    if (outStyle !== 'none' && !sw) el.animate(IN[outStyle](d), { duration: ms(560), delay: ms(i * 55), easing: EASE, fill: 'backwards' });
   });
   P.shown = true;
 }

@@ -30,8 +30,23 @@
     $('album').textContent = S.albumLine ? [a.album || P.album, a.year].filter(Boolean).join(' · ') : '';
     marquee($('album'));
   }
-  window.afterSwap = m => { document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; P.next = null; remarquee(); albumLine(); badge(); hideChip(); };
+  window.afterSwap = m => { fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; P.next = null; remarquee(); albumLine(); badge(); hideChip(); };
   window.afterPreload = m => { P.next = m; };
+  // Cover + title in the left column (Default / TV, landscape): the column is padded clear of the song times and
+  // progress bar, and the cover is capped so cover + title + artist + album always fit between them.
+  window.fitArt = () => requestAnimationFrame(() => {
+    const st = document.documentElement.style, on = innerWidth > innerHeight && ['split', 'tv'].includes(S.layout);
+    document.body.classList.toggle('fit-art', on);
+    if (!on) return;
+    const pad = innerHeight * 0.04, meta = $('meta'), mt = parseFloat(getComputedStyle(meta).marginTop) || 0;
+    // (getClientRects, not offsetParent: both are position: fixed)
+    const low = [$('times'), $('bar')].filter(e => e.getClientRects().length).map(e => e.getBoundingClientRect().top).filter(y => y > innerHeight / 2);
+    const bottom = Math.min(innerHeight, ...low);
+    st.setProperty('--left-pb', `${innerHeight - bottom + pad}px`);
+    st.setProperty('--art-max', `${Math.max(80, bottom - pad * 2 - meta.offsetHeight - mt)}px`);
+  });
+  addEventListener('resize', fitArt);
+  Settings.onChange(() => fitArt());
   function badge() {
     const src = P.lyrics?.source;
     $('srcBadge').textContent = S.sourceBadge && src ? src : '';
@@ -137,7 +152,8 @@
       const d = Math.round(Math.min(360, Math.max(170, 3.3 * left / v))), ease = 'cubic-bezier(.2,.75,.25,1)';
       const url = peek.dataset.url, id = P.id;
       P.artHold = true; // the cover element keeps the old image until the new one is in place
-      window.__swipe = { dir, at: performance.now() };
+      let land; // resolved when the cover is in place: app.js switches title, lyrics and colours right then
+      window.__swipe = { dir, at: performance.now(), landed: new Promise(r => { land = r; }) };
       window.swipeCommit(dir);
       artEl.animate([{ transform: artEl.style.transform }, { transform: `${s.base}translateX(${-dir * (s.w + s.gap) / s.s0}px) rotate(${-dir * 4}deg) scale(.94)` }], { duration: d, easing: ease, fill: 'forwards' });
       peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: s.base || "none", opacity: 1 }], { duration: d, easing: ease, fill: 'forwards' }).onfinish = () => {
@@ -146,6 +162,7 @@
         const now = P.id !== id ? P.art : url; // swapped already (next) or still waiting for Spotify (previous)
         artEl.style.backgroundImage = artUrl(now || url);
         settle();
+        land();
         // "Previous" can just restart the song: if nothing changed, crossfade the real cover back.
         clearTimeout(csRevert);
         if (P.id === id) csRevert = setTimeout(() => { if (P.id === id && url !== P.art) { window.__swipe = null; artEl.style.backgroundImage = artUrl(P.art); artFadeFrom(url, 400); } }, 2500);
@@ -721,8 +738,10 @@
   setInterval(() => hardware(new Date().getHours()), 1000);
 
   // ---- release notes: Settings -> Updates -> What's new, and once after the app updated itself.
+  // **bold** and [text](link) -> bold / plain text (the input is already escaped).
+  const inl = s => s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
   const md = t => '<ul>' + esc(t).split(/\r?\n/).map(l => l.trim()).filter(l => l && !/^#+\s*$/.test(l))
-    .map(l => /^#+\s/.test(l) ? `</ul><b>${l.replace(/^#+\s*/, '')}</b><ul>` : `<li>${l.replace(/^[-*]\s*/, '')}</li>`).join('') + '</ul>';
+    .map(l => /^#+\s/.test(l) ? `</ul><b>${l.replace(/^#+\s*/, '')}</b><ul>` : `<li>${inl(l.replace(/^[-*]\s+/, ''))}</li>`).join('') + '</ul>';
   async function changelog() {
     const rs = await fetch('https://api.github.com/repos/DhakadG/lyricdock/releases?per_page=8').then(r => r.json()).catch(() => null);
     if (!Array.isArray(rs)) return window.notice?.('Could not load the release notes');

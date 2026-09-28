@@ -52,44 +52,50 @@ if ($latest -notmatch '^\d+\.\d+\.\d+$') { Fail "GitHub returned an unexpected v
 Ok 'Network connected'
 
 Step 2 'Checking Spicetify installation...'
-# Spotify from the Microsoft Store: Spicetify only half supports it (it stops to ask, and the patched app can't be
-# started from its own tile). Offer to swap it for Spotify's regular installer - the account, playlists and
-# settings live online; only offline downloads have to be downloaded again.
-$appx = Get-AppxPackage -Name '*SpotifyMusic*' -ErrorAction SilentlyContinue
-if ($appx) {
-    Warn 'Spotify is the Microsoft Store version, which Spicetify (and so LyricDock) does not support properly.'
-    Info 'It can be replaced with the regular Spotify from spotify.com. You stay signed in to the same account;'
-    Info 'only songs downloaded for offline listening need downloading again.'
-    $a = Read-Host '             Replace it now? [Y/n]'
-    if ($a -match '^[nN]') { Fail 'Install Spotify from https://www.spotify.com/download (not the Microsoft Store), sign in, then run this again.' }
-    Info 'Removing the Microsoft Store version...'
-    Stop-Process -Name Spotify -Force -ErrorAction SilentlyContinue
-    try { $appx | Remove-AppxPackage -ErrorAction Stop } catch { Fail "Couldn't remove it ($($_.Exception.Message)). Uninstall Spotify in Settings -> Apps, then run this again." }
+# Spotify must be the regular desktop app in %APPDATA%\Spotify. Microsoft Store Spotify (half supported by
+# Spicetify, and its folder changes with every Store update) is swapped for it; no Spotify at all -> installed.
+$desk = "$env:APPDATA\Spotify"
+function Install-SpotifyDesktop {
     Info 'Downloading Spotify from spotify.com...'
     $setup = Join-Path $env:TEMP 'SpotifySetup.exe'
     try { Invoke-WebRequest -UseBasicParsing 'https://download.scdn.co/SpotifySetup.exe' -OutFile $setup }
     catch { Fail "Couldn't download Spotify ($($_.Exception.Message)). Install it from https://www.spotify.com/download, then run this again." }
     Start-Process $setup '/silent' -Wait
     Remove-Item $setup -ErrorAction SilentlyContinue
-    if (-not (Test-Path "$env:APPDATA\Spotify\Spotify.exe")) { Fail 'Spotify did not install. Install it from https://www.spotify.com/download, then run this again.' }
-    if (-not (Get-Process Spotify -ErrorAction SilentlyContinue)) { Start-Process "$env:APPDATA\Spotify\Spotify.exe" }
+    if (-not (Test-Path "$desk\Spotify.exe")) { Fail 'Spotify did not install. Install it from https://www.spotify.com/download, then run this again.' }
+    if (-not (Get-Process Spotify -ErrorAction SilentlyContinue)) { Start-Process "$desk\Spotify.exe" }
     Ok 'Spotify installed'
     Write-Host ''
     Write-Host '  Sign in to Spotify in the window that just opened, then come back here and press Enter.' -ForegroundColor Yellow
     [void](Read-Host)
-    $script:repointSpicetify = $true
+}
+$appx = $null
+try { $appx = Get-AppxPackage -Name '*SpotifyMusic*' -ErrorAction Stop } catch {}
+if ($appx) {
+    Warn 'Spotify is the Microsoft Store version, which Spicetify (and so LyricDock) does not support properly.'
+    Info 'It will be replaced with the regular Spotify from spotify.com. You stay signed in to the same account;'
+    Info 'only songs downloaded for offline listening need downloading again.'
+    $a = Read-Host '             Replace it now? [Y/n]'
+    if ($a -match '^[nN]') { Fail 'Install Spotify from https://www.spotify.com/download (not the Microsoft Store), sign in, then run this again.' }
+    Info 'Removing the Microsoft Store version...'
+    Stop-Process -Name Spotify -Force -ErrorAction SilentlyContinue
+    try { $appx | Remove-AppxPackage -ErrorAction Stop } catch { Fail "Couldn't remove it ($($_.Exception.Message)). Uninstall Spotify in Settings -> Apps, then run this again." }
+    if (-not (Test-Path "$desk\Spotify.exe")) { Install-SpotifyDesktop }
+} elseif (-not (Test-Path "$desk\Spotify.exe")) {
+    Info 'Spotify desktop is not installed - installing it...'
+    Install-SpotifyDesktop
+}
+# Spicetify needs Spotify's prefs file, written the first time Spotify runs.
+if (-not (Test-Path "$desk\prefs")) {
+    Info 'Starting Spotify once so it writes its settings...'
+    Start-Process "$desk\Spotify.exe"
+    for ($i = 0; $i -lt 60 -and -not (Test-Path "$desk\prefs"); $i++) { Start-Sleep 1 }
 }
 $spicetify = (Get-Command spicetify -ErrorAction SilentlyContinue).Source
 if (-not $spicetify -and (Test-Path "$env:LOCALAPPDATA\spicetify\spicetify.exe")) { $spicetify = "$env:LOCALAPPDATA\spicetify\spicetify.exe" }
 if (-not $spicetify) {
     # Same as Spicetify's own installer (spicetify.app), minus its prompts: latest CLI from GitHub into
     # %LOCALAPPDATA%\spicetify, added to the user PATH.
-    if (Get-AppxPackage -Name '*SpotifyMusic*' -ErrorAction SilentlyContinue) {
-        Fail 'Spotify from the Microsoft Store can''t run Spicetify. Uninstall it, install Spotify from https://www.spotify.com/download, open it once, then run this again.'
-    }
-    if (-not (Test-Path "$env:APPDATA\Spotify\Spotify.exe")) {
-        Fail 'Spotify desktop isn''t installed. Install it from https://www.spotify.com/download, open it once and sign in, then run this again.'
-    }
     Info 'Spicetify is not installed - installing it...'
     $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } elseif ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x32' }
     try {
@@ -110,10 +116,10 @@ if (-not $spicetify) {
     Spice | Out-Null # first run writes its config file
     Ok "Spicetify $($rel.tag_name) installed"
 }
-if ($script:repointSpicetify) {
-    Spice config spotify_path "$env:APPDATA\Spotify" | Out-Null
-    Spice config prefs_path "$env:APPDATA\Spotify\prefs" | Out-Null
-}
+# Always point Spicetify at the desktop Spotify: a config left over from the Store version names a folder that
+# no longer exists ("is not a valid path").
+Spice config spotify_path "$desk" | Out-Null
+Spice config prefs_path "$desk\prefs" | Out-Null
 $ext = Join-Path (Split-Path (Spice -c | Select-Object -Last 1)) 'Extensions'
 Ok 'Spicetify found'
 Info "Extensions folder: $ext"

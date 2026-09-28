@@ -799,3 +799,14 @@ body.art-ctl #artbox > #ctl { margin: 0; }
 #batt i::after { content: ''; position: absolute; right: -.7vmin; top: 50%; width: .45vmin; height: 1vmin; margin-top: -.5vmin; border-radius: 0 .3vmin .3vmin 0; background: currentColor; opacity: .6; }
 body.ui #batt { transform: translateX(-11vmin); }body.art-ctl #meta { transition: opacity .3s, transform .45s var(--ease); }
 body.art-ctl.ui #meta { opacity: 0; transform: translateY(3vmin); pointer-events: none; }
+
+/* ---- left column fit (fitArt): clear of the times + bar, cover capped to what's left */
+body.fit-art #left { box-sizing: border-box; padding: var(--left-pt, 4vmin) 0 var(--left-pb, 4vmin); }
+body.fit-art #artbox { max-width: var(--art-max, none); }
+/* ---- no lyrics: Default / TV centre the cover and say so under the title, quietly; elsewhere the note is centred */
+body.nolyrics.layout-split #lyrics, body.nolyrics.layout-tv #lyrics { display: none; }
+body.nolyrics.layout-split #left, body.nolyrics.layout-tv #left { flex: 1 1 auto; animation: nolyrIn .5s var(--ease); }
+body.nolyrics.layout-split #meta::after, body.nolyrics.layout-tv #meta::after { content: 'No lyrics for this song'; display: block; margin-top: 1.6vmin;
+  font-size: 2.2vmin; font-weight: 600; letter-spacing: .02em; opacity: .4; }
+@keyframes nolyrIn { from { opacity: .6; } }
+#lyrics.placeholder #lines { top: 50%; transform: translateY(-50%) !important; }
