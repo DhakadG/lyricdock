@@ -128,4 +128,65 @@ if (only.has('08')) {
   const g = await blank('Portrait · 2 × 1 grid', 360, 760, 1260, 150, { l: 12, r: 12, t: 30, b: 16 });
   g.layoutGrids = [{ pattern: 'ROWS', alignment: 'STRETCH', gutterSize: 12, count: 2, offset: 30, visible: true, color: { r: .86, g: .75, b: .43, a: .08 } }];
 }
+if (only.has('09')) {
+  const s = section('09 · Interactions', 5410, 1330, 'Changing songs and layouts (1.7.x). Only the cover (or the song card) swipes: a tab slides in from the edge the song comes from, shows its name and +2 / +3 when reaching further, and turns white when letting go commits. The layout button opens a sketch of every layout.');
+  // the real thing, on the phone (demo song, invented neighbours)
+  const shots = [['land-swipe-next', 'Swipe: one song ahead'], ['land-swipe-two', 'Drag further: +2'], ['land-swipe-prev', 'Previous'], ['land-picker', 'Layout picker']];
+  shots.forEach(([f, cap], i) => { const x = 40 + i * 410; at(txt(s, cap, 13, 'Semi Bold', solid(W, .55)), x, 130); });
+  for (const [i, [f]] of shots.entries()) { const im = await img(`figma/${f}.png`); at(frame(s, 'Phone · ' + f, 396, 188, imgFill(im), 12), 40 + i * 410, 152); }
+  const ps = ['port-swipe-next', 'port-swipe-two', 'port-swipe-prev', 'port-picker'];
+  for (const [i, f] of ps.entries()) { const im = await img(`figma/${f}.png`); at(frame(s, 'Phone · ' + f, 180, 380, imgFill(im), 12), 40 + i * 200, 380); }
+  // components: the edge tab and a layout card
+  const cx0 = 900; let cy0 = 380;
+  at(txt(s, 'Edge tab — Side × State (Count: +2 / +3 when reaching further)', 13, 'Semi Bold', solid(W, .55)), cx0, cy0 - 22);
+  const tabs = [];
+  for (const side of ['Right', 'Left']) for (const st of ['Pulling', 'Armed']) {
+    const c = figma.createComponent(); c.name = `Side=${side}, State=${st}`; c.layoutMode = 'HORIZONTAL'; c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'AUTO';
+    c.counterAxisAlignItems = 'CENTER'; c.itemSpacing = 10; c.paddingLeft = c.paddingRight = 20; c.paddingTop = c.paddingBottom = 16; c.cornerRadius = 40;
+    const armed = st === 'Armed', fg = armed ? '#0C0C0F' : W;
+    c.fills = [armed ? solid(W) : solid('#121218', .82)]; c.strokes = [solid(W, .2)]; c.strokeWeight = 1;
+    c.effects = [{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: .5 }, offset: { x: 0, y: 8 }, radius: 24, spread: 0, visible: true, blendMode: 'NORMAL' }];
+    if (armed) c.effects = [...c.effects, { type: 'DROP_SHADOW', color: { r: 1, g: 1, b: 1, a: .16 }, offset: { x: 0, y: 0 }, radius: 0, spread: 7, visible: true, blendMode: 'NORMAL' }];
+    const chev = figma.createNodeFromSvg(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26"><path d="${side === 'Right' ? 'M9.5 5.5 16 12l-6.5 6.5' : 'M14.5 5.5 8 12l6.5 6.5'}" fill="none" stroke="${fg}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`);
+    chev.name = 'Chevron';
+    const word = txt(null, side === 'Right' ? 'Next' : 'Previous', 17, 'Extra Bold', solid(fg)); word.name = 'Word';
+    const n = figma.createFrame(); n.name = 'Count'; n.layoutMode = 'HORIZONTAL'; n.primaryAxisSizingMode = 'AUTO'; n.counterAxisSizingMode = 'AUTO'; n.paddingLeft = n.paddingRight = 8; n.paddingTop = n.paddingBottom = 2; n.cornerRadius = 99; n.fills = [solid(ACC)];
+    const nt = txt(n, '+2', 13, 'Extra Bold', solid('#0C0C0F')); nt.name = 'Count text'; n.visible = armed;
+    if (side === 'Right') { c.appendChild(chev); c.appendChild(word); c.appendChild(n); } else { c.appendChild(n); c.appendChild(word); c.appendChild(chev); }
+    c.addComponentProperty('Word', 'TEXT', word.characters); word.componentPropertyReferences = { characters: Object.keys(c.componentPropertyDefinitions).find(k => k.startsWith('Word')) };
+    c.addComponentProperty('Show count', 'BOOLEAN', armed); n.componentPropertyReferences = { visible: Object.keys(c.componentPropertyDefinitions).find(k => k.startsWith('Show count')) };
+    s.appendChild(c); tabs.push(c);
+  }
+  const ET = figma.combineAsVariants(tabs, s); ET.name = 'Edge tab'; ET.layoutMode = 'HORIZONTAL'; ET.layoutWrap = 'WRAP'; ET.primaryAxisSizingMode = 'FIXED'; ET.resize(520, 10); ET.counterAxisSizingMode = 'AUTO';
+  ET.itemSpacing = 24; ET.counterAxisSpacing = 20; ET.paddingLeft = ET.paddingRight = ET.paddingTop = ET.paddingBottom = 22; ET.fills = [solid('#101018')]; ET.cornerRadius = 16; at(ET, cx0, cy0);
+  cy0 += ET.height + 60;
+  const nm = figma.createComponent(); nm.name = 'Edge tab / song name'; nm.layoutMode = 'HORIZONTAL'; nm.primaryAxisSizingMode = 'AUTO'; nm.counterAxisSizingMode = 'AUTO';
+  nm.paddingLeft = nm.paddingRight = 14; nm.paddingTop = nm.paddingBottom = 6; nm.cornerRadius = 99; nm.fills = [solid('#000000', .6)];
+  const nmt = txt(nm, 'Night Bus', 14, 'Semi Bold'); nm.addComponentProperty('Song', 'TEXT', 'Night Bus'); nmt.componentPropertyReferences = { characters: Object.keys(nm.componentPropertyDefinitions)[0] };
+  s.appendChild(nm); at(txt(s, 'Song name (under the tab once armed)', 13, 'Semi Bold', solid(W, .55)), cx0 + 560, 358); at(nm, cx0 + 560, 380);
+  // layout card: the picker's cell, with its real sketch (from the phone's picker capture) as the image
+  at(txt(s, 'Layout card — State (the picker cell; sketch is true to scale)', 13, 'Semi Bold', solid(W, .55)), cx0, cy0 - 22);
+  const cards = [];
+  for (const st of ['Off', 'On']) {
+    const c = figma.createComponent(); c.name = `State=${st}`; c.layoutMode = 'VERTICAL'; c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; c.resize(150, 10);
+    c.itemSpacing = 3; c.paddingLeft = c.paddingRight = 8; c.paddingTop = 8; c.paddingBottom = 10; c.cornerRadius = 14;
+    c.fills = [st === 'On' ? solid(ACC, .12) : solid(W, .045)]; c.strokes = [st === 'On' ? solid(ACC) : solid(W, .08)]; c.strokeWeight = st === 'On' ? 2 : 1; c.strokeAlign = 'INSIDE';
+    const sk = figma.createFrame(); sk.name = 'Sketch'; sk.resize(134, 64); sk.cornerRadius = 8; sk.fills = [solid('#0D0D11')]; c.appendChild(sk); sk.layoutAlign = 'STRETCH';
+    const r = (x, y, w, h, fill, rx = 2) => { const q = figma.createRectangle(); q.resize(w, h); q.x = x; q.y = y; q.cornerRadius = rx; q.fills = [fill]; sk.appendChild(q); };
+    r(12, 2, 41, 41, solid(ACC, .8)); r(12, 45, 41, 2, solid(W, .22), 1); r(66, 8, 50, 3.5, solid(W, .26)); r(66, 16, 38, 3.5, solid(W, .95)); r(66, 24, 58, 3.5, solid(W, .26)); r(66, 32, 40, 3.5, solid(W, .26)); r(22, 53, 22, 3, solid(W, .92)); r(25, 58, 16, 2.4, solid(W, .45));
+    const t1 = txt(c, 'Default', 13, 'Bold'); t1.name = 'Name'; const t2 = txt(c, 'Cover beside the lyrics', 11, 'Regular', solid(W, .5)); t2.name = 'Hint';
+    c.addComponentProperty('Name', 'TEXT', 'Default'); t1.componentPropertyReferences = { characters: Object.keys(c.componentPropertyDefinitions).find(k => k.startsWith('Name')) };
+    c.addComponentProperty('Hint', 'TEXT', 'Cover beside the lyrics'); t2.componentPropertyReferences = { characters: Object.keys(c.componentPropertyDefinitions).find(k => k.startsWith('Hint')) };
+    s.appendChild(c); cards.push(c);
+  }
+  const LC = figma.combineAsVariants(cards, s); LC.name = 'Layout card'; LC.layoutMode = 'HORIZONTAL'; LC.primaryAxisSizingMode = 'AUTO'; LC.counterAxisSizingMode = 'AUTO'; LC.itemSpacing = 20;
+  LC.paddingLeft = LC.paddingRight = LC.paddingTop = LC.paddingBottom = 20; LC.fills = [solid('#101018')]; LC.cornerRadius = 16; at(LC, cx0, cy0);
+  let ny = cy0 + LC.height + 40;
+  for (const [h, b] of [
+    ['Where a swipe works', 'The cover (Default, TV view, Cover + clock) or the song card (Player card, Compact, Cinema, Now Bar). Lyrics, background and edges never change songs.'],
+    ['How far', 'Up to 3 songs each way: next = the preloaded song + the queue, previous = what this phone showed. The card nearest the middle is the one that plays.'],
+    ['Letting go', 'Past 32 % of a card, or a flick, commits; a flick back cancels. The strip carries on at the finger\'s speed and the new cover lands where the old one was, in the same frame as title, lyrics and colours.'],
+    ['Taps', 'Tap the cover = controls; double tap = like (with the heart burst). Quick swipes in a row finish the previous one first, so covers never mix.'],
+  ]) ny = note(s, cx0, ny, h, b, 760) + 14;
+}
 return 'ok ' + [...only].join(',');

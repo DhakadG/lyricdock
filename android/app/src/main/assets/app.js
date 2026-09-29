@@ -181,6 +181,14 @@ const IN = {
 
 function swap(m, im, lyr) {
   P.prevArt = P.art;
+  // History for the cover swipe's "previous" side (up to 3 back, with lyrics, so going back is instant).
+  P.hist ??= [];
+  if (P.cur && P.cur.id !== m.id) {
+    const back = P.hist.findIndex(h => h.id === m.id);
+    if (back >= 0) P.hist.splice(0, back + 1); // went back: it (and anything after it) leaves the history
+    else { P.hist.unshift({ ...P.cur, lyrics: P.lyrics }); P.hist.length = Math.min(P.hist.length, 5); }
+  }
+  P.cur = { id: m.id, uri: m.uri, title: m.title, artist: m.artist, album: m.album, art: m.art, dur: m.dur };
   P.id = m.id;
   P.art = m.art;
   P.dur = m.dur || P.dur;
@@ -192,6 +200,7 @@ function swap(m, im, lyr) {
   background(m.art, im);
   Lyrics.build(lyr);
   window.afterSwap?.(m);
+  window.refreshNeighbours?.();
 }
 
 // The bridge sends Spicy-cache results raw ({spicy}) and Spotify/LRCLIB ones already normalized.
@@ -216,37 +225,38 @@ function topUp(id) {
 async function onTrack(m) {
   if (!/^https:\/\/[^"'()\\\s]+$/.test(m.art || '')) m.art = null;
   m.lyrics = norm(m.lyrics);
-  if (m.id === P.id) { // same song: lyrics arrived after the track, or better ones replaced a fallback
+  // A cover swipe over several songs: Spotify reports each song it passes through - those never reach the screen.
+  const sk = P.skip && performance.now() < P.skip.until ? P.skip : (P.skip = null);
+  if (sk?.pass.has(m.id)) return;
+  if (sk && m.id === sk.target && m.id !== P.id) { sk.early = m; return; } // confirmed before the card landed: applied at landing
+  if (sk && m.id !== sk.target) P.skip = null; // Spotify went somewhere else (queue changed): follow it
+  if (m.id === P.id) { // same song: lyrics arrived after the track, better ones replaced a fallback, or a swipe got confirmed
     P.optimistic = 0;
+    if (sk) P.skip = null;
+    if (m.art && m.art !== P.art) { const old = P.art; P.art = m.art; P.cur && (P.cur.art = m.art); art(m.art).then(im => { if (P.id !== m.id || P.art !== m.art) return; $('art').style.backgroundImage = `url("${m.art}")`; if (old) artFadeFrom(old, ms(300)); background(m.art, im); }); }
     offerLyrics(m.id, m.lyrics);
     topUp(m.id);
     return;
   }
-  // Spotify confirming a song a swipe is still bringing in: let that swap finish, then treat this as the same song.
-  if (m.id === P.incoming) { P.incomingP.then(() => onTrack(m)); return; }
   const token = ++P.token;
   // Next slides left, previous slides right. The bridge knows which (history), a phone tap knows too.
   const outStyle = S.trackAnim, d = m.dir ?? (performance.now() - P.dirAt < 3000 ? P.dir : 1);
-  // The cover stays put when the finger already swiped it over (features.js), and crossfades old -> new in the fade
-  // style instead of fading out to nothing, so a cover is always on screen.
-  const sw = window.__swipe && performance.now() - window.__swipe.at < 4000 ? window.__swipe : null;
-  window.__swipe = null;
-  let arrived = () => {};
-  if (sw) { P.incoming = m.id; P.incomingP = new Promise(r => { arrived = () => { if (P.incoming === m.id) P.incoming = null; r(); }; }); }
+  // A swipe that landed on a song we knew nothing about: its card is already in place, so no out-animation here.
+  const sw = performance.now() < (P.swipeWait || 0); P.swipeWait = 0;
   const xfade = !sw && (outStyle === 'fade' || outStyle === 'blur') && P.art && m.art;
   const oldArt = P.art;
   const parts = sw || xfade ? [$('meta'), $('lyrics')] : [$('artbox'), $('meta'), $('lyrics')];
   // Out-animation and cover decode run in parallel; the new cover is ready before it comes in.
-  // A swipe: no song-change animation at all - the cover already moved; everything else switches the moment it lands.
-  const outDone = sw ? (sw.landed || Promise.resolve()) : outStyle !== 'none' && P.shown
+  // A swipe: no out-animation - the card already moved; everything else switches the moment Spotify names the song.
+  const outDone = !sw && outStyle !== 'none' && P.shown
     ? Promise.all(parts.map((el, i) => el.animate(OUT[outStyle](d), { duration: ms(240), delay: ms(i * 30), easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished))
     : Promise.resolve();
   const [im] = await Promise.all([Promise.race([art(m.art), sleep(900).then(() => null)]), outDone]);
-  if (token !== P.token) return arrived(); // skipped again meanwhile
+  if (token !== P.token) return; // skipped again meanwhile
   const preLyr = pre.get(m.id)?.lyrics;
   swap(m, im, Lyrics.rank(m.lyrics) >= Lyrics.rank(preLyr) ? m.lyrics : preLyr ?? null);
-  arrived();
   if (xfade) artFadeFrom(oldArt, ms(520));
+  if (sw) { $('art').classList.remove('art-wait'); $('art').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(280), easing: 'ease-out' }); }
   topUp(m.id);
   parts.forEach((el, i) => {
     el.getAnimations().forEach(a => a.cancel());
@@ -395,6 +405,12 @@ setInterval(() => { Web.refreshUserId(); const uid = Web.userId(); if (uid) Rtc.
 // ---- app updates (native Updater: GitHub Releases, silent install as device owner)
 let appVersion = '';
 try { appVersion = Dock.version(); } catch (e) {}
+// What took the app down last time (CrashLog.java: a crash, or the page's renderer dying and being restarted).
+try { window.lastCrash = Dock.lastCrash() || ''; } catch (e) { window.lastCrash = ''; }
+if (window.lastCrash) {
+  console.warn('LyricDock recovered:', window.lastCrash);
+  setTimeout(() => { notice('LyricDock restarted after a problem - it has been noted', 4000); send({ type: 'crashlog', text: window.lastCrash.slice(-4000) }); }, 4000);
+}
 // Native call first: a broken settings render must never stop the app from updating (that's how fixes arrive).
 window.checkUpdate = install => { P.update = { state: 'checking' }; try { Dock.setChannel(S.channel); } catch (e) {} try { Dock.checkUpdate(!!install); } catch (e) {} try { Settings.render(); } catch (e) {} };
 window.updateStatus = () => {
@@ -405,7 +421,42 @@ window.updateStatus = () => {
 };
 const autoUpdate = () => S.autoUpdate && checkUpdate(true);
 setTimeout(autoUpdate, 15000);           // shortly after start
-setInterval(autoUpdate, 6 * 3600 * 1000); // and every 6 hours
+setInterval(autoUpdate, 6 * 3600 * 1000); // and every 6 hours (fallback: the ping below is the fast path)
+
+// Update ping: scripts/ping-update.ps1 (run by release.ps1) publishes "update" to this ntfy.sh topic, and every open
+// dock checks GitHub at once and installs - even with "Update automatically" off, so a release rolls out in seconds.
+// The ping carries nothing trusted: it only starts the normal check, and Android installs nothing that isn't signed
+// with our key. Reconnects resume from the last message seen, so a ping sent while offline still arrives (ntfy
+// keeps messages 12 h). ponytail: public topic; worst case a stranger makes docks check GitHub early.
+const PING = 'https://ntfy.sh/lyricdock-update-ping-v1';
+let lastPing = 0, retry = 5000;
+(function listen(since) {
+  let es;
+  try { es = new EventSource(`${PING}/sse?since=${since}`); } catch (e) { return; }
+  es.onopen = () => { retry = 5000; };
+  es.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch (_) { return; }
+    if (m.event !== 'message') return;
+    since = m.id;
+    if (!/^update\b/.test(m.message || '') || Date.now() - lastPing < 60000) return;
+    lastPing = Date.now(); checkUpdate(true);
+  };
+  es.onerror = () => { es.close(); setTimeout(() => listen(since), retry); retry = Math.min(retry * 2, 300000); };
+})(Math.floor(Date.now() / 1000));
+// The path we control: every release rewrites extension/version.json on GitHub (release.ps1), and every open dock
+// reads that 30-byte file every 5 minutes. A newer version there = required: installed even with "Update automatically"
+// off. So a release reaches every open phone within ~5-10 min even when ntfy.sh is down or over its quota.
+const VERSION_URL = 'https://raw.githubusercontent.com/DhakadG/lyricdock/main/extension/version.json';
+const newer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+async function pollVersion() {
+  try {
+    const v = await (await fetch(VERSION_URL, { cache: 'no-store' })).json();
+    const want = S.channel === 'beta' && v.beta && newer(v.beta, v.version) ? v.beta : v.version;
+    if (appVersion && want && newer(want, appVersion) && P.update?.state !== 'installing' && Date.now() - lastPing > 60000) { lastPing = Date.now(); checkUpdate(true); }
+  } catch (e) {} // offline: next round
+}
+setTimeout(pollVersion, 20000);
+setInterval(pollVersion, 5 * 60 * 1000 + Math.random() * 30000); // a little jitter so a room of docks doesn't hit GitHub in step
 
 // ---- controls
 let hideT;
@@ -437,13 +488,57 @@ document.addEventListener('click', e => {
 // Commands go to whichever source is on screen.
 const control = (c, arg) => P.source === 'web' ? Web.control(c, arg) : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
 const cmd = (c, dir) => { control(c); if (dir) { P.dir = dir; P.dirAt = performance.now(); } };
-window.swipeCommit = dir => {
-  cmd(dir > 0 ? 'next' : 'prev', dir);
-  const n = dir > 0 && P.next;
-  if (!n?.id || n.id === P.id) return;
-  P.optimistic = performance.now() + 2500;
-  P.pos = 0; P.at = performance.now(); P.dur = n.dur || P.dur;
-  onTrack({ ...n, type: 'track', dir: 1 });
+// ---- cover swipe (swipe.js): the songs on either side, and committing a swipe of 1-3 songs.
+// Next: the preloaded song, then the queue (fetched on every song change). Previous: what this phone showed before.
+P.upq = [];
+const idOf = x => x?.id || (x?.uri || '').split(':')[2] || null;
+window.neighbours = () => {
+  const q = P.upq, at = q.findIndex(x => idOf(x) === P.id);
+  const after = (at >= 0 ? q.slice(at + 1) : q).filter(x => idOf(x) !== P.id);
+  const next = [];
+  if (P.next?.id && P.next.id !== P.id) next.push(P.next);
+  for (const x of after) if (next.length < 3 && !next.some(n => n.id === idOf(x)))
+    next.push({ id: idOf(x), uri: x.uri, title: x.title, artist: x.sub, art: x.big || x.art, dur: x.dur });
+  return { next, prev: (P.hist || []).slice(0, 3) };
+};
+let qFetchT = 0;
+window.refreshNeighbours = () => { clearTimeout(qFetchT); qFetchT = setTimeout(() => {
+  if (!S.swipe) return;
+  if (P.source === 'web') Web.list('queue').then(r => onQueue(r)).catch(() => {});
+  else send({ type: 'list', which: 'queue' });
+}, 900); };
+window.onQueue = r => {
+  if (!r || !Array.isArray(r.items)) return;
+  P.upq = [...(r.now ? [r.now] : []), ...r.items].slice(0, 12);
+  for (const x of window.neighbours().next) art(x.art); // decode now, so a swipe never waits for a cover
+};
+// Commands in order, spaced: Spotify drops a burst of skips sent in the same instant.
+let cmdChain = Promise.resolve();
+const queueCmd = c => { cmdChain = cmdChain.then(() => { control(c); return sleep(170); }); };
+window.swipeTo = k => {
+  const n = Math.abs(k), nb = window.neighbours(), list = k > 0 ? nb.next : nb.prev, t = list[n - 1] || null, now = performance.now();
+  // "Previous" more than 3 s into a song only restarts it, so one extra press goes back the first song.
+  for (let i = 0; i < n + (k < 0 && pos() > 3000 ? 1 : 0); i++) queueCmd(k > 0 ? 'next' : 'prev');
+  P.dir = Math.sign(k); P.dirAt = now;
+  if (!t?.id) { P.swipeWait = now + 5000; return null; } // unknown song: the card lands empty, Spotify fills it in
+  const prevSkip = P.skip && now < P.skip.until ? P.skip : null;
+  const pass = new Set([...(prevSkip ? [...prevSkip.pass, prevSkip.target] : []), ...list.slice(0, n - 1).map(x => x.id), P.id]);
+  pass.delete(t.id);
+  P.skip = { target: t.id, pass, until: now + 5000, passed: k > 0 ? list.slice(0, n - 1) : [] };
+  P.optimistic = now + 2500; P.pos = 0; P.at = now; P.dur = t.dur || P.dur;
+  return t;
+};
+// The card is in place: title, lyrics, colours switch in the same frame (the cover image is already decoded).
+window.swipeLand = t => {
+  const token = ++P.token, lyr = t.lyrics ?? pre.get(t.id)?.lyrics ?? null;
+  art(t.art).then(im => {
+    if (token !== P.token) return;
+    swap(t, im, lyr); topUp(t.id); P.shown = true;
+    const sk = P.skip;
+    if (sk?.target !== t.id) return;
+    for (const x of sk.passed) P.hist.unshift({ ...x }); // skipped over = played, as far as Spotify's "previous" goes
+    if (sk.early) { const m = sk.early; sk.early = null; onTrack(m); } // Spotify already confirmed it: take its details
+  });
 };
 $('prev').onclick = () => cmd('prev', -1);
 $('next').onclick = () => cmd('next', 1);

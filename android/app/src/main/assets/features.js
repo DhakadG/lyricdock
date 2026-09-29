@@ -87,33 +87,25 @@
   $('shuf').onclick = () => { $('shuf').classList.toggle('on'); cmdOf('shuffle'); };
   $('rep').onclick = () => { const n = ((P.repeat || 0) + 1) % 3; P.repeat = n; $('rep').classList.toggle('on', n > 0); $('rep').classList.toggle('one', n === 2); cmdOf('repeat', { v: n }); };
 
-  // ---- gestures: swipe to skip, double-tap to like, long-press the progress bar to scrub
+  // ---- gestures: double-tap to like, long-press the progress bar to scrub (changing songs by swiping: swipe.js,
+  // on the cover / song card only - a sideways drag anywhere else does nothing)
   const interactive = e => e.target.closest?.('button, input, #settings, #listPanel, #bar, #tl, #qs, #qpanel, #pairAsk, a');
-  // Touch events, not pointer events: the WebView fires pointercancel as soon as it takes a drag for a pan, so a
-  // pointer-based swipe never finished. Works anywhere, including on the album art (Default / TV view).
+  // Touch events, not pointer events: the WebView fires pointercancel as soon as it takes a drag for a pan.
   let down = null, lastTap = 0;
-  // While the clock is up it owns every tap (seconds, double-tap to leave): no skip swipes, no double-tap like.
+  // While the clock is up it owns every tap (seconds, double-tap to leave): no double-tap like.
   const clockUp = () => document.body.classList.contains('clock');
+  const coverLayouts = ['split', 'tv', 'clocksplit'], body = document.body;
   addEventListener('touchstart', e => {
     const t = e.touches[0];
     if (clockUp()) { down = null; return; }
-    const onCover = swipeLayouts.includes(S.layout) && e.target.closest?.('#artbox');
+    const onCover = coverLayouts.includes(S.layout) && e.target.closest?.('#artbox');
     down = e.touches.length !== 1 || interactive(e) ? null : { x: t.clientX, y: t.clientY, t: performance.now(), cover: onCover };
-  }, { capture: true, passive: true });
-  addEventListener('touchmove', e => {
-    if (!down || down.cover || !S.swipe || e.touches.length !== 1) return;
-    const { dx, dy } = Gesture.delta(e);
-    if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.6) Gesture.claim('skip'); // clearly sideways: it's a skip swipe
   }, { capture: true, passive: true });
   addEventListener('touchend', e => {
     if (!down || e.touches.length) { down = null; return; }
-    const t = e.changedTouches[0], dx = t.clientX - down.x, dy = t.clientY - down.y, dt = performance.now() - down.t, d0 = down;
+    const t = e.changedTouches[0], dt = performance.now() - down.t, d0 = down;
     down = null;
-    if (Gesture.owner() === 'skip') {
-      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 800) { swipeFx(dx < 0 ? -1 : 1); $(dx < 0 ? 'next' : 'prev').click(); }
-      return;
-    }
-    // Double-tap to like: two real taps, not on a lyric line (a line tap seeks) and not on the cover (it has its own).
+    // Double-tap to like: two real taps, not on a lyric line (a line tap seeks) and not on the cover (swipe.js has its own).
     const onLine = S.tapSeek && e.target.closest?.('#lyrics:not(.static) .ln');
     if (Gesture.tap() && dt < 300 && !onLine && !d0.cover) {
       const now2 = performance.now();
@@ -121,102 +113,6 @@
       else lastTap = now2;
     } else lastTap = 0;
   }, { capture: true, passive: true });
-  // ---- the cover (Default / TV / Cover + clock). A tap toggles the controls: the cover shrinks towards its top edge
-  // and the controls slide into the space under it. A drag is a swipe: the cover follows the finger 1:1 with the
-  // next (or previous) cover beside it, and the controls never show. Let go past a third of the width, or flick, and
-  // it carries on at the finger's speed into place while the song changes (for "next" the preloaded song is swapped
-  // in at once, so title, lyrics and colours land with the cover). Let go early and it springs back.
-  const peek = document.createElement('div');
-  peek.id = 'artPeek';
-  $('artbox').append(peek);
-  const swipeLayouts = ['split', 'tv', 'clocksplit'];
-  const artEl = $('art'), body = document.body;
-  let cs = null, busy = false, csRevert = 0, tapT = 0;
-  const artUrl = u => u ? `url("${u}")` : 'none';
-  const scaleOf = el => { const t = getComputedStyle(el).transform; return t && t !== 'none' ? Math.hypot(...new DOMMatrix(t).toFloat32Array().slice(0, 2)) : 1; };
-  // After a gesture the cover's CSS transition must not replay the last drag frame: drop inline styles first,
-  // re-enable transitions two frames later.
-  const settle = () => {
-    for (const el of [artEl, peek]) { el.getAnimations().forEach(a => a.cancel()); el.style.transform = ''; el.style.opacity = ''; }
-    requestAnimationFrame(() => requestAnimationFrame(() => { body.classList.remove('art-dragging'); busy = false; }));
-  };
-  $('artbox').addEventListener('touchstart', e => {
-    if (busy || !swipeLayouts.includes(S.layout) || e.touches.length !== 1 || e.target.closest('button, input, #ctl, #tl')) { cs = null; return; }
-    const t = e.touches[0], w = artEl.offsetWidth;
-    cs = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, on: false, w, gap: w * 0.08, lx: t.clientX, lt: performance.now(), v: 0, s0: 1 };
-  }, { passive: true });
-  $('artbox').addEventListener('touchmove', e => {
-    if (!cs || e.touches.length !== 1) { if (cs?.on) endSwipe(); cs = null; return; }
-    const t = e.touches[0], dx = t.clientX - cs.x, dy = t.clientY - cs.y;
-    if (!cs.on) {
-      if (!S.swipe || (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx))) { cs = null; return; } // vertical: not ours
-      if (Math.abs(dx) < 8) return;
-      if (!Gesture.claim('cover')) { cs = null; return; }
-      cs.on = true;
-      cs.x = t.clientX; // start from here: no jump by the 8 px it took to decide
-      cs.s0 = scaleOf(artEl); // shrunk (controls open) or paused: the cover keeps that size and place while it moves
-      const m = getComputedStyle(artEl).transform; cs.base = m && m !== 'none' ? m + ' ' : '';
-      body.classList.add('art-dragging');
-      clearTimeout(tapT);
-    }
-    const now2 = performance.now(), ddx = t.clientX - cs.x;
-    cs.v = cs.v * 0.4 + 0.6 * (t.clientX - cs.lx) / Math.max(1, now2 - cs.lt); cs.lx = t.clientX; cs.lt = now2;
-    cs.dx = ddx;
-    const dir = ddx < 0 ? 1 : -1; // 1 = next (comes from the right), -1 = previous
-    const nextArt = dir > 0 ? P.next?.art : P.prevArt;
-    if (peek.dataset.url !== (nextArt || '')) { peek.dataset.url = nextArt || ''; peek.style.backgroundImage = artUrl(nextArt); }
-    const p = Math.min(1, Math.abs(ddx) / cs.w);
-    artEl.style.transform = `${cs.base}translateX(${ddx / cs.s0}px) rotate(${ddx / cs.w * 4}deg) scale(${1 - p * 0.06})`;
-    peek.style.transform = `${cs.base}translateX(${(dir * (cs.w + cs.gap) + ddx) / cs.s0}px) scale(${0.94 + p * 0.06})`;
-    peek.style.opacity = Math.min(1, p * 1.6);
-  }, { passive: true });
-  function endSwipe() {
-    const s = cs; cs = null;
-    if (!s?.on) return;
-    busy = true;
-    const dir = s.dx < 0 ? 1 : -1, p = Math.abs(s.dx) / s.w, fast = Math.abs(s.v) > 0.5 && Math.sign(s.v) === Math.sign(s.dx);
-    if (p > 0.33 || (fast && p > 0.08)) {
-      // Carry on at the finger's speed: an ease-out starts at ~3.3x its average speed, so pick the duration that
-      // makes that equal the release speed (clamped so a slow drag still finishes briskly).
-      const left = s.w + s.gap - Math.abs(s.dx), v = Math.max(Math.abs(s.v), 1);
-      const d = Math.round(Math.min(360, Math.max(170, 3.3 * left / v))), ease = 'cubic-bezier(.2,.75,.25,1)';
-      const url = peek.dataset.url, id = P.id;
-      P.artHold = true; // the cover element keeps the old image until the new one is in place
-      let land; // resolved when the cover is in place: app.js switches title, lyrics and colours right then
-      window.__swipe = { dir, at: performance.now(), landed: new Promise(r => { land = r; }) };
-      window.swipeCommit(dir);
-      artEl.animate([{ transform: artEl.style.transform }, { transform: `${s.base}translateX(${-dir * (s.w + s.gap) / s.s0}px) rotate(${-dir * 4}deg) scale(.94)` }], { duration: d, easing: ease, fill: 'forwards' });
-      peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: s.base || "none", opacity: 1 }], { duration: d, easing: ease, fill: 'forwards' }).onfinish = () => {
-        // Hand over in one frame: the cover element takes the new image where the peek is, the peek goes.
-        P.artHold = false;
-        const now = P.id !== id ? P.art : url; // swapped already (next) or still waiting for Spotify (previous)
-        artEl.style.backgroundImage = artUrl(now || url);
-        settle();
-        land();
-        // "Previous" can just restart the song: if nothing changed, crossfade the real cover back.
-        clearTimeout(csRevert);
-        if (P.id === id) csRevert = setTimeout(() => { if (P.id === id && url !== P.art) { window.__swipe = null; artEl.style.backgroundImage = artUrl(P.art); artFadeFrom(url, 400); } }, 2500);
-      };
-    } else {
-      const k = { duration: 380, easing: 'cubic-bezier(.3,1.3,.5,1)', fill: 'forwards' };
-      artEl.animate([{ transform: artEl.style.transform }, { transform: s.base || "none" }], k).onfinish = settle;
-      peek.animate([{ transform: peek.style.transform, opacity: peek.style.opacity }, { transform: `${s.base}translateX(${dir * (s.w + s.gap) / s.s0}px) scale(.94)`, opacity: 0 }], { ...k, duration: 260, easing: 'ease-out' });
-    }
-  }
-  $('artbox').addEventListener('touchend', e => {
-    const s = cs;
-    if (s && !s.on && !e.target.closest('button, input, #ctl, #tl')) {
-      // A tap: show / hide the controls. Waits out a possible second tap when double-tap-to-like is on.
-      const t = e.changedTouches[0];
-      if (Gesture.tap() && Math.abs(t.clientX - s.x) < 12 && Math.abs(t.clientY - s.y) < 12 && performance.now() - s.t < 350) {
-        const toggle = () => window.showUi(!body.classList.contains('ui'));
-        if (S.doubleTapLike && S.showLiked) { if (tapT) { clearTimeout(tapT); tapT = 0; } else tapT = setTimeout(() => { tapT = 0; toggle(); }, 300); }
-        else toggle();
-      }
-    }
-    endSwipe();
-  }, { passive: true });
-  $('artbox').addEventListener('touchcancel', endSwipe, { passive: true });
 
   // ---- four-finger swipe switches layouts (with a notice naming it): up / down in landscape (next / previous),
   // left / right in portrait. Four, not three: many phones take a three-finger swipe for screenshots. While more
@@ -242,11 +138,7 @@
     window.notice?.(`Layout: ${next[1]}`, 1400);
   }, { capture: true, passive: true });
 
-  // A quick nudge of the cover in the swipe direction, so the gesture feels answered before the song changes.
-  function swipeFx(dir) {
-    $('artbox')?.animate([{ transform: 'none' }, { transform: `translateX(${dir * 4}vmin) rotate(${dir * 1.5}deg)`, opacity: .7 }, { transform: 'none' }],
-      { duration: 380, easing: 'cubic-bezier(.3,.7,.3,1)' });
-  }
+  window.heartBurst = (x, y) => heartBurst(x, y); // swipe.js: double tap on the cover
   function heartBurst(x, y) {
     const b = document.createElement('div');
     b.className = 'burst';
@@ -445,7 +337,7 @@
     else send({ type: 'list', ...msg });
   }
   window.onExtra = m => {
-    if (m.type === 'list') showList(m);
+    if (m.type === 'list') { if (m.which === 'queue') window.onQueue?.(m); showList(m); } // the queue also feeds the cover swipe
     else if (m.type === 'acted') acted(m);
     else if (m.type === 'album' && m.id) { albums.set(m.id, m); if (m.id === P.id) albumLine(); }
   };
@@ -633,8 +525,7 @@
       run: () => { const v = S.artSide === 'left' ? 'right' : 'left'; Settings.set('artSide', v); window.notice?.(`Cover on the ${v}`, 1400); } },
     roman: { html: 'Aa', tip: 'Romanization', on: () => S.roman !== 'off',
       run: () => cycle('roman', ['smart', 'always', 'off'], { smart: 'Romanize · keep Hindi', always: 'Romanize everything', off: 'Original script' }) },
-    layout: { html: SVG('<path d="M4 5.5h16v13H4zM10 5.5v13"/>'), tip: 'Next layout',
-      run: () => { const o = LAYOUTS(), i = o.findIndex(([v]) => v === S.layout), n = o[(i + 1) % o.length]; if (n) { Settings.set('layout', n[0]); window.notice?.(`Layout: ${n[1]}`, 1400); } } },
+    layout: { html: SVG('<path d="M4 5.5h16v13H4zM10 5.5v13"/>'), tip: 'Choose a layout', run: () => openQuick('layouts') },
     theme: { html: SVG('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>'), tip: 'Card colour',
       run: () => cycle('clockTheme', ['dark', 'light', 'auto'], { dark: 'Dark cards', light: 'Light cards', auto: 'Automatic card colour' }) },
     secs: { html: 'ss', tip: 'Seconds', on: () => S.clockSeconds,
@@ -666,14 +557,65 @@
     }));
   }
   $('qs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { QB[b.dataset.q]?.run(); showUi(true); } });
+  // ---- layout picker (the quick bar's layout button, and the top of Settings -> Layout): every layout as a small,
+  // true-to-scale sketch of where its blocks sit - measured on the phone in both orientations (docs/layout-map.md) -
+  // with its name; the current one is ringed. A tap switches at once and the sheet stays, so trying them is quick.
+  const THUMBS = { land: { split: { cover: [8.8, 3.3, 30.5, 64.4], np: [6.7, 79.7, 35, 15.8], lyr: [43.6, 0, 50, 100], tl: [8.8, 69.7, 30.5, 2.8] },
+    player: { np: [6.2, 19.4, 41.4, 18.9], lyr: [49.1, 0, 44.5, 100], tl: [8, 42.8, 37.6, 5], deck: [6.7, 40.3, 40.5, 38.9] }, lyrics: { lyr: [6.7, 0, 86.8, 100], tl: [2.5, 96.1, 95, 0.8] },
+    compact: { cover: [6.7, 3.3, 7.1, 15], np: [15.1, 4.2, 82.1, 13.3], lyr: [6.7, 21.9, 86.8, 77.5], tl: [2.5, 96.1, 95, 0.8] },
+    tv: { cover: [10.7, 3.6, 30.7, 64.7], np: [6.7, 78.9, 38.7, 16.4], lyr: [47.2, 0, 46.3, 100], tl: [10.7, 70, 30.7, 2.8] },
+    cinema: { cover: [6.7, 78.3, 4.7, 10], np: [12.4, 77.8, 10.5, 11.1], lyr: [8.8, 0, 82.6, 100], tl: [2.5, 96.1, 95, 0.8] },
+    nowbar: { pill: [40, 75.6, 20.7, 13.3], lyr: [6.7, 0, 86.8, 86.1], tl: [2.5, 96.1, 95, 0.8] },
+    clocksplit: { cover: [9.5, 4.7, 29.3, 61.9], np: [6.7, 78.3, 35, 15.8], clock: [43.6, 0, 55.3, 100], tl: [9.5, 68.3, 29.3, 2.8] }, clock: { clock: [0, 0, 100, 100] } },
+  port: { split: { cover: [18.1, 10, 61.9, 29.3], np: [5.3, 44.5, 88.1, 7.5], lyr: [5.3, 52.9, 88.1, 43.8], tl: [18.1, 40.1, 61.9, 1.3] },
+    player: { np: [3.1, 10, 96.7, 10.7], lyr: [3.1, 21.7, 91.9, 61.8], tl: [6.1, 85.7, 86.1, 2.4], deck: [3.1, 84.5, 91.9, 13.6] }, lyrics: { lyr: [4.2, 10, 91.4, 90], tl: [5.3, 98.2, 89.4, 0.4] },
+    compact: { cover: [4.2, 10, 15, 7.1], np: [22.2, 10.4, 70.6, 6.3], lyr: [4.2, 18.8, 91.4, 81.2], tl: [5.3, 98.2, 89.4, 0.4] },
+    tv: { cover: [10.3, 10, 78.1, 37], np: [5.3, 52, 88.1, 7.8], lyr: [5.3, 60.8, 88.1, 35.9], tl: [10.3, 47.8, 78.1, 1.3] },
+    cinema: { cover: [4.2, 90, 10, 4.7], np: [16.1, 89.7, 22.2, 5.3], lyr: [8.6, 10, 82.5, 82.4], tl: [5.3, 98.2, 89.4, 0.4] },
+    nowbar: { pill: [27.2, 88.7, 43.6, 6.3], lyr: [4.2, 10, 91.4, 75.8], tl: [5.3, 98.2, 89.4, 0.4] },
+    clocksplit: { cover: [18.1, 10, 61.9, 29.3], np: [5.3, 44.5, 88.1, 7.5], clock: [5.3, 52.9, 88.1, 43.8], tl: [18.1, 40.1, 61.9, 1.3] }, clock: { clock: [0, 0, 100, 100] } } };
+  const HINT = { split: 'Cover beside the lyrics', player: 'Mini player + lyrics', lyrics: 'Just the lyrics', compact: 'Song on top, lyrics below', tv: 'Big cover and type',
+    cinema: 'Huge centred lyrics', nowbar: 'Lyrics + floating pill', clocksplit: 'Cover + flip clock', clock: 'Flip clock, full screen' };
+  function sketch(L) {
+    const land = innerWidth > innerHeight, t = THUMBS[land ? 'land' : 'port'][L] || {}, H = land ? 47.4 : 211;
+    const box = (r, cls, rx = 1.4) => { const [x, y, w, h] = [r[0], r[1] * H / 100, r[2], r[3] * H / 100]; return { x, y, w, h, svg: `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>` }; };
+    const bar = (x, y, w, h, cls) => `<rect class="${cls}" x="${x}" y="${y}" width="${Math.max(1, w)}" height="${h}" rx="${h / 2}"/>`;
+    let s = '';
+    if (t.cover) s += box(t.cover, 'c').svg;
+    if (t.pill) { const p = box(t.pill, 'p', t.pill[3] * H / 200); s += p.svg + `<circle class="c" cx="${p.x + p.h / 2}" cy="${p.y + p.h / 2}" r="${p.h * .34}"/>` + bar(p.x + p.h, p.y + p.h * .3, p.w * .45, p.h * .16, 't1') + bar(p.x + p.h, p.y + p.h * .56, p.w * .3, p.h * .12, 't'); }
+    if (t.np) { const n = box(t.np, 'x'), mid = ['split', 'tv', 'clocksplit'].includes(L), h = Math.min(n.h * .24, 3.2), w1 = n.w * .5, w2 = n.w * .34;
+      s += bar(mid ? n.x + (n.w - w1) / 2 : n.x + 1, n.y + n.h * .14, w1, h, 't1') + bar(mid ? n.x + (n.w - w2) / 2 : n.x + 1, n.y + n.h * .52, w2, h * .8, 't'); }
+    if (t.lyr) { const l = box(t.lyr, 'x'), h = Math.min(l.h * .07, land ? 4.2 : 6), gap = h * 1.9, cx = L === 'cinema';
+      [.78, .55, .92, .6, .7, .5].forEach((f, i) => { const y = l.y + l.h * .12 + i * gap; if (y + h > l.y + l.h - 1) return; const w = l.w * f * .92; s += bar(cx ? l.x + (l.w - w) / 2 : l.x + 1, y, w, h, i === 1 ? 'l1' : 'l'); }); }
+    if (t.clock) { const k = box(t.clock, 'x'), rows = !land && k.h > k.w ? 2 : 1, per = 4 / rows, cw = Math.min(k.w * .9 / per / 1.06, k.h * .8 / rows / 1.45), ch = cw * 1.45, g = cw * .1;
+      const W = per * cw + (per - 1) * g + (rows === 1 ? cw * .3 : 0), x0 = k.x + (k.w - W) / 2, y0 = k.y + (k.h - rows * ch - (rows - 1) * g * 2) / 2;
+      for (let i = 0; i < 4; i++) { const r = rows === 1 ? 0 : i >> 1, c = rows === 1 ? i : i & 1; s += `<rect class="k" x="${x0 + c * (cw + g) + (rows === 1 && i > 1 ? cw * .3 : 0)}" y="${y0 + r * (ch + g * 2)}" width="${cw}" height="${ch}" rx="${cw * .12}"/>`; } }
+    if (t.deck) { const d = box(t.deck, 'd', 2.4); s += d.svg; [.3, .5, .7].forEach((f, i) => { s += `<circle class="${i === 1 ? 't1' : 't'}" cx="${d.x + d.w * f}" cy="${d.y + d.h * .55}" r="${Math.min(d.h, d.w) * (i === 1 ? .14 : .08)}"/>`; }); }
+    if (t.tl) { const b = box(t.tl, 'x'), h = Math.max(.8, Math.min(b.h, 1.4)); s += bar(b.x, b.y + (b.h - h) / 2, b.w, h, 'tl') + bar(b.x, b.y + (b.h - h) / 2, b.w * .35, h, 'tf'); }
+    return `<svg viewBox="0 0 100 ${H}" aria-hidden="true">${s}</svg>`;
+  }
+  window.layoutGrid = () => {
+    const g = document.createElement('div');
+    g.className = 'lp-grid';
+    g.innerHTML = LAYOUTS().map(([v, name]) => `<button class="lp-card${v === S.layout ? ' on' : ''}" data-l="${v}" aria-pressed="${v === S.layout}">${sketch(v)}<b>${name}</b><small>${HINT[v] || ''}</small></button>`).join('');
+    g.addEventListener('click', e => {
+      const c = e.target.closest('.lp-card');
+      if (!c || c.dataset.l === S.layout || !Gesture.tap()) return;
+      Settings.set('layout', c.dataset.l);
+      $('wrap').animate([{ opacity: 0.2, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: ms(380), easing: 'cubic-bezier(.2,.8,.2,1)' });
+      g.querySelectorAll('.lp-card').forEach(x => { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c); });
+    });
+    return g;
+  };
+  let qMode = 'settings';
   function renderQuick() {
     const body = $('qbody'), top = body.scrollTop;
-    $('qtitle').innerHTML = `Quick settings<small>${layoutName()}</small>`;
-    body.replaceChildren(...Settings.rows(QUICK[S.layout] || ['roman', 'size']));
+    $('qtitle').innerHTML = qMode === 'layouts' ? `Layout<small>${layoutName()}</small>` : `Quick settings<small>${layoutName()}</small>`;
+    body.replaceChildren(...(qMode === 'layouts' ? [window.layoutGrid()] : Settings.rows(QUICK[S.layout] || ['roman', 'size'])));
     body.scrollTop = top;
   }
   const quickOpen = () => document.body.classList.contains('qs-open');
-  function openQuick() { document.body.classList.add('qs-open'); renderQuick(); showUi(true); }
+  function openQuick(mode = 'settings') { qMode = mode; document.body.classList.toggle('qs-layouts', mode === 'layouts'); document.body.classList.add('qs-open'); renderQuick(); showUi(true); }
   function closeQuick() { document.body.classList.remove('qs-open'); showUi(true); }
   $('qclose').onclick = closeQuick;
   document.addEventListener('pointerdown', e => { if (quickOpen() && !e.target.closest('#qpanel, #qs')) closeQuick(); }, true);

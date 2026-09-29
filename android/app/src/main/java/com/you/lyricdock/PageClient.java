@@ -56,4 +56,11 @@ class PageClient extends WebViewClient {
         }
         return null;
     }
+
+    // Returning true keeps the app alive when the renderer dies; MainActivity swaps in a fresh WebView.
+    @Override
+    public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+        if (view.getContext() instanceof MainActivity) ((MainActivity) view.getContext()).rendererGone(view, detail != null && detail.didCrash());
+        return true;
+    }
 }

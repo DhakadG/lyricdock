@@ -56,19 +56,11 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         // Draw into the camera-notch strip too (it showed as a black bar in landscape).
         if (Build.VERSION.SDK_INT >= 28) getWindow().getAttributes().layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        CrashLog.install(this); // a crash on any thread is written down (shown on the next start) instead of vanishing
         WebView.setWebContentsDebuggingEnabled(true); // lets the PC inspect/screenshot the page over adb
-        web = new WebView(this);
-        web.getSettings().setJavaScriptEnabled(true);
-        web.getSettings().setDomStorageEnabled(true); // settings persist in localStorage
-        web.getSettings().setMediaPlaybackRequiresUserGesture(false); // muted music-video background autoplays
-        web.setWebViewClient(new PageClient()); // adds the Referer YouTube's embed needs
-        web.setBackgroundColor(0xFF000000);
-        web.addJavascriptInterface(this, "Dock"); // page -> PC (prev/play/next/seek); only @JavascriptInterface methods are exposed
-        web.setOnApplyWindowInsetsListener(this);
         root = new FrameLayout(this); // hosts the dock page, and the Spotify login overlay when open
-        root.addView(web);
         setContentView(root);
-        web.loadUrl("file:///android_asset/index.html");
+        makeWeb();
         kiosk();
         // Keep Wi-Fi out of power-save while the dock runs: its naps stalled the WebRTC link long enough to drop.
         try {
@@ -80,6 +72,35 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         server = new DockServer(this);
         server.start();
     }
+
+    void makeWeb() {
+        web = new WebView(this);
+        web.getSettings().setJavaScriptEnabled(true);
+        web.getSettings().setDomStorageEnabled(true); // settings persist in localStorage
+        web.getSettings().setMediaPlaybackRequiresUserGesture(false); // muted music-video background autoplays
+        web.setWebViewClient(new PageClient()); // adds the Referer YouTube's embed needs; recovers a dead renderer
+        web.setBackgroundColor(0xFF000000);
+        web.addJavascriptInterface(this, "Dock"); // page -> PC (prev/play/next/seek); only @JavascriptInterface methods are exposed
+        web.setOnApplyWindowInsetsListener(this);
+        root.addView(web, 0);
+        web.loadUrl("file:///android_asset/index.html");
+        web.requestApplyInsets();
+    }
+
+    // The page's renderer process died (out of memory, a GPU driver fault...). Left alone, Android kills the whole app
+    // with it - the "it just closed" crashes. Instead: note it, throw the dead WebView away and start a fresh page;
+    // the bridge reconnects and the song comes back within a few seconds.
+    void rendererGone(WebView dead, boolean crashed) {
+        if (dead != web) return;
+        CrashLog.note(this, "renderer " + (crashed ? "crashed" : "was killed for memory"));
+        root.removeView(dead);
+        try { dead.destroy(); } catch (Exception ignored) {}
+        makeWeb();
+    }
+
+    // What went wrong last time (the page shows a notice and hands it to the desktop's diagnostics), then forgotten.
+    @JavascriptInterface
+    public String lastCrash() { return CrashLog.take(this); }
 
     @JavascriptInterface
     public void send(String json) { if (server != null) server.broadcast(json); }

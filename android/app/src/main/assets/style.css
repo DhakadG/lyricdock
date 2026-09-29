@@ -724,9 +724,31 @@ body.layout-clock #gear { z-index: 9; }
   body.layout-clocksplit #left { flex: 0 0 auto; }
 }
 
-/* ---- cover swipe (features.js) and cover crossfade (app.js) */
-#artPeek { position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 1; border-radius: 2.4vmin; background: #1a1a1d center/cover;
+/* ---- cover swipe (swipe.js) and cover crossfade (app.js) */
+.art-peek { position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 1; border-radius: 2.4vmin; background: #1a1a1d center/cover;
   opacity: 0; pointer-events: none; z-index: 0; box-shadow: 0 3vmin 8vmin -1vmin rgba(0, 0, 0, .7); will-change: transform, opacity; }
+.art-peek.blank, #art.art-wait { background-image: linear-gradient(110deg, #1c1c21 40%, #2b2b32 50%, #1c1c21 60%) !important; background-size: 300% 100%; }
+#art.art-wait { animation: artwait 1.3s linear infinite; } /* a song we knew nothing about: Spotify names it in a moment */
+@keyframes artwait { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+/* The edge tab (Android's back arrow, made easy to spot): slides in from the side the song comes from, grows with the
+   pull (--p, 0..1 up to the commit point) and turns solid white once letting go would change the song. */
+#swipeCue { position: fixed; left: 0; right: 0; top: 50%; height: 0; z-index: 30; pointer-events: none; --p: 0; }
+#swipeCue .sc-tab { position: absolute; top: -8vmin; height: 16vmin; min-width: 16vmin; padding: 0 3.4vmin; box-sizing: border-box; display: flex; align-items: center;
+  justify-content: center; gap: 1.6vmin; border-radius: 8vmin; background: rgba(18, 18, 24, .82); color: #fff; font-weight: 800; font-size: 3.4vmin; letter-spacing: -.01em;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2), 0 2vmin 6vmin rgba(0, 0, 0, .5); opacity: 0;
+  transition: opacity .2s, background-color .16s, color .16s, box-shadow .2s; }
+#swipeCue.right .sc-tab { right: calc(var(--sa-r) + 2.4vmin); transform: translateX(calc((1 - var(--p)) * 70%)); }
+#swipeCue.left .sc-tab { left: calc(var(--sa-l) + 2.4vmin); flex-direction: row-reverse; transform: translateX(calc((var(--p) - 1) * 70%)); }
+#swipeCue.on .sc-tab { opacity: calc(.35 + var(--p) * .65); }
+#swipeCue.armed .sc-tab { background: #fff; color: #0c0c0f; box-shadow: 0 0 0 1.2vmin rgba(255, 255, 255, .16), 0 2vmin 6vmin rgba(0, 0, 0, .5); }
+#swipeCue svg { flex: none; width: 5.6vmin; height: 5.6vmin; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+#swipeCue.left svg { transform: rotate(180deg); }
+#swipeCue .sc-n { padding: .5vmin 1.6vmin; border-radius: 99px; background: rgb(var(--acc)); color: #0c0c0f; font-size: 2.8vmin; }
+#swipeCue .sc-n:empty { display: none; }
+#swipeCue .sc-name { position: absolute; top: 9.5vmin; max-width: 46vw; padding: .9vmin 2.4vmin; border-radius: 99px; background: rgba(0, 0, 0, .6); color: #fff;
+  font-size: 2.8vmin; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .18s; }
+#swipeCue.right .sc-name { right: calc(var(--sa-r) + 2.4vmin); } #swipeCue.left .sc-name { left: calc(var(--sa-l) + 2.4vmin); }
+#swipeCue.armed .sc-name:not(:empty) { opacity: 1; }
 #art { z-index: 1; }
 body.art-dragging #art, body.art-dragging.art-ctl.ui #art { transition: none; }
 body.art-dragging #left { position: relative; z-index: 3; }
@@ -932,6 +954,30 @@ body.qs-open #qpanel { opacity: 1; visibility: visible; pointer-events: auto; tr
 #qbody { overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 12px; scrollbar-width: thin; }
 #qbody .sl-sp-row { padding: 8px 10px; min-height: 36px; box-sizing: border-box; }
 #qbody .sl-sp-description { font-size: 11px; }
+/* Layout picker (features.js layoutGrid): a sketch per layout, the current one ringed in the cover's colour. */
+.lp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 4px 4px 8px; }
+@media (orientation: portrait) { .lp-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; } }
+/* In the quick sheet all nine fit without scrolling: a wider sheet, five across (landscape). */
+@media (orientation: landscape) {
+  body.qs-layouts #qpanel { width: min(84vw, 660px); }
+  body.qs-layouts .lp-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+  body.qs-layouts .lp-card small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+.lp-card { display: flex; flex-direction: column; align-items: stretch; gap: 2px; min-width: 0; padding: 7px 7px 9px; border: 0; border-radius: 14px; text-align: left; color: #fff;
+  background: rgba(255, 255, 255, .045); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transition: transform .18s var(--ease), background-color .2s, box-shadow .2s; }
+.lp-card:active { transform: scale(.95); }
+.lp-card.on { background: rgba(var(--acc), .12); box-shadow: inset 0 0 0 2px rgb(var(--acc)); }
+.lp-card svg { display: block; width: 100%; height: auto; margin-bottom: 5px; border-radius: 8px; background: #0d0d11; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
+.lp-card b { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-card small { font-size: 10px; line-height: 1.25; color: rgba(255, 255, 255, .5); }
+@media (orientation: portrait) { .lp-card { padding: 6px 5px 8px; } .lp-card small { display: none; }
+  .lp-card b { font-size: 10px; line-height: 1.2; text-align: center; white-space: normal; letter-spacing: -.01em; min-height: 2.4em; } } /* two short lines, never cut off */
+.lp-card rect.c, .lp-card circle.c { fill: rgb(var(--acc)); opacity: .8; }
+.lp-card .p { fill: rgba(255, 255, 255, .16); } .lp-card .d { fill: rgba(255, 255, 255, .1); }
+.lp-card .t1 { fill: rgba(255, 255, 255, .92); } .lp-card .t { fill: rgba(255, 255, 255, .45); }
+.lp-card .l { fill: rgba(255, 255, 255, .26); } .lp-card .l1 { fill: rgba(255, 255, 255, .95); }
+.lp-card .k { fill: #ece8df; } .lp-card .tl { fill: rgba(255, 255, 255, .22); } .lp-card .tf { fill: rgba(255, 255, 255, .9); }
+#settings .lp-grid { padding: 6px 12px 10px; }
 
 /* ---- Block names overlay (Settings -> Layout -> Show block names): labels every named block, see docs/layout-map.md */
 #blkov { display: none; position: fixed; inset: 0; z-index: 50; pointer-events: none; }

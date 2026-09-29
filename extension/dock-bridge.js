@@ -434,6 +434,8 @@
       setTimeout(beat, 80);
     }
     // Diagnostics for development: which of Spotify's internal APIs this client has (names only), last errors.
+    // The phone restarted after a crash (CrashLog.java): keep it with the diagnostics, and in Spotify's DevTools console.
+    else if (m.type === 'crashlog' && typeof m.text === 'string') { console.warn('[LyricDock] phone crash log:\n' + m.text.slice(0, 4000)); noteErr('phone', m.text.split('\n').filter(Boolean).pop()); }
     else if (m.type === 'probe') sendTo(from, { type: 'diag', gql: Object.keys(Spicetify.GraphQL?.Definitions ?? {}), platform: Object.keys(Spicetify.Platform ?? {}), errors: lastErrors.slice(-10) });
     else if (m.type === 'list' && ['queue', 'recent', 'library', 'friends', 'tracks', 'search'].includes(m.which)) {
       const arg = m.which === 'tracks' ? (URI.test(m.uri ?? '') ? m.uri : null) : m.which === 'search' ? String(m.q ?? '').slice(0, 100) : null;
@@ -531,7 +533,8 @@
     try {
       if (which === 'queue') {
         const q = Spicetify.Queue ?? {}, meta = t => { const c = t?.contextTrack ?? t, md = c?.metadata ?? {};
-          return { uri: c?.uri, uid: c?.uid, title: md.title, sub: md.artist_name, art: img(md.image_url), queued: t?.provider === 'queue' }; };
+          return { uri: c?.uri, uid: c?.uid, title: md.title, sub: md.artist_name, art: img(md.image_url), big: img(md.image_xlarge_url || md.image_large_url || md.image_url),
+            dur: +md.duration || 0, queued: t?.provider === 'queue' }; }; // big + dur: the phone's cover swipe shows the next songs full size
         const items = (q.nextTracks ?? []).filter(t => (t?.contextTrack?.uri ?? t?.uri)?.startsWith('spotify:track') && t?.provider !== 'unavailable').slice(0, 80).map(meta);
         const ctx = safe(() => P.data?.context, null);
         return { now: q.track ? meta(q.track) : null, items: await withLiked(items), ctxName: ctx?.metadata?.context_description || '' };

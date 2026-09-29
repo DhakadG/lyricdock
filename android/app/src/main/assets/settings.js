@@ -6,6 +6,7 @@ const Settings = (() => {
   const dyn = s => s.bg === 'dynamic' || s.bg === 'artist';
   const SCHEMA = [
     { group: 'Layout', icon: 'layout', cat: 'View', desc: 'Where the cover, title, controls and lyrics sit, and which gestures work.' },
+    { type: 'custom', render: () => window.layoutGrid?.() }, // the layout picker: a sketch of every layout (features.js)
     { k: 'layout', label: 'Layout', type: 'choice', def: 'split', opts: [
       ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['clocksplit', 'Cover + clock'], ['clock', 'Flip clock']],
       help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds, double-tap to go back to the layout before).' },
@@ -24,7 +25,7 @@ const Settings = (() => {
     { k: 'marquee', label: 'Scroll long titles', type: 'toggle', def: true, help: 'Song titles and artist lists that do not fit scroll slowly back and forth instead of being cut off.' },
     { k: 'showShuffle', label: 'Shuffle and repeat buttons', type: 'toggle', def: true, help: 'Adds shuffle and repeat (off / all / one) next to previous and next.' },
     { k: 'showLists', label: 'Queue, history and friends buttons', type: 'toggle', def: true, help: 'Buttons that open the queue, recently played, your library and your friends\' listening activity.' },
-    { k: 'swipe', label: 'Swipe to skip', type: 'toggle', def: true, help: 'Swipe left for the next song, right for the previous one.' },
+    { k: 'swipe', label: 'Swipe the cover to skip', type: 'toggle', def: true, help: 'Drag the cover (or the song card in layouts without a big cover) left for the next song, right for the previous one. Drag further to go up to 3 songs; a tab at the screen edge shows where you will land. Swiping anywhere else does nothing.' },
     { k: 'doubleTapLike', label: 'Double-tap to like', type: 'toggle', def: true, help: 'Double-tap anywhere (not on a button) to add the song to Liked Songs or remove it.' },
     { k: 'nextChip', label: 'Up next chip', type: 'toggle', def: true, help: 'Near the end of a song, a small chip shows what plays next.' },
     { k: 'nextChipSecs', label: 'Show it for the last', type: 'range', min: 5, max: 45, step: 5, def: 15, unit: ' s', when: s => s.nextChip, help: 'How long before the end of the song the chip appears.' },

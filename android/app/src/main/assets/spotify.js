@@ -206,7 +206,9 @@ const Web = (() => {
     if (which === 'tracks') return arg ? browse(arg) : { items: [] };
     if (which === 'search') return arg ? search(arg) : { items: [] };
     if (which === 'queue') {
-      const r = await api('GET', '/me/player/queue'), m = x => ({ uri: x.uri, title: x.name, sub: (x.artists || [x.show]).filter(Boolean).map(a => a.name).join(', '), art: small(x.album?.images || x.images) });
+      const big = im => [...(im || [])].sort((a, b) => (b.width || 0) - (a.width || 0))[0]?.url || ''; // full size for the cover swipe
+      const r = await api('GET', '/me/player/queue'), m = x => ({ uri: x.uri, title: x.name, sub: (x.artists || [x.show]).filter(Boolean).map(a => a.name).join(', '),
+        art: small(x.album?.images || x.images), big: big(x.album?.images || x.images), dur: x.duration_ms });
       return { now: r?.json?.currently_playing ? m(r.json.currently_playing) : null, items: (r?.json?.queue || []).map(m) };
     }
     if (which === 'recent') {

@@ -31,7 +31,7 @@ const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
 const cases = [
   ['vertical scroll on lyrics', () => drag(cx, cy + 60, cx + 8, cy - 70), 'free scroll only'],
   ['diagonal scroll on lyrics', () => drag(cx, cy + 50, cx + 75, cy - 40), 'free scroll only (no skip)'],
-  ['horizontal swipe on lyrics', () => drag(cx + 80, cy, cx - 90, cy + 8, 120, 4), 'next'],
+  ['horizontal swipe on lyrics', () => drag(cx + 80, cy, cx - 90, cy + 8, 120, 4), 'nothing (skips: cover only)'],
   ['tap on a lyric line', async () => { const line = await findLine(); await tap(line.left + 4, line.top + line.height / 2); }, 'seek (no controls)'],
   ['double tap on a line', async () => { const line = await findLine(); await tap(line.left + 4, line.top + line.height / 2); await sleep(120); await tap(line.left + 4, line.top + line.height / 2); }, 'seek, seek (no like)'],
 ];
@@ -50,9 +50,9 @@ const drag2 = async (x0, y0, x1, y1, n = 4) => { await T2('touchStart', x0, y0);
 const tap2 = async (x, y) => { await T2('touchStart', x, y); await sleep(60); await T2('touchEnd'); };
 await ev(`(() => { window.__g = []; const g = window.__g;
   window.__ds = Dock.send; try { Dock.send = s => { const m = JSON.parse(s); if (m.type === 'cmd') g.push(m.cmd); else window.__ds.call(Dock, s); }; } catch (e) {}
-  window.__sc = window.swipeCommit; window.swipeCommit = d => g.push('coverSwipe' + d);
   window.__rs = Rtc.send; Rtc.send = s => { const m = JSON.parse(s); if (m.type === 'cmd') g.push(m.cmd); else window.__rs(s); };
   return String(Dock.send === window.__ds); })()`);
+await sleep(1200); // the cover may still be growing back from "controls up": measure once it has settled
 const tl = JSON.parse(await ev(`JSON.stringify(document.getElementById('tlhit').getBoundingClientRect())`));
 const art = JSON.parse(await ev(`JSON.stringify(document.getElementById('art').getBoundingClientRect())`));
 const ty = tl.top + tl.height / 2, ax = art.left + art.width / 2, ay = art.top + art.height / 2;
@@ -62,7 +62,7 @@ const cases2 = [
   ['timeline: drag sideways', () => drag2(tl.left + 20, ty, tl.left + tl.width * 0.7, ty + 3, 6), 'seek (once, on release)'],
   ['cover: tap', () => tap2(ax, ay), 'controls toggle'],
   ['cover: vertical drag', () => drag2(ax, ay + 40, ax + 5, ay - 60), 'nothing'],
-  ['cover: swipe left', () => drag2(ax + 60, ay, ax - 120, ay + 4), 'coverSwipe1'],
+  ['cover: swipe left', () => drag2(ax + 60, ay, ax - 120, ay + 4), 'next (swipe.js; details: swipe-test.mjs)'],
 ];
 for (const [name, fn, want] of cases2) {
   await ev(`window.__g.length = 0; document.body.classList.remove('ui'); 1`);
@@ -71,6 +71,6 @@ for (const [name, fn, want] of cases2) {
   await sleep(900);
   console.log(`${name.padEnd(28)} want: ${want.padEnd(24)} got: ${await ev(`JSON.stringify({ fired: window.__g, controls: document.body.classList.contains('ui') })`)}`);
 }
-await ev(`try { Dock.send = window.__ds; } catch (e) {} window.swipeCommit = window.__sc; Rtc.send = window.__rs; document.body.classList.remove('ui', 'art-dragging'); 1`);
+await ev(`try { Dock.send = window.__ds; } catch (e) {} Rtc.send = window.__rs; document.body.classList.remove('ui', 'art-dragging'); 1`);
 
 ws.close();
