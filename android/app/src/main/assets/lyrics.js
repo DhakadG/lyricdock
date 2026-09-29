@@ -1,9 +1,42 @@
+// One touch = one gesture. Every touch handler asks here before acting: the first one to claim a touch owns it (lyrics
+// scroll, skip swipe, cover swipe, timeline scrub, layout swipe...) and everything else stands down until the finger lifts.
+// A "tap" is a touch nobody claimed that barely moved, was short and used one finger: only taps show the controls, seek a
+// tapped line or count towards a double-tap. Without this, scrolling the lyrics also showed the controls, lifting the
+// finger seeked to the line under it, and a slightly diagonal scroll could skip the song.
+const Gesture = (() => {
+  let g = null;
+  const opt = { capture: true, passive: true };
+  addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    if (e.touches.length === 1) g = { x: t.clientX, y: t.clientY, t: performance.now(), end: 0, owner: null, moved: false, multi: false };
+    else if (g) g.multi = true;
+  }, opt);
+  addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    if (g && t && Math.hypot(t.clientX - g.x, t.clientY - g.y) > 10) g.moved = true;
+  }, opt);
+  addEventListener('touchend', e => { if (g && !e.touches.length) g.end = performance.now(); }, opt);
+  return {
+    // true = this handler owns the touch now (or already did); false = someone else has it
+    claim: name => !g || (g.owner ?? (g.owner = name)) === name,
+    owner: () => g?.owner ?? null,
+    // What the finger did so far: dx/dy from where it went down.
+    delta: e => { const t = e.touches?.[0] ?? e.changedTouches?.[0] ?? e; return g ? { dx: t.clientX - g.x, dy: t.clientY - g.y } : { dx: 0, dy: 0 }; },
+    // The last touch was a plain tap (mouse clicks in the browser preview count too).
+    tap: () => !g || (!g.owner && !g.moved && !g.multi && (g.end || performance.now()) - g.t < 450),
+  };
+})();
+
 // Lyrics renderer: builds lines from the bridge's normalized payload and drives
 // word / line highlighting and scrolling every frame.
 const Lyrics = (() => {
   const $ = id => document.getElementById(id);
-  let lines = [];      // { el, t, e, state, dots?, syl?: [{ el, t, e, sp }], bg?: [...] }
+  const BOX = $('lyrics'), LIST = $('lines');
+  let lines = [];      // { el, t, e, state, cool?, lk?, dots?, syl?: [{ el, t, e, sp, g? }], bg?: [...] }
   let synced = false, anchor = -2, onSeek = null, data;
+  // A just-sung line keeps animating this long, so the glow and lift of its last words spring back instead of being
+  // cut off the moment the line ends (Spicy keeps stepping a sung line until the next one is done).
+  const COOL = 1200;
 
   // 'orig' keeps the original script; 'roman' prefers the provider's romanization, else our own.
   const mode = text => {
@@ -25,22 +58,29 @@ const Lyrics = (() => {
     syls.forEach((x, i) => {
       const text = pick(x.s, x.r, m, i === 0);
       if (letterable(text, { ...x, i, prevP: syls[i - 1]?.p })) {
-        const g = document.createElement('span'), ch = Array.from(text), step = (x.e - x.t) / ch.length;
+        const g = document.createElement('span'), ch = Array.from(text);
+        // The letters share [start, end - 250 ms] (Spicy): the last one has landed before the word is over.
+        const end = x.e - 250 > x.t + 300 ? x.e - 250 : x.e, step = (end - x.t) / ch.length;
+        const grp = { ls: [], t: x.t, e: end, at: NaN, act: -1, pct: 0 };
         g.className = 'wg lw';
         ch.forEach((c, k) => {
           const el = document.createElement('span');
           el.className = 'sy lt';
           el.textContent = c;
+          el.dataset.t = c; // the glow copy (style.css .sy::after)
           g.append(el);
-          out.push({ el, t: x.t + step * k, e: x.t + step * (k + 1), emph: true });
+          const L = { el, t: x.t + step * k, e: x.t + step * (k + 1), g: grp, k };
+          grp.ls.push(L);
+          out.push(L);
         });
         container.append(g);
         if (i < syls.length - 1) container.append(' ');
         return;
       }
       const el = document.createElement('span');
-      el.className = 'sy';
+      el.className = 'sy' + (x.p ? ' pw' : '') + (syls[i - 1]?.p ? ' pn' : ''); // joined pieces of one word (see style.css)
       el.textContent = text;
+      el.dataset.t = text;
       // IsPartOfWord joins a syllable to the next one: keep the word together, no space.
       if (x.p || (syls[i - 1]?.p && group)) {
         if (!group) { group = document.createElement('span'); group.className = 'wg'; container.append(group); }
@@ -53,7 +93,7 @@ const Lyrics = (() => {
     return out;
   }
 
-  const RTL = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+  const RTL = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
   const div = (cls, text) => { const d = document.createElement('div'); d.className = cls; if (text) d.textContent = text; return d; };
 
   // Interlude: three dots, each owning a third of the gap (Spicy's musical-line / dotGroup).
@@ -99,26 +139,41 @@ const Lyrics = (() => {
   }
   const rank = l => ({ word: 3, line: 2, static: 1 })[l?.kind] ?? 0;
 
+  // ---- scrolling: a critically damped spring on #lines' transform (Spicy's smooth scroll). Unlike a CSS transition it keeps
+  // its velocity when the target changes mid-flight, so quick line changes read as one glide, and it moves in sub-pixels.
+  const FEEL = { smooth: [1.05, 1], spring: [1.5, 0.62], snappy: [2.4, 1] }; // [frequency Hz, damping ratio] (Settings -> Lyrics scroll)
+  const sc = { sp: new Anim.Spring(0, 1, 1), on: false };
+  let curY = 0, free = false, backT = 0, drag = null, fling = 0;
+  const writeY = y => { LIST.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`; };
+  function scrollStep(dt) {
+    if (!sc.on || free) return;
+    const [f, d] = FEEL[Settings.S.scroll] ?? FEEL.smooth;
+    sc.sp.f = f * Settings.S.animSpeed; sc.sp.d = d;
+    curY = sc.sp.step(dt);
+    if (Math.abs(curY - sc.sp.g) < 0.05 && Math.abs(sc.sp.v) < 0.3) { curY = sc.sp.g; sc.on = false; }
+    writeY(curY);
+  }
+
   function build(lyr) {
     data = lyr;
     lines = [];
     anchor = -2;
-    const box = $('lyrics'), list = $('lines');
-    box.classList.remove('static', 'placeholder');
+    sc.on = false; sc.sp.set(0, true); curY = 0;
+    BOX.classList.remove('static', 'placeholder');
     document.body.classList.toggle('nolyrics', !!lyr && (lyr.kind === 'none' || !lyr.lines?.length));
     window.fitArt?.();
-    list.style.transition = 'none';
-    list.style.transform = '';
+    LIST.style.transform = '';
+    LIST.classList.toggle('duet', !!lyr?.lines?.some(l => l.opp));
     if (!lyr) {
       synced = false;
-      box.classList.add('placeholder');
-      list.replaceChildren(...[.9, .7, .8].map(w => { const s = div('ln skel'); s.style.width = w * 100 + '%'; return s; }));
+      BOX.classList.add('placeholder');
+      LIST.replaceChildren(...[.9, .7, .8].map(w => { const s = div('ln skel'); s.style.width = w * 100 + '%'; return s; }));
       return;
     }
     if (lyr.kind === 'none' || !lyr.lines?.length) {
       synced = false;
-      box.classList.add('placeholder');
-      list.replaceChildren(div('ln empty', 'No lyrics for this song'));
+      BOX.classList.add('placeholder');
+      LIST.replaceChildren(div('ln empty', 'No lyrics for this song'));
       return;
     }
     synced = lyr.kind !== 'static';
@@ -137,8 +192,13 @@ const Lyrics = (() => {
           el.append(b);
           entry.bg = syllables(b, ln.bg, mode(ln.bg.map(x => x.s).join('')));
         }
-      } else el.textContent = pick(ln.s, ln.r, mode(ln.s || '')) || '♪';
-      if (synced) el.onclick = () => Settings.S.tapSeek && onSeek?.(ln.t);
+      } else {
+        el.textContent = pick(ln.s, ln.r, mode(ln.s || '')) || '♪';
+        if (synced) { entry.lk = true; el.classList.add('lk'); }
+      }
+      // A tap seeks a little before the line: Spotify fades the audio in after a seek, so landing exactly on the first
+      // syllable swallows it (Spicy: 300 ms).
+      if (synced) el.onclick = () => Settings.S.tapSeek && Gesture.tap() && onSeek?.(Math.max(0, ln.t - (Settings.S.seekComp ? 300 : 0)));
       if (Roman.isIndic(el.textContent)) el.classList.add('indic'); // taller line box for matras
       if (RTL.test(el.textContent)) { el.dir = 'rtl'; el.classList.add('rtl'); } // Urdu / Arabic / Hebrew kept in script
       lines.push(entry);
@@ -161,11 +221,19 @@ const Lyrics = (() => {
       }
       frag.push(c);
     }
-    list.replaceChildren(...frag);
-    if (!synced) box.classList.add('static');
-    list.offsetHeight;
-    list.style.transition = '';
+    LIST.replaceChildren(...frag);
+    if (!synced) BOX.classList.add('static');
+    LIST.offsetHeight;
     if (synced) scrollTo(0, true);
+  }
+
+  // A line that stopped animating: springs back to rest and the inline styles go, so the next pass starts clean.
+  function settle(x, sung) {
+    x.cool = 0;
+    x.el.classList.remove('cool');
+    if (x.syl) { Anim.rest(x.syl, sung); if (x.bg) Anim.rest(x.bg, sung); }
+    if (x.lk) Anim.restLine(x);
+    if (x.dots) Anim.restDots(x);
   }
 
   // Line states mirror Spicy Lyrics: NotSung / Active / Sung. Words in active lines run Spicy's springs.
@@ -183,58 +251,64 @@ const Lyrics = (() => {
       const state = p < x.t ? 'ns' : p >= x.e ? 'sung' : 'on';
       if (x.t <= p + S.scrollLead) a = i;
       if (state !== x.state) {
-        if (x.state === 'on' && x.syl) { Anim.rest(x.syl, state === 'sung'); if (x.bg) Anim.rest(x.bg, state === 'sung'); }
-        if (x.state === 'on' && x.dots) Anim.restDots(x);
+        const was = x.state;
         x.state = state;
         x.el.classList.toggle('on', state === 'on');
         x.el.classList.toggle('sung', state === 'sung');
+        if (was === 'on') {
+          if (state === 'sung' && (x.syl || x.lk)) { x.cool = p + COOL; x.el.classList.add('cool'); } // let the glow settle
+          else settle(x, false);
+        } else if (state === 'on' && x.syl) { Anim.rest(x.syl, false); if (x.bg) Anim.rest(x.bg, false); } // a seek landed here: start at rest
       }
-      if (state !== 'on') continue;
+      if (x.cool && (state !== 'sung' || p >= x.cool)) settle(x, state === 'sung');
+      if (state !== 'on' && !x.cool) continue;
       if (x.syl) {
-        for (const w of x.syl) Anim.word(w, p, dt, opts);
-        if (x.bg) for (const w of x.bg) Anim.word(w, p, dt, opts);
+        for (const w of x.syl) (w.g ? Anim.letter : Anim.word)(w, p, dt, opts);
+        if (x.bg) for (const w of x.bg) (w.g ? Anim.letter : Anim.word)(w, p, dt, opts);
+      } else if (x.lk) {
+        Anim.line(x, p, dt, opts);
       } else if (x.dots) {
         Anim.dotGroup(x.grp, p, dt);
         if (x.cd) { const r = Math.ceil((x.e - p) / 1000), v = S.countdown && r <= 3 && r > 0 ? String(r) : ''; if (x.cd.textContent !== v) x.cd.textContent = v; }
         for (const d of x.dd) Anim.dot(d, p, dt);
       }
     }
-    if (a !== anchor || jumped) scrollTo(a, jumped);
+    if (a !== anchor || jumped) scrollTo(a, jumped || anchor === -2);
+    scrollStep(dt);
   }
 
   // ---- free scroll (Spicy Lyrics): drag the lyrics up/down to read ahead or back, with a flick; all lines show
   // clearly while free, and the view glides back to the sung line S.scrollBack seconds after the finger lifts.
-  let curY = 0, free = false, backT = 0, drag = null, fling = 0;
-  const box = () => $('lyrics'), list = () => $('lines');
-  const clampY = y => { const h = box().clientHeight, total = list().offsetHeight; return Math.min(h * 0.5, Math.max(h * 0.5 - total, y)); };
-  const setY = (y, ease) => { curY = clampY(y); list().style.transition = ease ? '' : 'none'; list().style.transform = `translate3d(0, ${curY}px, 0)`; };
+  const clampY = y => { const h = BOX.clientHeight, total = LIST.offsetHeight; return Math.min(h * 0.5, Math.max(h * 0.5 - total, y)); };
+  const setY = y => { curY = clampY(y); sc.on = false; writeY(curY); };
   function release() {
     clearTimeout(backT);
-    backT = setTimeout(() => { free = false; box().classList.remove('free'); if (synced) scrollTo(anchor, false); }, Settings.S.scrollBack * 1000);
+    backT = setTimeout(() => { free = false; BOX.classList.remove('free'); if (synced) scrollTo(anchor, false); }, Settings.S.scrollBack * 1000);
   }
-  box().addEventListener('touchstart', e => {
+  BOX.addEventListener('touchstart', e => {
     if (!synced || e.touches.length !== 1) return;
     cancelAnimationFrame(fling);
     drag = { x: e.touches[0].clientX, y: e.touches[0].clientY, y0: curY, on: false, t: performance.now(), v: 0, ly: e.touches[0].clientY };
   }, { passive: true });
-  box().addEventListener('touchmove', e => {
+  BOX.addEventListener('touchmove', e => {
     if (drag && e.touches.length > 1) { if (drag.on) release(); drag = null; } // a multi-finger gesture: not a scroll
     if (!drag) return;
     const t = e.touches[0], dx = t.clientX - drag.x, dy = t.clientY - drag.y;
     if (!drag.on) {
       if (Math.abs(dx) > Math.abs(dy) || Math.abs(dy) < 10) return; // horizontal = swipe to skip (features.js)
-      drag.on = true; free = true; clearTimeout(backT); box().classList.add('free');
+      if (!Gesture.claim('lyrics')) { drag = null; return; } // a skip swipe or the cover got it first
+      drag.on = true; free = true; clearTimeout(backT); BOX.classList.add('free');
     }
     const now = performance.now();
     drag.v = (t.clientY - drag.ly) / Math.max(1, now - drag.t); drag.t = now; drag.ly = t.clientY;
-    setY(drag.y0 + dy, false);
+    setY(drag.y0 + dy);
   }, { passive: true });
-  box().addEventListener('touchend', () => {
+  BOX.addEventListener('touchend', () => {
     if (!drag) return;
     const d = drag; drag = null;
     if (!d.on) return;
     let v = d.v * 16; // px per frame
-    const step = () => { if (Math.abs(v) < 0.4) return release(); setY(curY + v, false); v *= 0.94; fling = requestAnimationFrame(step); };
+    const step = () => { if (Math.abs(v) < 0.4) return release(); setY(curY + v); v *= 0.94; fling = requestAnimationFrame(step); };
     step();
   }, { passive: true });
   const isFree = () => free;
@@ -255,12 +329,11 @@ const Lyrics = (() => {
     const el = lines[i]?.el;
     if (!el) return;
     const frac = document.body.classList.contains('layout-cinema') ? 0.5 : Settings.S.anchor;
-    const y = $('lyrics').clientHeight * frac - el.offsetTop - el.offsetHeight / 2;
-    const ls = $('lines');
-    curY = y;
-    if (instant) ls.style.transition = 'none'; else ls.style.transition = '';
-    ls.style.transform = `translate3d(0, ${y}px, 0)`;
-    if (instant) { ls.offsetHeight; ls.style.transition = ''; }
+    const y = BOX.clientHeight * frac - el.offsetTop - el.offsetHeight / 2;
+    if (instant) { sc.sp.set(y, true); sc.on = false; curY = y; writeY(y); return; }
+    if (!sc.on) sc.sp.set(curY, true); // start from wherever the list really is, at rest
+    sc.sp.set(y);
+    sc.on = true;
   }
 
   // How busy the vocals are around p, 0..1 (null without synced lyrics): drives 'Move with the music' now that
@@ -271,7 +344,7 @@ const Lyrics = (() => {
     for (const x of lines) {
       if (x.dots) continue;
       if (p >= x.t && p < x.e) on = true;
-      if (x.syl) { for (const w of x.syl) if (w.t <= p && w.t > p - 2000) starts++; }
+      if (x.syl) { for (const w of x.syl) if (!(w.g && w.k) && w.t <= p && w.t > p - 2000) starts++; } // one start per letter group
       else if (x.t <= p && x.t > p - 2000) starts += 4; // line-synced: a line start counts as a few words
     }
     return on ? Math.min(1, 0.45 + starts / 12) : 0.12;

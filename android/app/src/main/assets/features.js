@@ -30,7 +30,7 @@
     $('album').textContent = S.albumLine ? [a.album || P.album, a.year].filter(Boolean).join(' · ') : '';
     marquee($('album'));
   }
-  window.afterSwap = m => { fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; P.next = null; remarquee(); albumLine(); badge(); hideChip(); };
+  window.afterSwap = m => { document.body.classList.remove('q-new'); void document.body.offsetWidth; document.body.classList.add('q-new'); fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; P.next = null; remarquee(); albumLine(); badge(); hideChip(); };
   window.afterPreload = m => { P.next = m; };
   // Cover + title in the left column (Default / TV, landscape): the column is padded clear of the song times and
   // progress bar, and the cover is capped so cover + title + artist + album always fit between them.
@@ -43,7 +43,8 @@
     const low = [$('times'), $('bar')].filter(e => e.getClientRects().length).map(e => e.getBoundingClientRect().top).filter(y => y > innerHeight / 2);
     const bottom = Math.min(innerHeight, ...low);
     st.setProperty('--left-pb', `${innerHeight - bottom + pad}px`);
-    st.setProperty('--art-max', `${Math.max(80, bottom - pad * 2 - meta.offsetHeight - mt)}px`);
+    const tl = $('tl').getClientRects().length ? parseFloat(getComputedStyle($('artbox')).marginBottom) || 0 : 0; // the bar + times under the cover
+    st.setProperty('--art-max', `${Math.max(80, bottom - pad * 2 - meta.offsetHeight - mt - tl)}px`);
   });
   addEventListener('resize', fitArt);
   Settings.onChange(() => fitArt());
@@ -51,15 +52,30 @@
     const src = P.lyrics?.source;
     $('srcBadge').textContent = S.sourceBadge && src ? src : '';
     $('srcBadge').classList.toggle('show', !!(S.sourceBadge && src));
+    placeTags();
   }
+  // Tags (quality, lyrics source): a quiet row under the album line where the layout has a title block, otherwise in the
+  // top-left corner (dim; only while the controls are up unless Tag position says Corner).
+  // Now playing (title, artist, album) holds song information only; the lyrics source is a quiet line in the top-left corner,
+  // shown with the controls or all the time (Tag position). The credits at the end of the lyrics always name it too.
+  function placeTags() {
+    const t = $('tags');
+    if (t.parentNode !== document.body) document.body.appendChild(t);
+    document.body.classList.toggle('tags-corner', S.tagPos === 'corner');
+    t.style.display = $('srcBadge').classList.contains('show') ? '' : 'none';
+  }
+  // The Lossless waveform: beside the song length under the cover when that bar is on screen, else in the status corner.
+  function placeQw() {
+    const q = $('qw'), inTl = S.qualityIcon === 'wave' && getComputedStyle($('tl')).display !== 'none', home = inTl ? $('tl') : $('stat');
+    if (q.parentNode !== home) inTl ? home.appendChild(q) : home.prepend(q);
+    const need = document.body.classList.contains('q-lossless') && S.showQuality && (S.qualityIcon === 'status' || (S.qualityIcon === 'wave' && !inTl));
+    $('stat').classList.toggle('qshow', need);
+  }
+  window.qualityChanged = () => placeQw();
   function placeHeart() {
-    const h = $('heart'), onArt = S.heartPos === 'art' && !['player', 'lyrics'].includes(S.layout); // no big cover there
+    const h = $('heart'), onArt = S.heartPos === 'art' && !['player', 'lyrics', 'nowbar'].includes(S.layout); // no big cover there / the Now Bar cover spins
     (onArt ? $('art') : $('titlerow')).appendChild(h);
     h.classList.toggle('badge', onArt);
-    // Quality tag: vertical on the cover's edge; next to the title when there is no big cover.
-    const q = $('quality'), cover = ['split', 'tv', 'clocksplit'].includes(S.layout);
-    (cover ? $('art') : $('titlerow')).appendChild(q);
-    q.classList.toggle('vert', cover); q.classList.toggle('inline', !cover);
   }
 
   // ---- shuffle / repeat state (from the bridge beat or the Web API poll)
@@ -72,7 +88,7 @@
   $('rep').onclick = () => { const n = ((P.repeat || 0) + 1) % 3; P.repeat = n; $('rep').classList.toggle('on', n > 0); $('rep').classList.toggle('one', n === 2); cmdOf('repeat', { v: n }); };
 
   // ---- gestures: swipe to skip, double-tap to like, long-press the progress bar to scrub
-  const interactive = e => e.target.closest?.('button, input, #settings, #listPanel, #bar, #pairAsk, a');
+  const interactive = e => e.target.closest?.('button, input, #settings, #listPanel, #bar, #tl, #qs, #qpanel, #pairAsk, a');
   // Touch events, not pointer events: the WebView fires pointercancel as soon as it takes a drag for a pan, so a
   // pointer-based swipe never finished. Works anywhere, including on the album art (Default / TV view).
   let down = null, lastTap = 0;
@@ -84,16 +100,26 @@
     const onCover = swipeLayouts.includes(S.layout) && e.target.closest?.('#artbox');
     down = e.touches.length !== 1 || interactive(e) ? null : { x: t.clientX, y: t.clientY, t: performance.now(), cover: onCover };
   }, { capture: true, passive: true });
+  addEventListener('touchmove', e => {
+    if (!down || down.cover || !S.swipe || e.touches.length !== 1) return;
+    const { dx, dy } = Gesture.delta(e);
+    if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.6) Gesture.claim('skip'); // clearly sideways: it's a skip swipe
+  }, { capture: true, passive: true });
   addEventListener('touchend', e => {
     if (!down || e.touches.length) { down = null; return; }
     const t = e.changedTouches[0], dx = t.clientX - down.x, dy = t.clientY - down.y, dt = performance.now() - down.t, d0 = down;
     down = null;
-    if (S.swipe && !d0.cover && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 800) { swipeFx(dx < 0 ? -1 : 1); $(dx < 0 ? 'next' : 'prev').click(); return; }
-    if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && dt < 300) {
+    if (Gesture.owner() === 'skip') {
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 800) { swipeFx(dx < 0 ? -1 : 1); $(dx < 0 ? 'next' : 'prev').click(); }
+      return;
+    }
+    // Double-tap to like: two real taps, not on a lyric line (a line tap seeks) and not on the cover (it has its own).
+    const onLine = S.tapSeek && e.target.closest?.('#lyrics:not(.static) .ln');
+    if (Gesture.tap() && dt < 300 && !onLine && !d0.cover) {
       const now2 = performance.now();
       if (S.doubleTapLike && S.showLiked && now2 - lastTap < 320) { $('heart').click(); heartBurst(t.clientX, t.clientY); lastTap = 0; }
       else lastTap = now2;
-    }
+    } else lastTap = 0;
   }, { capture: true, passive: true });
   // ---- the cover (Default / TV / Cover + clock). A tap toggles the controls: the cover shrinks towards its top edge
   // and the controls slide into the space under it. A drag is a swipe: the cover follows the finger 1:1 with the
@@ -115,7 +141,7 @@
     requestAnimationFrame(() => requestAnimationFrame(() => { body.classList.remove('art-dragging'); busy = false; }));
   };
   $('artbox').addEventListener('touchstart', e => {
-    if (busy || !swipeLayouts.includes(S.layout) || e.touches.length !== 1 || e.target.closest('button, input, #ctl')) { cs = null; return; }
+    if (busy || !swipeLayouts.includes(S.layout) || e.touches.length !== 1 || e.target.closest('button, input, #ctl, #tl')) { cs = null; return; }
     const t = e.touches[0], w = artEl.offsetWidth;
     cs = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, on: false, w, gap: w * 0.08, lx: t.clientX, lt: performance.now(), v: 0, s0: 1 };
   }, { passive: true });
@@ -125,6 +151,7 @@
     if (!cs.on) {
       if (!S.swipe || (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx))) { cs = null; return; } // vertical: not ours
       if (Math.abs(dx) < 8) return;
+      if (!Gesture.claim('cover')) { cs = null; return; }
       cs.on = true;
       cs.x = t.clientX; // start from here: no jump by the 8 px it took to decide
       cs.s0 = scaleOf(artEl); // shrunk (controls open) or paused: the cover keeps that size and place while it moves
@@ -178,10 +205,10 @@
   }
   $('artbox').addEventListener('touchend', e => {
     const s = cs;
-    if (s && !s.on && !e.target.closest('button, input, #ctl')) {
+    if (s && !s.on && !e.target.closest('button, input, #ctl, #tl')) {
       // A tap: show / hide the controls. Waits out a possible second tap when double-tap-to-like is on.
       const t = e.changedTouches[0];
-      if (Math.abs(t.clientX - s.x) < 12 && Math.abs(t.clientY - s.y) < 12 && performance.now() - s.t < 350) {
+      if (Gesture.tap() && Math.abs(t.clientX - s.x) < 12 && Math.abs(t.clientY - s.y) < 12 && performance.now() - s.t < 350) {
         const toggle = () => window.showUi(!body.classList.contains('ui'));
         if (S.doubleTapLike && S.showLiked) { if (tapT) { clearTimeout(tapT); tapT = 0; } else tapT = setTimeout(() => { tapT = 0; toggle(); }, 300); }
         else toggle();
@@ -207,6 +234,7 @@
     const s = quad; quad = null;
     const land = innerWidth > innerHeight, main = land ? s.dy : s.dx, cross = land ? s.dx : s.dy;
     if (Math.abs(main) < 50 || Math.abs(main) < Math.abs(cross) * 1.2 || performance.now() - s.t > 1200) return;
+    if (!Gesture.claim('layout') && Gesture.owner() !== 'layout') return;
     const opts = Settings.schema().find(x => x.k === 'layout')?.opts || [];
     const i = opts.findIndex(([v]) => v === S.layout), next = opts[(i + (main < 0 ? 1 : -1) + opts.length) % opts.length];
     if (!next) return;
@@ -231,15 +259,18 @@
   // Long-press (350ms) on the progress bar: drag to scrub with a time bubble, release to seek.
   let scrub = null;
   $('bar').addEventListener('pointerdown', e => {
-    const t = setTimeout(() => { scrub = { id: e.pointerId }; $('bar').setPointerCapture(e.pointerId); document.body.classList.add('scrubbing'); move(e); }, 350);
+    const x0 = e.clientX, y0 = e.clientY;
+    const t = setTimeout(() => { if (!Gesture.claim('scrub')) return; scrub = { id: e.pointerId }; $('bar').setPointerCapture(e.pointerId); document.body.classList.add('scrubbing'); move(e); }, 350);
     const cancel = () => clearTimeout(t);
+    const drift = m => { if (!scrub && Math.hypot(m.clientX - x0, m.clientY - y0) > 10) { cancel(); $('bar').removeEventListener('pointermove', drift); } };
+    $('bar').addEventListener('pointermove', drift);
     $('bar').addEventListener('pointerup', cancel, { once: true });
     $('bar').addEventListener('pointercancel', cancel, { once: true });
   });
   const frac = e => Math.min(1, Math.max(0, e.clientX / innerWidth));
   function move(e) { if (!scrub) return; const f = frac(e); $('bar').style.setProperty('--scrub', f); $('bar').dataset.time = fmtT(f * P.dur); }
   $('bar').addEventListener('pointermove', move);
-  $('bar').addEventListener('pointerup', e => { if (!scrub) return; scrub = null; document.body.classList.remove('scrubbing'); const t = Math.round(frac(e) * P.dur); cmdOf('seek', { ms: t }); P.pos = t; P.at = performance.now(); });
+  $('bar').addEventListener('pointerup', e => { if (!scrub) return; scrub = null; setTimeout(() => document.body.classList.remove('scrubbing'), 0); const t = Math.round(frac(e) * P.dur); cmdOf('seek', { ms: t }); P.pos = t; P.at = performance.now(); });
 
   // ---- up-next chip
   function hideChip() { $('nextChip').classList.remove('show'); }
@@ -335,17 +366,29 @@
       $('clockScreen').style.setProperty('--cx', `${Math.round(Math.random() * 40 - 20)}px`);
       $('clockScreen').style.setProperty('--cy', `${Math.round(Math.random() * 30 - 15)}px`);
     } else if (!S.burnIn) $('wrap').style.transform = '';
-    // battery (every 30s is plenty)
-    if (S.battery && tNow % 30000 < 1000 || S.battery && !$('batt').dataset.init) {
-      $('batt').dataset.init = 1;
+    // status cluster: battery (every 30s is plenty) and the time of day
+    const bat = $('batt'), tn = $('tnow'), timeOn = S.timeStyle !== 'off';
+    if (S.battery && tNow % 30000 < 1000 || S.battery && !bat.dataset.init) {
+      bat.dataset.init = 1;
       const b = String(call('battery') || '').split(',');
       if (b.length === 2) {
-        $('batt').querySelector('span').textContent = `${b[0]}%`;
-        $('batt').style.setProperty('--lvl', b[0] / 100);
-        $('batt').classList.toggle('charging', b[1] === '1');
+        bat.querySelector('span').textContent = `${b[0]}%`;
+        bat.style.setProperty('--lvl', b[0] / 100);
+        bat.classList.toggle('charging', b[1] === '1');
+        bat.classList.toggle('low', +b[0] < 20 && b[1] !== '1');
       }
     }
-    $('batt').classList.toggle('show', !!S.battery);
+    for (const k of ['in', 'out', 'ring', 'bar', 'text']) bat.classList.toggle(`b-${k}`, S.battStyle === k);
+    if (timeOn) {
+      const txt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: S.clock24 !== '24' });
+      if (tn.textContent !== txt) tn.textContent = txt;
+      for (const k of ['small', 'pill', 'big']) tn.classList.toggle(`t-${k}`, S.timeStyle === k);
+    }
+    const stat = $('stat');
+    stat.classList.toggle('bshow', !!S.battery);
+    stat.classList.toggle('tshow', timeOn);
+    stat.classList.toggle('show', !!S.battery || timeOn || stat.classList.contains('qshow'));
+    document.body.classList.toggle('stat-on', stat.classList.contains('show'));
     // keep-awake
     const awake = S.awake === 'always' || (S.awake === 'playing' && (P.playing || idleMin < S.sleepAfter));
     if (awake !== window.__awake) { window.__awake = awake; call('keepAwake', awake); }
@@ -533,6 +576,129 @@
     $('speek').textContent = on ? 'Full view' : 'Preview';
   };
 
+  // ---- timeline under the cover: touch or drag anywhere on it to seek. The fill follows the finger 1:1 (no transition), the
+  // time shows where you would land, and the seek happens on release (app.js then ignores stale beats for a moment).
+  const tlHit = $('tlhit');
+  let tls = null;
+  const tlAt = e => { const r = $('tltrack').getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
+  function tlMove(e) {
+    tls.f = tlAt(e);
+    $('tlfill').style.transform = `translateX(${(tls.f - 1) * 100}%)`;
+    $('tlcur').textContent = fmtT(tls.f * P.dur);
+  }
+  const tlStart = e => {
+    tls.on = true;
+    document.body.classList.add('tl-drag');
+    $('tlfill').style.transition = 'none';
+    tlMove(e);
+  };
+  tlHit.addEventListener('pointerdown', e => {
+    if (!P.dur || tls) return;
+    tls = { id: e.pointerId, f: 0, x: e.clientX, y: e.clientY, on: false };
+    tlHit.setPointerCapture(e.pointerId);
+  });
+  tlHit.addEventListener('pointermove', e => {
+    if (!tls || e.pointerId !== tls.id) return;
+    if (!tls.on) {
+      const dx = e.clientX - tls.x, dy = e.clientY - tls.y;
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { tls = null; return; } // vertical: not a scrub
+      if (Math.abs(dx) < 6 || !Gesture.claim('timeline')) return;
+      tlStart(e);
+    }
+    tlMove(e);
+  });
+  const tlEnd = e => {
+    if (!tls || e.pointerId !== tls.id) return;
+    if (!tls.on) { // a plain tap: seek there
+      if (e.type !== 'pointerup' || !Gesture.tap()) { tls = null; return; }
+      tlStart(e);
+    }
+    const at = Math.round(tls.f * P.dur), ok = e.type === 'pointerup';
+    tls = null;
+    document.body.classList.remove('tl-drag');
+    if (ok) seek(at); // the next frame re-syncs the bar from the new position
+    call('vibrate', 30);
+  };
+  tlHit.addEventListener('pointerup', tlEnd);
+  tlHit.addEventListener('pointercancel', tlEnd);
+
+  // ---- quick bar: a few one-tap actions per layout next to the gear, and a compact sheet with the settings that matter here.
+  const LAYOUTS = () => Settings.schema().find(x => x.k === 'layout')?.opts || [];
+  const layoutName = () => LAYOUTS().find(([v]) => v === S.layout)?.[1] || '';
+  const SVG = p => `<svg viewBox="0 0 24 24">${p}</svg>`;
+  const CLOCKY = () => ['clock', 'clocksplit'].includes(S.layout);
+  const cycle = (k, list, names) => { const v = list[(list.indexOf(S[k]) + 1) % list.length]; Settings.set(k, v); window.notice?.(names[v], 1400); };
+  const QB = {
+    swap: { html: SVG('<path d="M6 8h12m0 0-3.5-3.5M18 8l-3.5 3.5M18 16H6m0 0 3.5-3.5M6 16l3.5 3.5"/>'), tip: 'Swap cover side',
+      run: () => { const v = S.artSide === 'left' ? 'right' : 'left'; Settings.set('artSide', v); window.notice?.(`Cover on the ${v}`, 1400); } },
+    roman: { html: 'Aa', tip: 'Romanization', on: () => S.roman !== 'off',
+      run: () => cycle('roman', ['smart', 'always', 'off'], { smart: 'Romanize · keep Hindi', always: 'Romanize everything', off: 'Original script' }) },
+    layout: { html: SVG('<path d="M4 5.5h16v13H4zM10 5.5v13"/>'), tip: 'Next layout',
+      run: () => { const o = LAYOUTS(), i = o.findIndex(([v]) => v === S.layout), n = o[(i + 1) % o.length]; if (n) { Settings.set('layout', n[0]); window.notice?.(`Layout: ${n[1]}`, 1400); } } },
+    theme: { html: SVG('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>'), tip: 'Card colour',
+      run: () => cycle('clockTheme', ['dark', 'light', 'auto'], { dark: 'Dark cards', light: 'Light cards', auto: 'Automatic card colour' }) },
+    secs: { html: 'ss', tip: 'Seconds', on: () => S.clockSeconds,
+      run: () => { Settings.set('clockSeconds', !S.clockSeconds); window.notice?.(S.clockSeconds ? 'Seconds on' : 'Seconds off', 1200); } },
+    h24: { html: () => (S.clock24 === '24' ? '24' : '12'), tip: '12 / 24 hour',
+      run: () => { Settings.set('clock24', S.clock24 === '24' ? '12' : '24'); window.notice?.(S.clock24 === '24' ? '24-hour clock' : '12-hour clock', 1200); } },
+    tune: { html: SVG('<path d="M4 7h8M18 7h2M4 17h2M12 17h8"/><circle cx="15" cy="7" r="2.4"/><circle cx="9" cy="17" r="2.4"/>'), tip: 'Quick settings', run: () => openQuick() },
+  };
+  const QBAR = { split: ['swap', 'roman', 'layout', 'tune'], tv: ['swap', 'roman', 'layout', 'tune'], player: ['roman', 'layout', 'tune'], lyrics: ['roman', 'layout', 'tune'],
+    compact: ['roman', 'layout', 'tune'], cinema: ['roman', 'layout', 'tune'], nowbar: ['roman', 'layout', 'tune'],
+    clocksplit: ['swap', 'theme', 'secs', 'layout', 'tune'], clock: ['theme', 'secs', 'h24', 'layout', 'tune'] };
+  // Keys are Settings schema keys; a row only shows while its own "when" holds.
+  const LYR = ['roman', 'size', 'align', 'weight', 'lineGap', 'lineOpacity', 'blurLines', 'glow', 'scroll'];
+  const STATUS = ['timeStyle', 'battery', 'battStyle', 'statPos'];
+  const CLK = ['clockTheme', 'clockSeconds', 'clock24', 'clockLayout', 'clockAnim', 'clockIntro', 'clockCards', 'clockScale', 'clockDigitGap', 'clockGroupGap', 'clockDim', 'clockSound', 'clockVolume', 'clockHaptic'];
+  const QUICK = {
+    split: ['artSide', 'progress', ...LYR], tv: ['artSide', 'progress', ...LYR], player: [...LYR, ...STATUS],
+    lyrics: [...LYR, ...STATUS], compact: [...LYR, ...STATUS], cinema: [...LYR, ...STATUS], nowbar: ['spin', ...LYR, ...STATUS],
+    clocksplit: ['artSide', ...CLK], clock: [...CLK, ...STATUS],
+  };
+  function renderQs() {
+    const box = $('qs'), ids = QBAR[S.layout] || ['layout', 'tune'];
+    box.replaceChildren(...ids.map(id => {
+      const q = QB[id], b = document.createElement('button');
+      b.dataset.q = id; b.title = q.tip; b.setAttribute('aria-label', q.tip);
+      b.innerHTML = typeof q.html === 'function' ? q.html() : q.html;
+      if (q.on?.()) b.classList.add('on');
+      return b;
+    }));
+  }
+  $('qs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { QB[b.dataset.q]?.run(); showUi(true); } });
+  function renderQuick() {
+    const body = $('qbody'), top = body.scrollTop;
+    $('qtitle').innerHTML = `Quick settings<small>${layoutName()}</small>`;
+    body.replaceChildren(...Settings.rows(QUICK[S.layout] || ['roman', 'size']));
+    body.scrollTop = top;
+  }
+  const quickOpen = () => document.body.classList.contains('qs-open');
+  function openQuick() { document.body.classList.add('qs-open'); renderQuick(); showUi(true); }
+  function closeQuick() { document.body.classList.remove('qs-open'); showUi(true); }
+  $('qclose').onclick = closeQuick;
+  document.addEventListener('pointerdown', e => { if (quickOpen() && !e.target.closest('#qpanel, #qs')) closeQuick(); }, true);
+  window.onSettingsRender = () => { if (quickOpen()) renderQuick(); };
+
+  // ---- block names: an overlay outlining every [data-block] (docs/layout-map.md), refreshed while it is on
+  function blocks() {
+    const ov = $('blkov');
+    if (!S.showBlocks) { if (ov.firstChild) ov.replaceChildren(); return; }
+    const out = [];
+    document.querySelectorAll('[data-block]').forEach(el => {
+      const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      if (r.width < 4 || r.height < 4 || cs.visibility === 'hidden' || cs.opacity === '0' || r.right < 0 || r.left > innerWidth) return;
+      const d = document.createElement('div'), t = document.createElement('span');
+      d.className = 'bk';
+      d.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;
+      t.textContent = el.dataset.block;
+      d.append(t);
+      out.push(d);
+    });
+    ov.replaceChildren(...out);
+  }
+  setInterval(blocks, 700);
+  addEventListener('resize', blocks);
+
   // ---- settings -> page (runs after app.js apply)
   window.afterApply = k => {
     const b = document.body;
@@ -543,7 +709,15 @@
     b.classList.toggle('outline', S.outline);
     b.classList.toggle('drift', S.bgDrift && (S.bg === 'blur' || S.bg === 'canvas'));
     call('setVolKeys', !!S.volKeys);
+    b.classList.toggle('qs-on', !!S.qsEnabled);
+    b.classList.toggle('show-blocks', !!S.showBlocks);
+    for (const p of ['tr', 'tl', 'br', 'bl']) b.classList.toggle(`stat-${p}`, S.statPos === p);
+    for (const k of ['wave', 'status', 'glow', 'led']) b.classList.toggle(`qi-${k}`, S.showQuality && S.qualityIcon === k);
     placeHeart();
+    placeTags();
+    placeQw();
+    renderQs();
+    blocks();
     if (!k || k === '*' || k === 'font') applyFont();
     if (!k || k === '*' || ['marquee', 'layout', 'size'].includes(k)) setTimeout(remarquee, 50);
     if (k === 'albumLine') albumLine();

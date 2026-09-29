@@ -61,10 +61,31 @@ const Anim = (() => {
   const Scale = spline([[0, 0.95], [0.7, 1.0505], [1, 1]]);
   const YOffset = spline([[0, 1 / 100], [0.9, -(1 / 60)], [1, 0]]);
   const Glow = spline([[0, 0], [0.15, 1], [0.6, 1], [1, 0]]);
+  // Held-word letters (Spicy's emphasis): bigger peak, twice the lift, and only the active letter really pops.
+  const LScale = spline([[0, 0.95], [0.7, 1.175], [1, 1]]);
+  const LY = spline([[0, 1 / 100], [0.9, -(1 / 56)], [1, 0]]);
+  const LineGlow = spline([[0, 0], [0.5, 1], [1, 0]]);
+  const sineOut = x => Math.sin(x * Math.PI / 2);
 
   const springs = () => ({ s: new Spring(Scale(0), 0.88, 0.64), y: new Spring(YOffset(0), 1.45, 0.4), g: new Spring(Glow(0), 1.18, 0.56) });
+  const lsprings = () => ({ s: new Spring(LScale(0), 0.88, 0.64), y: new Spring(LY(0), 1.45, 0.4), g: new Spring(Glow(0), 1.18, 0.56) });
 
-  // One word: state from playback position, springs toward the curve targets, write only what changed.
+  // Write only what changed. One combined transform: the separate `scale` property needs Chrome 104+, older WebViews
+  // (the phone's was Chrome 99) would silently drop it.
+  // The glow is a copy of the word with a fixed text-shadow on its own GPU layer (style.css .sy::after); only its opacity
+  // (--go, 0..1) changes. Animating the shadow itself re-rasterized blurred text every frame: on the phone that alone took
+  // busy lines from 60 to ~30 fps.
+  function paint(w, gp, s, y, glow) {
+    const st = w.el.style;
+    const put = (prop, val) => { if (w[prop] !== val) { w[prop] = val; st.setProperty(prop, val); } };
+    put('--gp', gp.toFixed(1) + '%');
+    // Quantized to ~0.05 px of lift and 1/1000 of scale: the underdamped springs keep wiggling below a pixel for seconds after
+    // a word lands, and every such write re-composites the word for nothing. Settled words now stop writing.
+    put('transform', `translate3d(0, ${(Math.round(y * 800) / 800).toFixed(4)}em, 0) scale(${(Math.round(s * 1000) / 1000).toFixed(3)})`);
+    put('--go', (Math.round(Math.min(1, Math.max(0, glow)) * 50) / 50).toFixed(2));
+  }
+
+  // One word: state from playback position, springs toward the curve targets.
   function word(w, p, dt, opts) {
     const k = w.e > w.t ? Math.min(1, Math.max(0, (p - w.t) / (w.e - w.t))) : p >= w.t ? 1 : 0;
     const state = p < w.t ? 0 : p >= w.e ? 2 : 1;
@@ -74,16 +95,48 @@ const Anim = (() => {
     w.sp.y.set(YOffset(pct));
     w.sp.g.set(Glow(pct));
     const s = w.sp.s.step(dt), y = w.sp.y.step(dt), g = w.sp.g.step(dt);
-    const grad = state === 0 ? -20 : state === 2 ? 100 : -20 + 120 * k;
-    const st = w.el.style;
-    const put = (prop, val) => { if (w[prop] !== val) { w[prop] = val; st.setProperty(prop, val); } };
-    put('--gp', grad.toFixed(1) + '%');
-    // Letters of a long-held word (lyrics.js letter mode) get Spicy's emphasis: more lift, scale and glow.
-    const e = (w.emph ? 2.2 : 1) * (opts.liftK ?? 1), gk = opts.glowK ?? 1; // Settings: Lift amount / Glow strength
-    put('scale', opts.lift ? (1 + (s - 1) * e).toFixed(4) : '1');
-    put('transform', opts.lift ? `translate3d(0, ${(y * e).toFixed(4)}em, 0)` : 'none');
-    put('--tsr', ((4 + (w.emph ? 6 : 2) * g) * gk).toFixed(1) + 'px');
-    put('--tso', opts.glow ? Math.min(g * 35 * (w.emph ? 1.6 : 1) * gk, 100).toFixed(0) + '%' : '0%');
+    const lk = opts.lift ? opts.liftK ?? 1 : 0, gk = opts.glowK ?? 1; // Settings: Lift amount / Glow strength
+    // Lift off: rest at scale 1 / y 0 (the idle pose is only for words that are about to move).
+    paint(w, state === 0 ? -20 : state === 2 ? 100 : -20 + 120 * k,
+      opts.lift ? 1 + (s - 1) * lk : 1, opts.lift ? y * lk : 0, opts.glow ? g * gk : 0);
+  }
+
+  // One letter of a held word. The group finds the letter being sung once per frame; the others fall off with
+  // distance (1 / (1 + d^2.8) for lift and scale, 1 / (1 + .9 d) for glow), so it reads as one letter popping and the
+  // neighbours following, not a wave of identical curves.
+  function letter(w, p, dt, opts) {
+    const g = w.g;
+    if (g.at !== p) {
+      g.at = p; g.act = -1; g.pct = 0;
+      for (let i = 0; i < g.ls.length; i++) { const L = g.ls[i]; if (p >= L.t && p < L.e) { g.act = i; g.pct = (p - L.t) / (L.e - L.t || 1); break; } }
+    }
+    if (!w.sp) w.sp = lsprings();
+    const word = p < g.t ? 0 : p >= g.e ? 2 : 1, own = p < w.t ? 0 : p >= w.e ? 2 : 1;
+    let ts = LScale(0), ty = LY(0), tg = 0;
+    if (word === 2) { ts = LScale(1); ty = LY(1); }
+    else if (word === 1 && g.act >= 0 && own !== 0) {
+      const d = Math.abs(w.k - g.act), f = 1 / (1 + Math.pow(d, 2.8)), gf = 1 / (1 + d * 0.9);
+      ts = LScale(0) + (LScale(g.pct) - LScale(0)) * f;
+      ty = LY(0) + (LY(g.pct) - LY(0)) * f;
+      tg = Glow(g.pct) * gf;
+    }
+    w.sp.s.set(ts); w.sp.y.set(ty); w.sp.g.set(tg);
+    const s = w.sp.s.step(dt), y = w.sp.y.step(dt), gl = w.sp.g.step(dt);
+    const lk = opts.lift ? opts.liftK ?? 1 : 0, gk = opts.glowK ?? 1;
+    const own01 = w.e > w.t ? Math.min(1, Math.max(0, (p - w.t) / (w.e - w.t))) : 1;
+    paint(w, own === 0 ? -20 : own === 2 ? 100 : -20 + 120 * sineOut(own01),
+      opts.lift ? 1 + (s - 1) * lk : 1, opts.lift ? y * 2 * lk : 0, opts.glow ? 1.85 * gl * gk : 0);
+  }
+
+  // Line-synced lyrics have no words to sweep: the whole line pulses a soft glow while it is sung.
+  function line(x, p, dt, opts) {
+    const k = x.e > x.t ? Math.min(1, Math.max(0, (p - x.t) / (x.e - x.t))) : 1;
+    if (!x.sp) x.sp = { g: new Spring(0, 1, 0.5) };
+    x.sp.g.set(p < x.t ? 0 : p >= x.e ? 0 : LineGlow(k));
+    const g = x.sp.g.step(dt), gk = opts.glowK ?? 1, st = x.el.style;
+    const r = ((4 + 8 * g) * gk).toFixed(1) + 'px', o = (opts.glow ? Math.min(50 * g * gk, 100) : 0).toFixed(0) + '%';
+    if (x.tsr !== r) { x.tsr = r; st.setProperty('--tsr', r); }
+    if (x.tso !== o) { x.tso = o; st.setProperty('--tso', o); }
   }
 
   // ---- interlude dots (Spicy's DotAnimations / DotGroupAnimations). Each dot owns a third of the gap and
@@ -100,8 +153,7 @@ const Anim = (() => {
       g: new Spring(DotGlow(0), 1, 0.5), o: new Spring(DotOpacity(0), 1, 0.5) };
     d.sp.s.set(DotScale(k)); d.sp.y.set(DotY(k)); d.sp.g.set(DotGlow(k)); d.sp.o.set(DotOpacity(k));
     const s = d.sp.s.step(dt), y = d.sp.y.step(dt), g = d.sp.g.step(dt), o = d.sp.o.step(dt);
-    put(d, 'scale', s.toFixed(4));
-    put(d, 'transform', `translate3d(0, ${y.toFixed(4)}em, 0)`);
+    put(d, 'transform', `translate3d(0, ${y.toFixed(4)}em, 0) scale(${s.toFixed(4)})`);
     put(d, 'opacity', o.toFixed(3));
     put(d, '--tsr', (4 + 6 * g).toFixed(1) + 'px');
     put(d, '--tso', Math.min(g * 35, 100).toFixed(0) + '%');
@@ -129,7 +181,7 @@ const Anim = (() => {
     }
     g.sp.s.set(lerpAt(g.scalePts, x));
     g.sp.o.set(lerpAt(g.opPts, x));
-    put(g, 'scale', Math.max(0, g.sp.s.step(dt)).toFixed(4));
+    put(g, 'transform', `scale(${Math.max(0, g.sp.s.step(dt)).toFixed(4)})`);
     put(g, 'opacity', Math.min(1, Math.max(0, g.sp.o.step(dt))).toFixed(3));
   }
 
@@ -137,18 +189,25 @@ const Anim = (() => {
   function rest(words, sung) {
     for (const w of words) {
       if (!w.sp) continue;
-      const k = sung ? 1 : 0;
-      w.sp.s.set(Scale(k), true); w.sp.y.set(YOffset(k), true); w.sp.g.set(Glow(k), true);
-      for (const prop of ['--gp', 'scale', 'transform', '--tsr', '--tso']) { w.el.style.removeProperty(prop); w[prop] = undefined; }
+      const k = sung ? 1 : 0, [S, Y] = w.g ? [LScale, LY] : [Scale, YOffset];
+      w.sp.s.set(S(k), true); w.sp.y.set(Y(k), true); w.sp.g.set(Glow(k), true);
+      for (const prop of ['--gp', 'transform', '--go']) { w.el.style.removeProperty(prop); w[prop] = undefined; }
     }
   }
 
   function restDots(line) {
     for (const d of [line.grp, ...line.dd]) {
       d.sp = null; d.scalePts = null;
-      for (const prop of ['scale', 'transform', 'opacity', '--tsr', '--tso']) { d.el.style.removeProperty(prop); d[prop] = undefined; }
+      for (const prop of ['transform', 'opacity', '--tsr', '--tso']) { d.el.style.removeProperty(prop); d[prop] = undefined; }
     }
   }
 
-  return { Spring, spline, word, rest, dot, dotGroup, restDots };
+  // A line-synced line leaving the active window.
+  function restLine(x) {
+    if (!x.sp) return;
+    x.sp.g.set(0, true);
+    for (const prop of ['--tsr', '--tso']) { x.el.style.removeProperty(prop); x[prop] = undefined; }
+  }
+
+  return { Spring, spline, word, letter, line, rest, restLine, dot, dotGroup, restDots };
 })();

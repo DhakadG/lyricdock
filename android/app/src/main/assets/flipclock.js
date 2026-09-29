@@ -86,10 +86,17 @@ const Flip = (() => {
   let root = null, groups = [], shown = false, secs = false, lastKey = '', tapT = 0, forceSecs = null;
 
   // ---- sound: noise bursts through filters, synthesised on demand (no audio files to ship)
-  let ac = null, noise = null;
+  let ac = null, noise = null, out = null;
   function audio() {
     if (!ac) {
-      try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+      try { ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }); } catch (e) { return null; }
+      // Everything goes through one limiter and one master level: when a whole board of cards lands at once the bursts add
+      // up, and straight into the speaker they clipped into a harsh crackle.
+      const lim = ac.createDynamicsCompressor();
+      lim.threshold.value = -14; lim.knee.value = 8; lim.ratio.value = 12; lim.attack.value = 0.001; lim.release.value = 0.08;
+      out = ac.createGain(); out.gain.value = 0.9;
+      lim.connect(out).connect(ac.destination);
+      out = lim;
       noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); // 1 s: long enough for any burst from any offset
       const d = noise.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -105,7 +112,7 @@ const Flip = (() => {
     f.type = type; f.Q.value = q;
     f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + len);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-    src.connect(f).connect(g).connect(a.destination);
+    src.connect(f).connect(g).connect(out);
     src.start(t, Math.random() * 0.5, len + 0.02);
   }
   function thump(vol, at, f = 140) {
@@ -114,11 +121,25 @@ const Flip = (() => {
     const t = a.currentTime + at, o = a.createOscillator(), g = a.createGain();
     o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.45, t + 0.05);
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
-    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.07);
+    o.connect(g).connect(out); o.start(t); o.stop(t + 0.07);
   }
   const jit = () => 0.85 + Math.random() * 0.3; // no two flaps sound exactly alike
   // A flap hitting the stack: a sharp plastic tick, a short hollow body and a dull knock.
+  // Real boards rattle: many flaps landing together sound like a quick run of clicks, not one loud blast. Clacks
+  // closer than 9 ms to one already scheduled are dropped, and each one gets quieter the busier its 60 ms window is.
+  const landed = [];
+  function budget(at) {
+    const t = (ac?.currentTime ?? 0) + at;
+    while (landed.length && landed[0] < t - 0.2) landed.shift();
+    if (landed.some(x => Math.abs(x - t) < 0.009)) return 0;
+    const busy = landed.filter(x => Math.abs(x - t) < 0.06).length;
+    landed.push(t); landed.sort((a, b) => a - b);
+    return 1 / Math.sqrt(1 + busy);
+  }
   function clack(at, v) {
+    if (!audio()) return;
+    v *= budget(at);
+    if (!v) return;
     burst({ type: 'highpass', f0: 4200 * jit(), vol: 0.9 * v, attack: 0.0008, len: 0.012, at });
     burst({ type: 'bandpass', f0: 1700 * jit(), q: 5, vol: 0.6 * v, attack: 0.001, len: 0.04, at: at + 0.002 });
     thump(0.3 * v, at, 190 * jit());
@@ -136,8 +157,11 @@ const Flip = (() => {
     else if (kind === 'soft') { burst({ type: 'lowpass', f0: 1200, vol: 0.5 * v, len: 0.04, at: land }); thump(0.35 * v, land); }
   }
   // A basic vibration motor needs ~30 ms to be felt at all (12 ms ran but was imperceptible).
-  const haptic = at => { const ms = { light: 30, firm: 50 }[S().clockHaptic];
-    if (ms) setTimeout(() => { try { Dock.vibrate(ms); } catch (e) {} }, at * 1000); };
+  let buzzAt = 0;
+  const haptic = at => { const ms = { light: 30, firm: 50 }[S().clockHaptic], when = performance.now() + at * 1000;
+    if (!ms || Math.abs(when - buzzAt) < 140) return; // cards landing together: one buzz
+    buzzAt = when;
+    setTimeout(() => { try { Dock.vibrate(ms); } catch (e) {} }, at * 1000); };
 
   // ---- DOM: a group per unit (hours, minutes, seconds), a card per digit, four full-card layers per card
   const cellHtml = () => { const svg = layerSvg();
@@ -230,15 +254,22 @@ const Flip = (() => {
       return { fall: delay / 1000, land: (delay + land) / 1000 };
     }
     const m = motion(anim, sp);
+    // Shading follows the card each flap is made of: black cards sink into near-black as they turn away from the light;
+    // paper-white cards only dim a little, in a warm tone - a black-level shade on them read as a dark card flipping over.
+    // During a colour change the falling flap is still the old colour (fromPre), the landing one already the new.
+    const lightTo = pre() === 'fc-light-', lightFrom = fromPre ? fromPre === 'fc-light-' : lightTo;
+    const SH = l => (l ? { c: '#4b4238', fall: 0.26, land: 0.34, drop: 0.14 } : { c: '#000', fall: 0.65, land: 0.85, drop: 0.35 });
+    const shFrom = SH(lightFrom), shTo = SH(lightTo);
+    for (const [el, sh] of [[ft.el.querySelector('.fc-shade'), shFrom], [fb.el.querySelector('.fc-shade'), shTo], [bot.el.querySelector('.fc-drop'), shFrom]]) el.style.setProperty('--sh', sh.c);
     ft.el.classList.add('on'); fb.el.classList.add('on');
     anims.push(ft.el.animate(m.top, { duration: m.fall, delay, easing: m.topEase, ...o }));
-    ft.el.querySelector('.fc-shade').animate([{ opacity: 0 }, { opacity: 0.65 }], { duration: m.fall, delay, easing: EASE.in, ...o });
-    bot.el.querySelector('.fc-drop').animate([{ opacity: 0 }, { opacity: 0.35 }, { opacity: 0 }], { duration: m.fall + m.hit * 1.5, delay, easing: 'ease-in-out' });
+    ft.el.querySelector('.fc-shade').animate([{ opacity: 0 }, { opacity: shFrom.fall }], { duration: m.fall, delay, easing: EASE.in, ...o });
+    bot.el.querySelector('.fc-drop').animate([{ opacity: 0 }, { opacity: shFrom.drop }, { opacity: 0 }], { duration: m.fall + m.hit * 1.5, delay, easing: 'ease-in-out' });
     if (anim === 'fold') ft.el.querySelector('.fc-sheen').animate([{ opacity: 0, transform: 'translateY(-60%)' }, { opacity: 0.5, transform: 'translateY(40%)' }], { duration: m.fall, delay, easing: 'linear', ...o });
     const landing = fb.el.animate(m.bot, { duration: m.dur, delay: delay + m.fall, easing: m.botEase, ...o });
     landing.onfinish = () => { paint(bot, d, label); ft.el.classList.remove('on'); fb.el.classList.remove('on'); ft.el.getAnimations().forEach(a => a.cancel()); landing.cancel(); };
     anims.push(landing);
-    fb.el.querySelector('.fc-shade').animate([{ opacity: 0.85 }, { opacity: 0 }], { duration: m.hit * 1.3, delay: delay + m.fall, easing: EASE.out, ...o });
+    fb.el.querySelector('.fc-shade').animate([{ opacity: shTo.land }, { opacity: 0 }], { duration: m.hit * 1.3, delay: delay + m.fall, easing: EASE.out, ...o });
     return { fall: delay / 1000, land: (delay + m.fall + m.hit) / 1000 };
   }
 

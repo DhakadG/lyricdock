@@ -6,7 +6,22 @@ const P = { pos: 0, at: 0, playing: false, dur: 0, id: null, art: null, lyrics: 
 const EASE = 'cubic-bezier(.2,.8,.2,1)';
 const PLAY = 'M8 5v14l11-7z', PAUSE = 'M6 5h4v14H6zm8 0h4v14h-4z';
 const ms = t => t / S.animSpeed;
-const now = () => P.pos + (P.playing ? performance.now() - P.at : 0) + S.offset;
+// The song position. Every bridge beat (~500 ms) re-measures it, and the measurements are a little noisy, so following
+// them raw makes the word sweep jump by tens of ms on each beat. Like Spicy Lyrics, keep a predicted clock that advances
+// with wall-clock time and is pulled toward the measurement with a frame-rate-independent low-pass (time constant 300 ms);
+// a difference over 500 ms is a real jump (seek, new song) and snaps. It never adds lag, it only spreads the noise.
+const K = { v: 0, t: 0, id: null, playing: false };
+function pos() {
+  const t = performance.now(), dt = t - K.t;
+  if (dt <= 0) return K.v;
+  const m = P.pos + (P.playing ? t - P.at : 0), fresh = !P.playing || !K.playing || K.id !== P.id;
+  K.t = t; K.id = P.id; K.playing = P.playing;
+  if (fresh) return (K.v = m); // paused, just resumed or a new song: trust the measurement
+  const err = m - (K.v + dt);
+  return (K.v = Math.abs(err) > 500 ? m : K.v + dt + err * (1 - Math.exp(-dt / 300)));
+}
+// Lyrics use the position plus the user's sync offset; the progress bar and time labels use the real position.
+const now = () => pos() + S.offset;
 // To the desktop bridge over whichever link is up: the adb WebSocket (native) and/or the WebRTC channel (rtc.js).
 const send = o => { const s = JSON.stringify(o); try { Dock.send(s); } catch (e) {} Rtc.send(s); };
 const sleep = t => new Promise(r => setTimeout(r, t));
@@ -188,8 +203,9 @@ function offerLyrics(id, lyr) {
   const first = !P.lyrics;
   P.lyrics = lyr;
   Lyrics.build(lyr);
-  $('lyrics').animate([{ opacity: 0, transform: first ? 'translateY(3vmin)' : 'none' }, { opacity: 1, transform: 'none' }],
-    { duration: ms(first ? 500 : 350), easing: EASE });
+  // Opacity only, on the list: #lyrics may still be running the song-change animation (two animations on one element
+  // replace each other mid-flight = a visible jump), and #lines' transform belongs to the scroll spring.
+  $('lines').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(first ? 450 : 320), easing: 'ease-out' });
 }
 
 // Fill the gap from the API while the desktop has nothing better than line-synced lyrics.
@@ -269,6 +285,8 @@ function onMeta(m) {
   if (m.quality !== undefined && m.quality !== P.quality) {
     P.quality = m.quality;
     // Spotify's playbackQuality.bitrateLevel: 1 Low, 2 Normal, 3 High, 4 Very high, 5 Lossless, 6 Lossless 24-bit.
+    document.body.classList.toggle('q-lossless', /lossless|hifi|hi-fi/i.test(String(m.quality)) || m.quality >= 5);
+    window.qualityChanged?.();
     $('quality').textContent = ({ 1: 'Low', 2: 'Normal', 3: 'High', 4: 'Very high', 5: 'Lossless', 6: 'Lossless' })[m.quality] ?? (m.quality > 6 ? 'Lossless' : m.quality) ?? '';
   }
 }
@@ -292,6 +310,7 @@ function setPlaying(p, animate) {
 
 function onPos(m) {
   if (performance.now() < P.optimistic && +m.pos > 3000) return onMeta(m);
+  if (performance.now() < P.seekUntil && Math.abs(+m.pos - (P.seekTo + (P.playing ? performance.now() - P.seekAt : 0))) > 1200) return onMeta(m);
   const had = P.at > 0;
   P.pos = +m.pos || 0;
   P.at = performance.now();
@@ -397,17 +416,23 @@ window.showUi = on => {
     // The controls take the title's place under the cover (it fades out), and the cover gives up only what's missing.
     const box = $('artbox').getBoundingClientRect(), meta = $('meta').getBoundingClientRect(), w = box.width, h = $('ctl').offsetHeight, gap = w * 0.04;
     const room = (meta.height && meta.top >= box.bottom - 2 ? meta.bottom : box.bottom) - box.top;
-    const s = w ? Math.min(0.94, Math.max(0.5, (room - h - gap) / w)) : 0.9;
+    const tl = $('tl').getClientRects().length ? $('tl').offsetHeight + gap * 0.5 : 0; // the timeline rides under the shrunk cover
+    const s = w ? Math.min(0.94, Math.max(0.5, (room - h - gap - tl) / w)) : 0.9;
     document.documentElement.style.setProperty('--art-mini', s.toFixed(3));
-    document.documentElement.style.setProperty('--ctl-top', `${(s * w + gap).toFixed(1)}px`);
+    document.documentElement.style.setProperty('--ctl-top', `${(s * w + gap + tl).toFixed(1)}px`);
+    document.documentElement.style.setProperty('--tl-dy', `${((s - 1) * w).toFixed(1)}px`);
   }
   document.body.classList.toggle('ui', on);
-  if (on) hideT = setTimeout(() => document.body.classList.remove('ui'), S.hideAfter * 1000);
+  if (on) hideT = setTimeout(() => { if (!document.body.classList.contains('qs-open')) document.body.classList.remove('ui'); }, S.hideAfter * 1000);
 };
-document.addEventListener('pointerdown', e => {
-  if (e.target.closest?.('#settings')) return;
+// The controls appear on a tap, not on every touch: scrolling the lyrics or swiping must not pop them up. A tap on a lyric line
+// seeks (Settings -> Tap a line to jump to it) instead; the cover handles its own taps (features.js).
+document.addEventListener('click', e => {
+  if (!Gesture.tap() || e.target.closest?.('#settings, #qpanel, #listPanel, #pairAsk, #news, #setup')) return;
   if (document.body.classList.contains('art-ctl') && e.target.closest?.('#artbox') && !e.target.closest('#ctl')) return;
-  showUi(true);
+  const onLine = S.tapSeek && e.target.closest?.('#lyrics:not(.static) .ln:not(.dots):not(.credits):not(.skel):not(.empty)');
+  if (onLine && !document.body.classList.contains('ui')) return;
+  showUi(true); // (buttons inside the controls just keep them up)
 }, true);
 // Commands go to whichever source is on screen.
 const control = (c, arg) => P.source === 'web' ? Web.control(c, arg) : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
@@ -422,7 +447,7 @@ window.swipeCommit = dir => {
 };
 $('prev').onclick = () => cmd('prev', -1);
 $('next').onclick = () => cmd('next', 1);
-$('pp').onclick = () => { P.pos = now() - S.offset; P.at = performance.now(); P.lockUntil = P.at + 400; setPlaying(!P.playing, true); cmd('toggle'); };
+$('pp').onclick = () => { P.pos = pos(); P.at = performance.now(); P.lockUntil = P.at + 400; setPlaying(!P.playing, true); cmd('toggle'); };
 $('heart').onclick = () => {
   P.liked = !P.liked;
   P.heartLock = performance.now() + 1500; // don't let an in-flight beat flip it back
@@ -436,10 +461,14 @@ $('gear').onclick = () => Settings.open();
 $('sclose').onclick = () => Settings.close();
 $('settings').addEventListener('click', e => { if (e.target.id === 'settings') Settings.close(); }); // tap outside the sheet
 $('sreset').onclick = () => Settings.reset();
-const seek = t => { control('seek', t); P.pos = t; P.at = performance.now(); };
+// A seek is applied at once; for a moment beats still carrying the old position (Spotify has not caught up) are ignored, so the
+// bar and the lyrics do not jump back and forth.
+const seek = t => { control('seek', t); P.pos = t; P.at = performance.now(); P.seekTo = t; P.seekAt = P.at; P.seekUntil = P.at + 1200; };
 Lyrics.onSeek(seek);
-$('bar').addEventListener('pointerdown', e => {
-  if (!document.body.classList.contains('ui') || !P.dur) return;
+// Edge bar: a tap seeks (while the controls show); a press-and-hold scrubs (features.js). Not on finger-down: that seeked
+// before we knew whether the finger was tapping, holding or starting a scroll.
+$('bar').addEventListener('click', e => {
+  if (!document.body.classList.contains('ui') || !P.dur || !Gesture.tap() || document.body.classList.contains('scrubbing')) return;
   seek(Math.round(e.clientX / innerWidth * P.dur));
 });
 
@@ -480,10 +509,13 @@ window.setInsets = o => { insets = { ...insets, ...o }; applyInsets(); };
 const pullInsets = () => { try { setInsets(JSON.parse(Dock.insets())); } catch (e) { applyInsets(); } };
 function applyInsets() {
   const man = S.edgeMode === 'manual', st = document.documentElement.style, px = v => `${Math.round(v * 10) / 10}px`;
-  st.setProperty('--sa-l', px(man ? S.edgePad : insets.l));
-  st.setProperty('--sa-r', px(man ? S.edgePad : insets.r));
-  st.setProperty('--sa-t', px(man ? 0 : insets.t));
-  st.setProperty('--sa-b', px(man ? 0 : insets.b));
+  // The camera cutout is always kept clear (it moves with the rotation: top in portrait, left or right in landscape);
+  // Manual only adds side padding on top of it. (Manual used to replace the insets, which put text under the notch.)
+  const side = man ? S.edgePad : 0;
+  st.setProperty('--sa-l', px(Math.max(insets.l, side)));
+  st.setProperty('--sa-r', px(Math.max(insets.r, side)));
+  st.setProperty('--sa-t', px(insets.t));
+  st.setProperty('--sa-b', px(insets.b));
   const bar = r => { // raise by ~a quarter radius; inset = where the corner arc crosses that height
     if (r <= 0) return [0, 0];
     const y = Math.max(3, r * 0.25);
@@ -501,6 +533,7 @@ function apply(k) {
   b.className = b.className.replace(/\b(layout|bg|align|prog|pp|scroll|art)-\S+/g, '').replace(/\s+/g, ' ').trim();
   b.classList.add(`layout-${S.layout}`, `bg-${S.bg}`, `align-${S.align}`, `prog-${S.progress}`, `pp-${S.ppAnim}`, `scroll-${S.scroll}`, `art-${S.artSide}`);
   b.classList.toggle('no-accent', !S.accent);
+  b.classList.toggle('no-lift', !S.lift); // without lift the words rest at full size, not the idle pose
   b.classList.toggle('no-spin', !S.spin);
   if (!S.showVolume) $('ctl').classList.remove('has-vol');
   b.classList.toggle('blurlines', S.blurLines);
@@ -517,6 +550,8 @@ function apply(k) {
   r.setProperty('--lgap', S.lineGap + 'vmin');
   r.setProperty('--lop', S.lineOpacity);
   r.setProperty('--blur', S.blurAmount + 'px');
+  r.setProperty('--gk', S.glowStrength);
+  b.classList.toggle('no-glass', !S.glass);
   // Controls: over the cover (Default/TV), in the always-visible deck (Player card), centred on screen otherwise.
   const artCtl = ['split', 'tv', 'clocksplit'].includes(S.layout);
   b.classList.toggle('art-ctl', artCtl);
@@ -540,7 +575,7 @@ const F = { at: 0, pos: -1, playing: false, dur: 0 };
 function fillSync(p) {
   const frac = P.dur ? Math.min(1, Math.max(0, p / P.dur)) : 0;
   Object.assign(F, { at: performance.now(), pos: p, playing: P.playing, dur: P.dur });
-  for (const f of [$('fill'), $('dfill')]) { // the edge bar and the Player card's bar
+  for (const f of [$('fill'), $('dfill'), $('tlfill')]) { // the edge bar, the Player card's bar and the one under the cover
     f.style.transition = 'none';
     f.style.transform = `translateX(${(frac - 1) * 100}%)`;
     if (!P.playing || !P.dur || frac >= 1) continue;
@@ -550,6 +585,7 @@ function fillSync(p) {
   }
 }
 function fillCheck(p) {
+  if (document.body.classList.contains('tl-drag')) return; // the finger is driving the bar
   const expected = F.pos + (F.playing ? performance.now() - F.at : 0);
   if (F.pos < 0 || F.playing !== P.playing || F.dur !== P.dur || Math.abs(p - expected) > 200) fillSync(p);
 }
@@ -567,12 +603,12 @@ const linkLog = window.linkLog = [];
     linkLog.push({ at: new Date().toLocaleTimeString(), stale }); // read over CDP when testing failover
     if (linkLog.length > 50) linkLog.shift();
   }
-  const p = now();
-  fillCheck(p);
-  if ((p / 1000 | 0) !== lastSec) {
-    lastSec = p / 1000 | 0;
-    $('tcur').textContent = $('dcur').textContent = clock(p);
-    $('tdur').textContent = $('ddur').textContent = clock(P.dur);
+  const real = pos(), p = real + S.offset;
+  fillCheck(real);
+  if ((real / 1000 | 0) !== lastSec && !document.body.classList.contains('tl-drag')) {
+    lastSec = real / 1000 | 0;
+    $('tcur').textContent = $('dcur').textContent = $('tlcur').textContent = clock(real);
+    $('tdur').textContent = $('ddur').textContent = $('tldur').textContent = clock(P.dur);
   }
   Lyrics.update(p, dt);
   beatBg(p);

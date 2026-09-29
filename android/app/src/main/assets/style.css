@@ -19,6 +19,11 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
   font-family: var(--font, system-ui), system-ui, Roboto, sans-serif; user-select: none; -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 button { font: inherit; color: inherit; cursor: pointer; }
+/* No double-tap-to-zoom: the WebView otherwise swallows both clicks of a quick double tap (lines, buttons). */
+html, body { touch-action: manipulation; }
+/* No scrollbars anywhere (the WebView draws overlay bars on every scrolling panel); scrolling itself is untouched. */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 /* ======================================================================= backgrounds */
 #bgc, #bg, #bgGrad, #dim { position: fixed; inset: 0; }
@@ -57,10 +62,6 @@ body.paused.pp-both #art, body.paused.pp-shrink #art { transform: scale(.88); bo
 #heart.on { opacity: 1; color: #1ed760; filter: drop-shadow(0 0 1.2vmin rgba(30, 215, 96, .45)); }
 #heart.on .fill { opacity: 1; }
 body.show-liked #heart { display: block; }
-#quality { display: none; width: max-content; margin: 1.4vmin auto 0; padding: .45vmin 1.4vmin; border-radius: 2vmin;
-  font-size: 1.9vmin; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
-  color: rgba(var(--acc), .95); background: rgba(var(--acc), .12); box-shadow: inset 0 0 0 1px rgba(var(--acc), .25); }
-body.show-quality #quality:not(:empty) { display: block; }
 #pulse { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; pointer-events: none; }
 #pulse div { width: 24vmin; height: 24vmin; border-radius: 50%; background: rgba(0, 0, 0, .55); display: grid; place-items: center;
   box-shadow: 0 0 0 .5vmin rgba(255, 255, 255, .12); }
@@ -76,14 +77,27 @@ body.show-quality #quality:not(:empty) { display: block; }
 #lyrics.static { overflow-y: auto; -webkit-mask-image: none; }
 #lines { position: absolute; left: 0; right: 0; will-change: transform; }
 #lyrics.static #lines { position: static; padding: 12vmin 0; }
-body.scroll-smooth #lines { transition: transform calc(.75s / var(--as)) cubic-bezier(.2, .8, .2, 1); }
-body.scroll-spring #lines { transition: transform calc(.9s / var(--as)) var(--spring); }
-body.scroll-snappy #lines { transition: transform calc(.35s / var(--as)) cubic-bezier(.3, .9, .3, 1); }
+/* (lyrics.js moves #lines with a spring, not a CSS transition: it keeps its velocity when the target changes.) */
+/* How a word is painted - the same way in every line state, so nothing pops when a line becomes active (this used to swap
+   solid text for gradient text, which dipped the brightness and made the new line flash white, then grey, then glow):
+   gradient background clipped to the text; --gp is where the sweep is (-20% = nothing sung, 100% = all sung);
+   --a1 is the alpha of the sung part, --a0 of the part still to come; --cs / --cu their colours. */
 .ln { font-size: var(--lsize); font-weight: var(--lw); line-height: 1.16; letter-spacing: -.022em; padding: var(--lgap) 0;
   opacity: var(--lop); transform-origin: left center; transform: scale(.95);
+  --a1: .92; --a0: 1; --cs: 255, 255, 255; --cu: 255, 255, 255; --tsr: 4px; --tso: 0%;
   transition: opacity .35s, transform calc(.6s / var(--as)) var(--ease), filter .5s; }
 .ln.sung { opacity: calc(var(--lop) * .97); }
-.ln.on { opacity: 1; transform: scale(1); }
+/* Becoming active: opacity jumps to 1 in the same instant the unsung words drop to --lop + .1, so brightness is continuous
+   (lop x 1 before, 1 x (lop + .1) after). Leaving it fades (the base transition), which is what a finished line should do. */
+.ln.on { opacity: 1; transform: scale(1); --a0: calc(var(--lop) + .1); transition: opacity 0s, transform calc(.6s / var(--as)) var(--ease), filter .5s; }
+/* Line-synced lyrics have no words: the line itself lifts a little and glows while it is sung. */
+.ln.lk.on { transform: scale(1.03); }
+.ln.lk.on, .ln.lk.cool { text-shadow: 0 0 var(--tsr) rgba(255, 255, 255, var(--tso)); }
+/* Duets: each voice keeps to its own side, with room on the other (Spicy's Duet Line Padding). */
+#lines.duet .ln.opp { padding-left: 12%; }
+#lines.duet .ln:not(.opp):not(.dots):not(.credits) { padding-right: 12%; }
+/* A pressed line lights up so a tap-to-seek is answered at once. */
+#lyrics:not(.static) .ln:not(.dots):not(.skel):not(.empty):not(.credits):active { background: rgba(255, 255, 255, .07); border-radius: 2vmin; }
 body.align-center .ln { text-align: center; transform-origin: center; }
 .ln.opp { text-align: right; transform-origin: right center; }
 body.blurlines .ln[data-d="2"] { filter: blur(var(--blur)); }
@@ -92,26 +106,40 @@ body.blurlines .ln[data-d="3"] { filter: blur(calc(var(--blur) * 2)); }
 #lyrics.free .ln { filter: none !important; opacity: .9; transition: opacity .3s, filter .3s; }
 /* Padding + equal negative margin: background-clip:text only paints inside the box, and Devanagari /
    Gurmukhi vowel marks sit above and below it - without this they get cut off while a line is active. */
-.sy { display: inline-block; --gp: -20%; --tsr: 4px; --tso: 0%; padding: .25em .06em; margin: -.25em -.06em; }
+.sy { display: inline-block; --gp: -20%; --gd: 90deg; padding: .25em .06em; margin: -.25em -.06em;
+  background-image: linear-gradient(var(--gd), rgba(var(--cs), var(--a1)) var(--gp), rgba(var(--cu), var(--a0)) calc(var(--gp) + 20%));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  transform: translate3d(0, .01em, 0) scale(.95); } /* idle pose: what the springs rest at, so a line activating never snaps its words */
+.sy.lt { transform: translate3d(0, .02em, 0) scale(.95); }
+.ln.sung .sy { --gp: 100%; transform: none; } /* (the springs' inline styles win while a line is cooling down) */
+body.no-lift .sy, body.no-lift .sy.lt { transform: none; }
+/* Glow: a transparent copy of the word carrying a fixed shadow; only its opacity (--go) animates, on the compositor. */
+.sy { position: relative; --go: 0; }
+.sy::after { content: attr(data-t); position: absolute; inset: 0; padding: inherit; white-space: pre; pointer-events: none;
+  background: none; -webkit-text-fill-color: transparent; opacity: var(--go);
+  text-shadow: 0 0 calc(.09em * var(--gk, 1)) rgba(255, 255, 255, .5), 0 0 calc(.2em * var(--gk, 1)) rgba(255, 255, 255, .28); }
+.sy.lt::after { text-shadow: 0 0 calc(.1em * var(--gk, 1)) rgba(255, 255, 255, .95), 0 0 calc(.32em * var(--gk, 1)) rgba(255, 255, 255, .6); }
+.ln:not(.on):not(.cool) .sy::after { content: none; } /* no glow copy (and no layer) for lines that aren't moving */
+/* Words of the sung line and the next one get their own layers before they start moving, so lift and glow never repaint the
+   line (promoting on activation would stall that very frame). */
+.ln[data-d="0"] .sy, .ln[data-d="1"] .sy, .ln.on .sy, .ln.cool .sy { will-change: transform; }
+.ln.on .sy::after, .ln.cool .sy::after { will-change: opacity; }
 .ln.indic { line-height: 1.45; }
 .wg { white-space: nowrap; }
-.ln.on .sy { background-image: linear-gradient(90deg, rgba(255, 255, 255, .92) var(--gp), rgba(255, 255, 255, .48) calc(var(--gp) + 20%));
-  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 var(--tsr) rgba(255, 255, 255, var(--tso)); }
-.bgv { font-size: .55em; opacity: .85; margin-top: .3vmin; font-style: italic; }
-.ln.on .bgv .sy { background-image: linear-gradient(90deg, rgba(255, 255, 255, .62) var(--gp), rgba(255, 255, 255, .3) calc(var(--gp) + 20%)); }
+.bgv { font-size: .55em; opacity: .85; margin-top: .3vmin; font-style: italic; --a1: .68; }
+.ln.on .bgv { --a0: var(--lop); }
 .ln.rtl { text-align: right; transform-origin: right center; }
 body.align-center .ln.rtl { text-align: center; transform-origin: center; }
-.ln.rtl.on .sy { background-image: linear-gradient(270deg, rgba(255, 255, 255, .92) var(--gp), rgba(255, 255, 255, .48) calc(var(--gp) + 20%)); }
+.ln.rtl .sy { --gd: 270deg; }
 .ln.far { visibility: hidden; } /* beyond Settings -> Lines kept drawn: never on screen, so don't paint it */
 /* Interlude dots (Spicy's musical-line): only there while the gap is playing; anim.js drives each dot + the group. */
 /* Always in the layout (the dots themselves scale in/out): a display:none line has no position, so scrolling to it
    early (Scroll ahead) jumped the list to the top, and its disappearing made every line below jump mid-scroll. */
 .ln.dots { display: block; opacity: 1; transform: none; padding: 2vmin 0; filter: none !important; }
-.dotGroup { display: flex; gap: calc(var(--lsize) * .22); width: max-content; transform-origin: left center; scale: 0; opacity: 0; }
+.dotGroup { display: flex; gap: calc(var(--lsize) * .22); width: max-content; transform-origin: left center; transform: scale(0); opacity: 0; }
 body.align-center .dotGroup, body.layout-cinema .dotGroup { margin: 0 auto; transform-origin: center; }
 .dt { --tsr: 4px; --tso: 0%; width: calc(var(--lsize) * .42); height: calc(var(--lsize) * .42); border-radius: 50%;
-  background: #fff; scale: .75; opacity: .35; box-shadow: 0 0 var(--tsr) rgba(255, 255, 255, var(--tso)); }
+  background: #fff; transform: scale(.75); opacity: .35; box-shadow: 0 0 var(--tsr) rgba(255, 255, 255, var(--tso)); }
 .ln.skel { height: calc(var(--lsize) * .78); border-radius: 1.4vmin; margin: 2.4vmin 0; opacity: 1; transform: none; padding: 0;
   background: linear-gradient(100deg, rgba(255, 255, 255, .06) 30%, rgba(var(--acc), .22) 50%, rgba(255, 255, 255, .06) 70%);
   background-size: 250% 100%; animation: shimmer 1.4s linear infinite; }
@@ -132,7 +160,6 @@ body.layout-compact #artbox { width: 15vmin; flex: none; }
 body.layout-compact #art { border-radius: 1.4vmin; }
 body.layout-compact #meta, body.layout-cinema #meta, body.layout-nowbar #meta { text-align: left; margin: 0; }
 body.layout-compact #titlerow, body.layout-cinema #titlerow, body.layout-nowbar #titlerow { justify-content: flex-start; }
-body.layout-compact #quality, body.layout-cinema #quality { margin-left: 0; }
 body.layout-compact #title { font-size: 4.2vmin; }
 body.layout-compact #artist { font-size: 3vmin; }
 body.layout-compact .ln { font-size: calc(var(--lsize) * .82); }
@@ -150,7 +177,6 @@ body.layout-cinema #artbox { width: 10vmin; flex: none; }
 body.layout-cinema #art { border-radius: 1vmin; }
 body.layout-cinema #title { font-size: 3vmin; }
 body.layout-cinema #artist { font-size: 2.4vmin; }
-body.layout-cinema #quality { display: none !important; }
 /* Lines fade out before they reach the now-playing badge in the bottom corner. */
 body.layout-cinema #lyrics { -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 66%, transparent 84%); }
 body.layout-cinema .ln { text-align: center; transform-origin: center; font-size: calc(var(--lsize) * 1.2); }
@@ -164,7 +190,6 @@ body.layout-nowbar #artbox { width: 8.5vmin; flex: none; }
 body.layout-nowbar #art { border-radius: 50%; }
 body.layout-nowbar #title { font-size: 3vmin; }
 body.layout-nowbar #artist { font-size: 2.3vmin; }
-body.layout-nowbar #quality { display: none !important; }
 body.layout-nowbar.paused #art { transform: scale(.9); }
 body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / var(--as)) linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -427,7 +452,9 @@ body.hide-lists #lists { display: none; }
 /* Inside the cover the row has to fit five buttons on one line (the cover is ~68vmin wide in split view). */
 /* One compact button scale everywhere (over the cover, centred, in the deck): shuffle, prev, play, next, repeat
    always fit on one row; volume and the list buttons take their own rows. */
-#ctl { gap: .6vmin; padding: 1.4vmin 1.8vmin; justify-content: space-evenly; }
+/* Breathing room: 2.4 / 3.4 vmin inside the glass keeps the buttons off its edge; five buttons + padding = ~58 vmin,
+   still one row over the smallest cover (~62 vmin, Cover + clock). */
+#ctl { gap: 1.2vmin .6vmin; padding: 2.4vmin 3.4vmin; justify-content: space-evenly; }
 #artbox > #ctl { width: 100%; }
 body > #ctl { width: min(92vmin, 94vw); max-width: 520px; }
 #ctl button { width: 9.4vmin; height: 9.4vmin; }
@@ -440,25 +467,18 @@ body > #ctl { width: min(92vmin, 94vw); max-width: 520px; }
 #ctl #lists svg { width: 4.2vmin; height: 4.2vmin; }
 /* The Flip clock layout: a tap brings the settings button, not a player over the clock. */
 body.layout-clock > #ctl { display: none; }
-/* Audio quality as a small vertical tag on the cover's right edge (no row of its own). */
-#quality.vert { position: absolute; right: 1.4vmin; bottom: 1.4vmin; margin: 0; z-index: 2; writing-mode: vertical-rl; transform: rotate(180deg);
-  padding: 1.2vmin .45vmin; font-size: 1.6vmin; letter-spacing: .2em; color: rgba(255, 255, 255, .9); background: rgba(0, 0, 0, .42);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); border-radius: 1vmin; }
-body.ui #quality.vert { opacity: 0; transition: opacity .3s; }
-#quality.inline { display: none; margin: 0 0 0 1.4vmin; flex: none; align-self: center; }
-body.show-quality #quality.inline:not(:empty) { display: inline-block; }
 #deckbar { display: none; }
 
 /* ---- Player card layout: an always-visible player beside the lyrics (Wave Player's expanded card). */
 body.layout-player #left { flex: 0 0 44%; justify-content: center; }
 body.layout-player #artbox { display: none; }
-body.layout-player #meta { order: 0; text-align: left; margin: 0 0 2vmin; padding: 0 1vmin; display: grid; grid-template-columns: 17vmin 1fr; column-gap: 3vmin; align-items: center; }
+body.layout-player #meta { order: 0; text-align: left; margin: 0 0 2vmin; padding: 0 1vmin; display: grid; grid-template-columns: 17vmin minmax(0, 1fr); column-gap: 3vmin; align-items: center; }
 body.layout-player #meta::before { content: ''; grid-row: 1 / span 4; width: 17vmin; height: 17vmin; border-radius: 1.8vmin; background: var(--artimg) center/cover #222;
   box-shadow: 0 1.5vmin 4vmin rgba(0, 0, 0, .5); }
-body.layout-player #titlerow { justify-content: flex-start; } body.layout-player #quality { margin-left: 0; }
+body.layout-player #titlerow { justify-content: flex-start; }
 body.layout-player #deck { width: 100%; box-sizing: border-box; }
 body.layout-player #deck #ctl { position: static; transform: none; width: 100%; opacity: 1; visibility: visible; pointer-events: auto; border-radius: 4vmin;
-  padding: 2.4vmin 3vmin 1.6vmin; gap: 1vmin; justify-content: space-between; backdrop-filter: none; -webkit-backdrop-filter: none;
+  padding: 3vmin 4vmin 2.6vmin; gap: 1.4vmin 1vmin; justify-content: space-between; backdrop-filter: none; -webkit-backdrop-filter: none;
   background: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .02)), rgba(10, 12, 14, .55); }
 body.layout-player #deckbar { display: block; flex: 0 0 100%; order: -1; margin-bottom: 1vmin; }
 #dtrack { height: 1vmin; border-radius: 999px; background: rgba(255, 255, 255, .16); overflow: hidden; }
@@ -471,7 +491,7 @@ body.layout-player #vol { margin: .4vmin 0; }
 @media (orientation: portrait) {
   body.layout-player #wrap { flex-direction: column; gap: 2vmin; padding: calc(var(--sa-t) + 4vmin) calc(var(--sa-r) + 4vmin) calc(var(--sa-b) + 4vmin) calc(var(--sa-l) + 4vmin); }
   body.layout-player #left { display: contents; }
-  body.layout-player #meta { order: 0; margin: 0; padding: 2.4vmin; border-radius: 4vmin; background: rgba(10, 12, 14, .5); grid-template-columns: 14vmin 1fr; }
+  body.layout-player #meta { order: 0; margin: 0; padding: 2.4vmin; border-radius: 4vmin; background: rgba(10, 12, 14, .5); grid-template-columns: 14vmin minmax(0, 1fr); min-width: 0; overflow: hidden; box-sizing: border-box; width: 100%; } /* a long title scrolls inside, never widens the card */
   body.layout-player #meta::before { width: 14vmin; height: 14vmin; }
   body.layout-player #lyrics { order: 1; }
   body.layout-player #deck { order: 2; }
@@ -556,15 +576,6 @@ body.lists-open #listPanel { transform: none; visibility: visible; transition: t
 #nextChip span { opacity: .55; font-weight: 600; flex: none; } #nextChip b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #nextChip.show { opacity: 1; transform: none; }
 body.times #nextChip { bottom: calc(var(--sa-b) + var(--bar-by) + 8.5vmin); }
-#srcBadge { position: fixed; top: calc(var(--sa-t) + 3vmin); left: calc(var(--sa-l) + 3vmin); z-index: 4; font-size: 1.9vmin; font-weight: 700;
-  letter-spacing: .04em; padding: .5vmin 1.4vmin; border-radius: 1vmin; background: rgba(0, 0, 0, .35); color: rgba(255, 255, 255, .7); display: none; }
-#srcBadge.show { display: block; }
-#batt { position: fixed; top: calc(var(--sa-t) + var(--bar-ty) + 4vmin + 3.2vmin); right: calc(var(--sa-r) + var(--bar-tx) + 4.4vmin); z-index: 4; display: none; align-items: center; gap: 1vmin; flex-direction: row-reverse; transition: transform .5s var(--ease), opacity .35s;
-  font-size: 2.1vmin; font-weight: 700; opacity: .65; font-variant-numeric: tabular-nums; }
-#batt.show { display: flex; }
-#batt i { width: 4.4vmin; height: 2.2vmin; border-radius: .5vmin; box-shadow: inset 0 0 0 .25vmin currentColor; position: relative; }
-#batt i::before { content: ''; position: absolute; left: .5vmin; top: .5vmin; bottom: .5vmin; width: calc((4.4vmin - 1vmin) * var(--lvl, 1)); border-radius: .2vmin; background: currentColor; }
-#batt.charging { color: #7ee2a8; }
 .ln.dots .cd { font-size: calc(var(--lsize) * .5); font-weight: 800; opacity: .8; height: 1.2em; margin-bottom: .6vmin; font-variant-numeric: tabular-nums; }
 
 /* ---- scrubbing (long-press the progress bar) */
@@ -573,10 +584,12 @@ body.scrubbing #bar::after { content: attr(data-time); position: absolute; botto
   padding: .8vmin 1.8vmin; border-radius: 1.6vmin; background: #fff; color: #000; font-weight: 800; font-size: 2.6vmin; font-variant-numeric: tabular-nums; }
 
 /* ---- lyric colouring */
-body.line-accent .ln.on .sy { background-image: linear-gradient(90deg, rgb(var(--acc)) var(--gp), rgba(255, 255, 255, .45) calc(var(--gp) + 20%)); }
-body.duet .ln.opp { color: rgb(var(--acc)); }
-body.duet .ln.opp.on .sy { background-image: linear-gradient(90deg, rgb(var(--acc)) var(--gp), rgba(var(--acc), .45) calc(var(--gp) + 20%)); }
-body.outline .ln { text-shadow: 0 .2vmin 1.2vmin rgba(0, 0, 0, .55); }
+body.line-accent .ln { --cs: var(--acc); }
+body.duet .ln.opp { --cs: var(--acc); --cu: var(--acc); }
+/* Bright covers: a soft dark wash behind the lyrics (faded by the pane's own mask) instead of a text-shadow, which would show
+   through the translucent letters as a smear. */
+body.outline #lyrics { background: linear-gradient(90deg, transparent, rgba(0, 0, 0, .3) 14%, rgba(0, 0, 0, .3) 78%, transparent); }
+.sy { text-shadow: none; } /* never inherit a line's shadow: the fill is transparent, a shadow would show through */
 
 /* ---- clock screen, night mode */
 #clockScreen { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #050506;
@@ -611,8 +624,8 @@ body.clock .fc-wrap { animation: fcIn .6s var(--ease) both; } @keyframes fcIn { 
 .fc-light .fc-ap { fill: #161616; fill-opacity: .78; }
 #clockScreen.flip.fc-light.fc-bare { background: #E7E3DB; }
 #clockScreen.fc-light.fc-bare #clkNext { color: rgba(0, 0, 0, .55); }
-.fc-shade, .fc-drop { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
-.fc-l.bot .fc-drop { background: linear-gradient(#000, transparent 70%); }
+.fc-shade, .fc-drop { position: absolute; inset: 0; background: var(--sh, #000); opacity: 0; pointer-events: none; }
+.fc-l.bot .fc-drop { background: linear-gradient(var(--sh, #000), transparent 70%); }
 .fc-sheen { position: absolute; left: 0; right: 0; height: 60%; background: linear-gradient(transparent, rgba(255, 255, 255, .08), transparent); opacity: 0; pointer-events: none; }#nightTint { position: fixed; inset: 0; z-index: 8; pointer-events: none; display: none;
   background: rgba(255, 130, 40, calc(var(--nw, .4) * .22)); mix-blend-mode: multiply; }
 body.night #nightTint { display: block; box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, var(--nd, .5)); }
@@ -798,10 +811,8 @@ body.art-ctl.ui #art { transform: translateY(calc((var(--art-mini, .78) - 1) * 5
   transition: transform .55s var(--spring), box-shadow .6s, border-radius .4s; }
 body.art-ctl #artbox > #ctl { margin: 0; }
 /* Free-scrolling lyrics: every line is drawn, not just the ones near the sung line. */
-#lyrics.free .ln.far { visibility: visible; }/* Battery: status-bar style in the top-right corner, level then the icon (with its nub), on the gear's row; it
-   steps aside when the gear appears. */
-#batt i::after { content: ''; position: absolute; right: -.7vmin; top: 50%; width: .45vmin; height: 1vmin; margin-top: -.5vmin; border-radius: 0 .3vmin .3vmin 0; background: currentColor; opacity: .6; }
-body.ui #batt { transform: translateX(-11vmin); }body.art-ctl #meta { transition: opacity .3s, transform .45s var(--ease); }
+#lyrics.free .ln.far { visibility: visible; }
+body.art-ctl #meta { transition: opacity .3s, transform .45s var(--ease); }
 body.art-ctl.ui #meta { opacity: 0; transform: translateY(3vmin); pointer-events: none; }
 
 /* ---- left column fit (fitArt): clear of the times + bar, cover capped to what's left */
@@ -814,3 +825,195 @@ body.nolyrics.layout-split #meta::after, body.nolyrics.layout-tv #meta::after { 
   font-size: 2.2vmin; font-weight: 600; letter-spacing: .02em; opacity: .4; }
 @keyframes nolyrIn { from { opacity: .6; } }
 #lyrics.placeholder #lines { top: 50%; transform: translateY(-50%) !important; }
+
+/* ======================================================================= v1.7 polish: timeline under the cover, tags, status cluster, quick bar */
+
+/* ---- Timeline (Settings -> Progress bar -> Under the cover): lives inside the cover box, so it follows the cover when the
+   controls open. Compositor-only fill (a pill sliding in a clipped track, driven by one long linear transition in app.js),
+   thickens under the finger, drags to scrub. The edge bar stays for layouts without a cover. */
+#artbox { --tl-h: 7.6vmin; }
+#tl { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 1.6vmin); z-index: 2; align-items: center; gap: 1.6vmin;
+  font-size: 2.2vmin; font-weight: 700; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .72); transition: transform .55s var(--spring); will-change: transform; }
+body.prog-art:is(.layout-split, .layout-tv, .layout-clocksplit) #tl { display: flex; }
+body.prog-art:is(.layout-split, .layout-tv, .layout-clocksplit) #artbox { margin-bottom: var(--tl-h); }
+body.prog-art:is(.layout-split, .layout-tv, .layout-clocksplit) :is(#bar, #times) { display: none; }
+body.art-ctl.ui #tl { transform: translateY(var(--tl-dy, 0)); } /* transform, not top: no layout per frame */
+#tlcur, #tldur { flex: none; min-width: 4.4ch; }
+#tlcur { text-align: right; } #tldur { text-align: left; opacity: .8; }
+#tlhit { position: relative; flex: 1; padding: 2.6vmin 0; margin: -2.6vmin 0; touch-action: none; } /* a fat, invisible touch target */
+#tltrack { height: 1vmin; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, .18); box-shadow: inset 0 0 0 .1vmin rgba(255, 255, 255, .1);
+  transition: height .28s var(--spring); }
+#tlfill { height: 100%; border-radius: 999px; background: #fff; transform: translateX(-100%); will-change: transform; }
+body.tl-drag #tltrack, #tlhit:active #tltrack { height: 1.9vmin; }
+body.tl-drag #tlcur { color: rgb(var(--acc)); } /* the time follows the finger */
+
+/* ---- Tags: audio quality and lyrics source as quiet text, not chips. One row under the album line in the cover layouts;
+   in the top-left corner elsewhere (only while the controls are up, or always with Tag position: Corner). */
+#tags { display: flex; flex-wrap: wrap; gap: .4vmin 1.8vmin; justify-content: center; align-items: center; margin-top: 1.2vmin;
+  font-size: 1.85vmin; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: rgba(255, 255, 255, .6); }
+body:not(.show-quality) #quality, #quality:empty, #srcBadge:not(.show) { display: none; }
+#quality::before { content: ''; display: inline-block; width: .9vmin; height: .9vmin; margin-right: .9vmin; border-radius: 50%; vertical-align: .12vmin;
+  background: rgb(var(--acc)); box-shadow: 0 0 1.2vmin rgba(var(--acc), .8); }
+#srcBadge::before { content: 'Lyrics · '; opacity: .7; letter-spacing: .02em; text-transform: none; }
+body > #tags { position: fixed; bottom: calc(var(--sa-b) + var(--bar-by) + 3vmin); right: calc(var(--sa-r) + var(--bar-bx) + 4vmin); z-index: 4; margin: 0;
+  justify-content: flex-end; opacity: 0; transition: opacity .35s; pointer-events: none; }
+body.stat-br > #tags { right: auto; left: calc(var(--sa-l) + var(--bar-bx) + 4vmin); justify-content: flex-start; }
+body.times > #tags { bottom: calc(var(--sa-b) + var(--bar-by) + 7vmin); }
+
+body.ui > #tags { opacity: .9; }
+body.tags-corner > #tags { opacity: .55; }
+body.tags-corner.ui > #tags { opacity: .9; }
+
+body.layout-player #tags { justify-content: flex-start; }
+
+/* ---- Status cluster: battery + time of day, any corner, in every layout. Five battery styles, three time styles. */
+#stat { position: fixed; z-index: 4; display: none; align-items: center; gap: 2.4vmin; color: #fff; transition: opacity .35s; pointer-events: none; }
+#stat.show { display: flex; }
+body.stat-tr #stat { top: calc(var(--sa-t) + var(--bar-ty) + 8.5vmin); right: calc(var(--sa-r) + var(--bar-tx) + 4.4vmin); transform: translateY(-50%); }
+body.stat-tl #stat { top: calc(var(--sa-t) + var(--bar-ty) + 8.5vmin); left: calc(var(--sa-l) + var(--bar-tx) + 4.4vmin); transform: translateY(-50%); }
+body.stat-br #stat { bottom: calc(var(--sa-b) + var(--bar-by) + 6vmin); right: calc(var(--sa-r) + var(--bar-bx) + 4.4vmin); }
+body.stat-bl #stat { bottom: calc(var(--sa-b) + var(--bar-by) + 6vmin); left: calc(var(--sa-l) + var(--bar-bx) + 4.4vmin); }
+body.ui.stat-tr #stat { opacity: 0; } /* the gear and the quick bar take that corner while the controls are up */
+#tnow { display: none; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+#stat.tshow #tnow { display: block; }
+#tnow.t-small { font-size: 2.3vmin; opacity: .75; }
+#tnow.t-pill { font-size: 2.2vmin; padding: .7vmin 2vmin; border-radius: 999px; opacity: .9;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .03)), var(--glass); box-shadow: inset 0 0 0 1px var(--glass-edge); }
+#tnow.t-big { font-size: 5.2vmin; font-weight: 300; letter-spacing: -.02em; opacity: .85; }
+#batt { display: none; position: relative; align-items: center; gap: 1vmin; font-size: 2.1vmin; font-weight: 700; opacity: .72; font-variant-numeric: tabular-nums; }
+#stat.bshow #batt { display: flex; }
+#batt i { position: relative; flex: none; width: 4.6vmin; height: 2.3vmin; border-radius: .6vmin; box-shadow: inset 0 0 0 .25vmin currentColor; }
+#batt i::before { content: ''; position: absolute; left: .45vmin; top: .45vmin; bottom: .45vmin; width: calc((100% - .9vmin) * var(--lvl, 1)); border-radius: .25vmin; background: currentColor; }
+#batt i::after { content: ''; position: absolute; right: -.7vmin; top: 50%; width: .45vmin; height: 1vmin; margin-top: -.5vmin; border-radius: 0 .3vmin .3vmin 0; background: currentColor; opacity: .6; }
+#batt.charging { color: #7ee2a8; } #batt.low { color: #ff6b6b; }
+#batt.b-out { flex-direction: row-reverse; }                                   /* 87%  [####.] */
+#batt.b-in i { width: 7.8vmin; height: 3.5vmin; border-radius: .9vmin; }        /* [# 87% .] the number sits inside the icon */
+#batt.b-in i::before { opacity: .34; }
+#batt.b-in span { position: absolute; left: 0; width: 7.8vmin; text-align: center; font-size: 1.95vmin; text-shadow: 0 0 .8vmin rgba(0, 0, 0, .55); color: #fff; }
+#batt.b-ring i { width: 4.9vmin; height: 4.9vmin; border-radius: 50%; box-shadow: none;                 /* a ring, the number inside it */
+  background: conic-gradient(currentColor calc(var(--lvl, 1) * 360deg), rgba(255, 255, 255, .2) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - .6vmin), #000 calc(100% - .55vmin)); mask: radial-gradient(farthest-side, transparent calc(100% - .6vmin), #000 calc(100% - .55vmin)); }
+#batt.b-ring i::before, #batt.b-ring i::after, #batt.b-bar i::after { display: none; }
+#batt.b-ring span { position: absolute; left: 0; width: 4.9vmin; text-align: center; font-size: 1.5vmin; color: #fff; }
+#batt.b-bar i { width: 10vmin; height: .8vmin; border-radius: 99px; box-shadow: none; background: rgba(255, 255, 255, .2); }   /* a thin bar, no number */
+#batt.b-bar i::before { left: 0; top: 0; bottom: 0; width: calc(100% * var(--lvl, 1)); border-radius: 99px; }
+#batt.b-bar span { display: none; }
+#batt.b-text i { display: none; }                                              /* 87% only (a bolt while charging) */
+#batt.b-text.charging span::before { content: '\26A1\FE0E '; }
+
+/* ---- Quick bar: layout-specific one-tap actions next to the gear, and a compact sheet of the settings that matter here. */
+#qs { position: fixed; z-index: 6; top: calc(var(--sa-t) + var(--bar-ty) + 4vmin); right: calc(var(--sa-r) + var(--bar-tx) + 15vmin);
+  height: 9vmin; padding: 0 1.1vmin; border-radius: 5vmin; display: flex; align-items: center; gap: .3vmin;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .02)), var(--glass);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), 0 1.5vmin 4vmin rgba(0, 0, 0, .4); background-color: rgba(22, 22, 28, .82);
+  opacity: 0; pointer-events: none; visibility: hidden; transform: translateX(3vmin) scale(.92); transition: opacity .35s, transform .5s var(--ease), visibility 0s .35s; }
+body.ui #qs { opacity: 1; pointer-events: auto; visibility: visible; transform: none; transition: opacity .35s, transform .5s var(--spring), visibility 0s; }
+body.layout-clock #qs { z-index: 9; }
+body:not(.qs-on) #qs { display: none; }
+#qs button { flex: none; width: 7.2vmin; height: 7.2vmin; border: 0; border-radius: 50%; background: transparent; color: #fff; display: grid; place-items: center;
+  font: 800 2.4vmin var(--font), system-ui; letter-spacing: -.02em; transition: transform .18s var(--ease), background .25s; }
+#qs button:active { transform: scale(.85); background: rgba(255, 255, 255, .16); }
+#qs button.on { background: rgba(255, 255, 255, .18); }
+#qs button[data-q=tune] { background: #fff; color: #0c0c0f; margin-left: .4vmin; }
+#qs svg { width: 4.4vmin; height: 4.4vmin; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+#qs svg.solid { fill: currentColor; stroke: none; }
+#qpanel { --t1: hsla(0, 0%, 100%, .94); --t2: hsla(0, 0%, 100%, .62); --t3: hsla(0, 0%, 100%, .38); --hair: rgba(255, 255, 255, .08); --hair2: rgba(255, 255, 255, .15);
+  --tint: rgba(255, 255, 255, .06); --tint2: rgba(255, 255, 255, .13); --r-sm: 9px; --r-md: 13px; --modal-ease: cubic-bezier(.23, 1, .32, 1);
+  position: fixed; z-index: 11; top: calc(var(--sa-t) + var(--bar-ty) + 15vmin); right: calc(var(--sa-r) + var(--bar-tx) + 4vmin); width: min(48vw, 440px);
+  max-height: calc(100vh - var(--sa-t) - var(--sa-b) - 19vmin); display: flex; flex-direction: column; border-radius: 22px; color: var(--t1); font-size: 14px;
+  background: rgba(22, 22, 27, .97); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), inset 0 0 0 1px var(--hair2), 0 24px 60px -10px rgba(0, 0, 0, .6);
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-8px) scale(.97); transform-origin: top right; will-change: transform, opacity;
+  transition: opacity .25s, transform .3s var(--ease), visibility 0s .25s; }
+body.qs-open #qpanel { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition: opacity .25s, transform .4s var(--spring), visibility 0s; }
+#qpanel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 10px 6px 18px; font-size: 1rem; font-weight: 800; letter-spacing: -.01em; }
+#qpanel header small { font-weight: 600; opacity: .5; margin-left: 6px; }
+#qclose { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--tint); display: grid; place-items: center; }
+#qclose svg { width: 14px; height: 14px; fill: rgba(255, 255, 255, .8); }
+#qbody { overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 12px; scrollbar-width: thin; }
+#qbody .sl-sp-row { padding: 8px 10px; min-height: 36px; box-sizing: border-box; }
+#qbody .sl-sp-description { font-size: 11px; }
+
+/* ---- Block names overlay (Settings -> Layout -> Show block names): labels every named block, see docs/layout-map.md */
+#blkov { display: none; position: fixed; inset: 0; z-index: 50; pointer-events: none; }
+body.show-blocks #blkov { display: block; }
+.bk { position: absolute; border: 1px dashed rgba(255, 140, 0, .9); background: rgba(255, 140, 0, .05); }
+.bk span { position: absolute; left: 0; top: 0; padding: 1px 4px; border-radius: 0 0 4px 0; background: rgba(255, 140, 0, .95); color: #000; font: 700 9px/1.2 system-ui; white-space: nowrap; }
+
+/* ---- Lossless, without a word (Settings -> Now playing -> Lossless indicator). Only a Lossless stream shows anything.
+   wave:   a tiny waveform glyph in the accent colour right of the song length (in the status corner when there is no timeline);
+           its bars breathe slowly while the song plays, and hold still when paused.
+   status: the same glyph in a small glass circle in the battery / time corner.
+   glow:   the cover's shadow takes on a soft halo of the cover's own accent colour.
+   led:    a pin-head light in the cover's top-right corner, like the power LED on a hi-fi amp.        off: nothing. */
+#quality { display: none !important; }
+#qw { display: none; flex: none; align-items: center; gap: .32vmin; height: 2vmin; color: rgb(var(--acc)); filter: drop-shadow(0 0 .7vmin rgba(var(--acc), .55)); }
+#qw b { width: .34vmin; height: 100%; border-radius: 99px; background: currentColor; transform-origin: 50% 50%; }
+#qw b:nth-child(1) { transform: scaleY(.45); } #qw b:nth-child(2) { transform: scaleY(1); } #qw b:nth-child(3) { transform: scaleY(.7); } #qw b:nth-child(4) { transform: scaleY(.35); }
+body:not(.paused) #qw b { animation: qwb 2.4s ease-in-out infinite alternate; }
+body:not(.paused) #qw b:nth-child(2) { animation-delay: -.8s; } body:not(.paused) #qw b:nth-child(3) { animation-delay: -1.5s; } body:not(.paused) #qw b:nth-child(4) { animation-delay: -.3s; }
+@keyframes qwb { 0% { transform: scaleY(.3); } 100% { transform: scaleY(1); } }
+body.q-lossless:is(.qi-wave, .qi-status) #qw { display: flex; }
+#tl #qw { margin-left: -.6vmin; }
+#stat #qw { height: 2.3vmin; }
+body.qi-status #stat #qw { box-sizing: content-box; height: 1.9vmin; padding: 1.2vmin; border-radius: 50%; gap: .3vmin;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .03)), var(--glass); box-shadow: inset 0 0 0 1px var(--glass-edge); filter: none; }
+body.q-lossless.qi-glow #art { box-shadow: 0 3vmin 8vmin -1vmin rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .06), 0 0 5vmin 1.2vmin rgba(var(--acc), .75); }
+body.q-lossless.qi-led #art::after { content: ''; position: absolute; top: 2.2vmin; right: 2.2vmin; width: 1.7vmin; height: 1.7vmin; border-radius: 50%; z-index: 2; pointer-events: none;
+  background: radial-gradient(circle at 35% 35%, #fff, rgb(var(--acc)) 55%); box-shadow: 0 0 0 .3vmin rgba(0, 0, 0, .35), 0 0 1.6vmin .2vmin rgba(var(--acc), .9); }
+body.q-lossless.qi-led:not(.paused) #art::after { animation: led 3.2s ease-in-out infinite; }
+@keyframes led { 50% { box-shadow: 0 0 0 .3vmin rgba(0, 0, 0, .35), 0 0 .9vmin 0 rgba(var(--acc), .6); } }
+body.layout-nowbar.qi-led #art::after { display: none; } /* the round spinning cover would spin the light too */
+
+/* ---- Split words: a syllable joined to the next scales toward it, the next toward the previous (Spicy's transform origins),
+   so the idle pose and the lift never open a gap inside a word ("ima gination"). */
+.sy.pw { transform-origin: 100% 55%; }
+.sy.pn { transform-origin: 0 55%; }
+.sy.pw.pn { transform-origin: 50% 55%; }
+
+/* ---- Performance -> Glass blur off: the frosted panels become tinted glass without the live blur (which has to re-blur the
+   moving background every frame). */
+body.no-glass :is(#ctl, #gear, #pairAsk, .sl-modal::before) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+body.no-glass #ctl, body.no-glass #gear { background-color: rgba(18, 18, 24, .86); }
+body.no-glass.settings-open .sl-modal::before { background: linear-gradient(160deg, rgba(var(--acc), .12), transparent 40%), rgba(18, 18, 22, .96); }
+/* The cover moves (tap shrink, pause, swipe): on its own layer its big shadow is drawn once, not every frame. */
+#art { will-change: transform; }
+
+/* ---- Nothing sits on top of anything else (found by scripts/screen-audit.mjs on the phone):
+   the battery / time corner keeps the lyrics clear of it... */
+body.stat-on.stat-tr #lyrics, body.stat-on.stat-br #lyrics { margin-right: 11vmin; }
+body.stat-on.stat-tl.layout-lyrics #lyrics, body.stat-on.stat-bl.layout-lyrics #lyrics { margin-left: 11vmin; }
+/* ...Compact's title row ends before the gear, the quick bar and the battery... */
+body.layout-compact.stat-on.stat-tr #meta { padding-right: 16vmin; box-sizing: border-box; } /* clear of the battery; the quick bar only covers it while the controls are up */
+/* ...the song times on the edge bar lift the Cinema badge and the Now Bar pill clear of them (landscape too)... */
+body.times.layout-cinema #left, body.times.layout-nowbar #left { bottom: calc(var(--sa-b) + var(--bar-by) + 7.5vmin); }
+/* ...and the quick sheet takes over from the centred control pill instead of covering it. */
+body.qs-open > #ctl { opacity: 0 !important; pointer-events: none !important; }
+body.layout-nowbar #titlerow #heart { width: 2.8vmin; height: 2.8vmin; }
+/* Choice lists show their whole option ("Light cards, dark numerals") instead of cutting it off. */
+#settings .sl-sp-select, #qbody .sl-sp-select { max-width: 230px; }
+#qbody .sl-sp-row { flex-wrap: nowrap; } #qbody .sl-sp-label-wrap { min-width: 0; }
+/* Controls centred over the lyrics (layouts without a cover): the lyrics step back so the pill reads cleanly. */
+body.ui:not(.art-ctl):not(.layout-player):not(.layout-clock) #lyrics { opacity: .3; }
+#lyrics { transition: transform .6s var(--ease), opacity .35s var(--ease); }
+/* Compact: a little air between the song row and the first lyric line. */
+body.layout-compact #wrap { gap: 3.5vmin; }
+/* Portrait: the quick sheet spans the screen (under the quick bar) instead of a third of it. */
+@media (orientation: portrait) {
+  #qpanel { left: calc(var(--sa-l) + 3vmin); right: calc(var(--sa-r) + 3vmin); width: auto; top: calc(var(--sa-t) + var(--bar-ty) + 15vmin); max-height: 62vh; }
+}
+@media (orientation: portrait) {
+  /* The battery / time corner sits above the content instead of on it. */
+  body.stat-on:is(.stat-tr, .stat-tl) #wrap { padding-top: calc(var(--sa-t) + 13vmin); }
+  body.stat-on:is(.stat-tr, .stat-tl) #lyrics { margin-right: 0; }
+  /* Narrow sheet: a choice row stacks - label (and its hint) on top, the list full width underneath on one line - so
+     neither the label nor the option ever gets squeezed into a wrapped, clipped box. */
+  #qpanel header { padding: 14px 12px 8px 20px; }
+  #qbody { padding: 2px 12px 16px; }
+  #qbody .sl-sp-row { padding: 11px 10px; gap: 8px; }
+  #qbody .sl-sp-row--choice { flex-wrap: wrap; }
+  #qbody .sl-sp-row--choice .sl-sp-label-wrap { flex: 1 1 100%; }
+  #qbody .sl-sp-row--choice .sl-sp-control { flex: 1 1 100%; }
+  #qbody .sl-sp-row--choice .sl-sp-select { width: 100%; max-width: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #qbody .sl-sp-row + .sl-sp-row { position: relative; }
+  #qbody .sl-sp-row + .sl-sp-row::before { content: ''; position: absolute; left: 10px; right: 10px; top: 0; height: 1px; background: var(--hair); } /* straight hairline, not the row's rounded edge */
+}

@@ -11,10 +11,14 @@ const Settings = (() => {
       help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds, double-tap to go back to the layout before).' },
     { k: 'artSide', label: 'Cover side', type: 'choice', def: 'left', opts: [['left', 'Cover left, lyrics right'], ['right', 'Lyrics left, cover right']],
       when: s => ['split', 'tv', 'clocksplit'].includes(s.layout), help: 'Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top.' },
-    { k: 'progress', label: 'Progress bar', type: 'choice', def: 'bottom', opts: [['bottom', 'Bottom'], ['top', 'Top'], ['off', 'Off']],
-      help: 'Where the song progress bar sits. Tap it (while the controls are showing) to seek.' },
-    { k: 'times', label: 'Show times', desc: 'Elapsed and total time next to the progress bar', type: 'toggle', def: false,
-      help: 'Shows 1:23 / 3:45 above the ends of the progress bar.' },
+    { k: 'progress', label: 'Progress bar', type: 'choice', def: 'art', opts: [['art', 'Under the cover'], ['bottom', 'Bottom edge'], ['top', 'Top edge'], ['off', 'Off']],
+      help: 'Under the cover: a slim bar with the times right below the album art (Default, TV and Cover + clock; the other layouts have no cover and use the bottom edge). It frees the bottom of the screen, thickens under your finger and you can drag it to scrub. Bottom / Top edge: a thin bar along the screen edge (tap it while the controls show to seek, or press and hold to scrub). Off: none.' },
+    { k: 'times', label: 'Show times on the edge bar', desc: 'Elapsed and total time above the ends of the edge bar', type: 'toggle', def: false,
+      help: 'Shows 1:23 / 3:45 above the ends of the edge bar. The bar under the cover always shows its times.' },
+    { k: 'qsEnabled', label: 'Quick bar', desc: 'One-tap actions next to the settings button, different in each layout', type: 'toggle', def: true,
+      help: 'Tap the screen: next to the gear you get swap cover side, romanization, next layout and a Quick settings sheet holding the few settings that matter in the layout you are in (for the clock layouts: card colour, seconds, 12 / 24 h, arrangement, flip animation, sound).' },
+    { k: 'showBlocks', label: 'Show block names', desc: 'Outlines and labels every area of the screen (for talking about the design)', type: 'toggle', def: false,
+      help: 'Draws a dashed outline and a name on each block: Cover, Now playing, Timeline, Lyrics pane, Control pill, Tags, Status cluster... The names are the ones in the design file and docs/layout-map.md.' },
     { k: 'hideAfter', label: 'Hide controls after', type: 'range', min: 2, max: 10, step: 1, def: 4, unit: 's',
       help: 'Tap anywhere to show play/pause, next, previous, volume and the settings button. They fade out after this many seconds.' },
     { k: 'marquee', label: 'Scroll long titles', type: 'toggle', def: true, help: 'Song titles and artist lists that do not fit scroll slowly back and forth instead of being cut off.' },
@@ -29,9 +33,9 @@ const Settings = (() => {
       help: 'Auto follows how the phone is standing, including upside down. Lock it if the phone lies on a sensor-confusing stand.' },
     { k: 'edgeMode', label: 'Notch & edge spacing', desc: 'Auto reads the camera cutout and rounded corners from the phone',
       type: 'choice', def: 'auto', opts: [['auto', 'Auto'], ['manual', 'Manual']],
-      help: 'Auto keeps text clear of the camera notch and pulls the progress bar in where the rounded corners would cut it. Manual lets you set both yourself.' },
+      help: 'The camera notch is always kept clear, whichever way the phone is turned. Auto also reads the rounded corners and pulls the edge progress bar in where they would cut it. Manual lets you add side padding and set the corner inset yourself.' },
     { k: 'edgePad', label: 'Side padding', type: 'range', min: 0, max: 80, step: 2, def: 24, unit: 'px', when: s => s.edgeMode === 'manual',
-      help: 'Extra space on the left and right edges.' },
+      help: 'Space on the left and right edges (the notch side never gets less than the notch needs).' },
     { k: 'cornerPad', label: 'Progress bar corner inset', type: 'range', min: 0, max: 80, step: 2, def: 20, unit: 'px', when: s => s.edgeMode === 'manual',
       help: 'How rounded the screen corners are: the progress bar is lifted and shortened to stay inside them.' },
 
@@ -40,8 +44,14 @@ const Settings = (() => {
       help: 'Green heart = in your Liked Songs. Tapping it saves or removes the song in Spotify.' },
     { k: 'heartPos', label: 'Like button position', type: 'choice', def: 'art', opts: [['art', 'Badge on the cover'], ['title', 'Next to the title']], when: s => s.showLiked, help: 'Where the heart sits: a small badge in the corner of the album art, or beside the song title.' },
     { k: 'albumLine', label: 'Album and year', type: 'toggle', def: true, help: 'Shows the album name and release year under the artist.' },
-    { k: 'sourceBadge', label: 'Lyrics source badge', type: 'toggle', def: false, help: 'A small label in the corner naming where the lyrics came from (Spicy Lyrics, Apple Music, Spotify, LRCLIB).' },
-    { k: 'showQuality', label: 'Show audio quality', type: 'toggle', def: true, help: 'Shows Spotify\'s current streaming quality (Low … Very high, Lossless) under the artist.' },
+    { k: 'sourceBadge', label: 'Lyrics source tag', type: 'toggle', def: false, help: 'A quiet "Lyrics · Apple Music" line naming where the lyrics came from (Spicy Lyrics, Apple Music, Spotify, LRCLIB). The credits under the lyrics always name it as well.' },
+    { k: 'showQuality', label: 'Show audio quality', type: 'toggle', def: true, help: 'Shows Spotify\'s current streaming quality (Low … Very high, Lossless) as a small tag.' },
+    { k: 'qualityIcon', label: 'Lossless indicator', desc: 'How a Lossless stream is shown - no text, no badge', type: 'choice', def: 'wave', when: s => s.showQuality,
+      opts: [['wave', 'Waveform beside the song length'], ['status', 'Waveform in the status corner'], ['glow', 'Accent glow around the cover'], ['led', 'Light in the cover corner'], ['off', 'Nothing']],
+      help: 'Only Lossless streams show anything. Waveform: four little accent bars right of the song length under the cover (they breathe while the song plays); in layouts without that bar they sit in the battery / time corner. Status corner: the same bars in a small glass circle next to the battery and time. Glow: the cover\'s shadow turns into a soft halo of its own colour. Light: a tiny glowing dot in the cover\'s top-right corner, like an amplifier\'s power light.' },
+    { k: 'tagPos', label: 'Tag position', desc: 'When the lyrics-source line shows', type: 'choice', def: 'auto', opts: [['auto', 'In the corner, with the controls'], ['corner', 'In the corner, always (dimmed)']],
+      when: s => s.sourceBadge,
+      help: 'The lyrics source sits in the bottom-right corner (top-right in Cinema and Now Bar) - never in the song details or on the cover. With the controls: it appears when you tap the screen. Always: it stays there, dimmed.' },
     { k: 'accent', label: 'Accent colour from cover', type: 'toggle', def: true,
       help: 'Tints the progress bar, buttons and settings with a colour picked from the album art. Off: plain white.' },
     { k: 'spin', label: 'Spinning cover (Now Bar)', type: 'toggle', def: true, when: s => s.layout === 'nowbar', help: 'The round cover in the Now Bar turns like a record while playing.' },
@@ -79,13 +89,14 @@ const Settings = (() => {
     { k: 'anchor', label: 'Active line position', desc: 'How far down the screen the current line sits', type: 'range', min: 0.2, max: 0.6, step: 0.05, def: 0.35,
       help: '0.2 = near the top (more upcoming lines visible), 0.6 = below the middle (more past lines).' },
     { k: 'lineGap', label: 'Line spacing', type: 'range', min: 0, max: 5, step: 0.25, def: 1.5, help: 'Space between lyric lines.' },
+    { k: 'seekComp', label: 'Seek slightly before a tapped line', type: 'toggle', def: true, help: 'Spotify fades the audio in for about 300 ms after a seek, so landing exactly on a line swallows its first syllable. This seeks 300 ms early.' },
     { k: 'lineOpacity', label: 'Other lines brightness', type: 'range', min: 0.15, max: 0.85, step: 0.05, def: 0.5, help: 'How visible the lines that aren\'t being sung are. Spicy Lyrics uses 0.5.' },
     { k: 'lineColor', label: 'Sung line colour', type: 'choice', def: 'white', opts: [['white', 'White'], ['accent', 'Accent from cover']], help: 'Colour the word fill sweeps in. Accent uses the colour picked from the album art.' },
     { k: 'duetColors', label: 'Colour per singer (duets)', type: 'toggle', def: true, help: 'In duets, the second singer\'s lines (sung on the other side) are tinted with the accent colour so the voices are easy to tell apart.' },
-    { k: 'outline', label: 'Text shadow for bright backgrounds', type: 'toggle', def: false, help: 'A soft dark shadow under the lyrics keeps them readable over bright covers and artist photos.' },
+    { k: 'outline', label: 'Darken behind the lyrics', type: 'toggle', def: false, help: 'A soft dark wash behind the lyrics keeps them readable over bright covers and artist photos (it fades out at the edges with the lyrics).' },
     { k: 'hideExplicit', label: 'Hide explicit words', type: 'toggle', def: false, help: 'Masks common English swear words in the lyrics (f***). Only changes what is shown.' },
     { k: 'countdown', label: 'Countdown before singing', type: 'toggle', def: true, help: 'In the intro, the last 3 seconds before the first line count down 3 · 2 · 1 above the dots.' },
-    { k: 'blurLines', label: 'Blur distant lines', type: 'toggle', def: true, help: 'Lines two or more away from the current one are softly blurred, drawing the eye to the sung line.' },
+    { k: 'blurLines', label: 'Blur distant lines', type: 'toggle', def: false, help: 'Lines two or more away from the current one are softly blurred, drawing the eye to the sung line. Off (default) keeps every line crisp and translucent, like Spotify\'s own lyrics.' },
     { k: 'blurAmount', label: 'Blur strength', type: 'range', min: 0.5, max: 5, step: 0.1, def: 1.2, unit: 'px', when: s => s.blurLines, help: 'Blur of lines two away; three and more get twice this.' },
     { k: 'glow', label: 'Glow on sung words', type: 'toggle', def: true, help: 'Words glow softly as they are sung (Spicy Lyrics). The most expensive effect: turn it off on slow phones for smoother motion.' },
     { k: 'glowStrength', label: 'Glow strength', type: 'range', min: 0.2, max: 2, step: 0.1, def: 1, unit: '×', when: s => s.glow, help: 'Size and brightness of the glow.' },
@@ -136,6 +147,12 @@ const Settings = (() => {
     { k: 'volKeys', label: 'Volume buttons control Spotify', type: 'toggle', def: true, help: 'The phone\'s volume buttons change Spotify\'s volume (5% per press) instead of the phone\'s.' },
     { k: 'mediaNotif', label: 'Media notification', type: 'toggle', def: true, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
     { k: 'battery', label: 'Battery indicator', type: 'toggle', def: false, help: 'Shows the phone\'s battery level and whether it is charging, in a corner (handy for a kiosk dock).' },
+    { k: 'battStyle', label: 'Battery style', type: 'choice', def: 'in', when: s => s.battery, opts: [['in', 'Icon with the % inside'], ['out', 'Icon with the % beside it'], ['ring', 'Ring with the % inside'], ['bar', 'Thin bar'], ['text', '% only']],
+      help: 'How the battery is drawn. It turns green while charging and red below 20 %.' },
+    { k: 'timeStyle', label: 'Time of day', desc: 'Shows the current time in any layout', type: 'choice', def: 'off', opts: [['off', 'Off'], ['small', 'Small text'], ['pill', 'Glass pill'], ['big', 'Big and light']],
+      help: 'The time next to the battery (12 or 24 hour, see Clock -> Time format). Handy in Lyrics only and Cinema, which show no clock.' },
+    { k: 'statPos', label: 'Battery and time corner', type: 'choice', def: 'tr', when: s => s.battery || s.timeStyle !== 'off', opts: [['tr', 'Top right'], ['tl', 'Top left'], ['br', 'Bottom right'], ['bl', 'Bottom left']],
+      help: 'Where the battery and the time sit. Top right steps aside while the controls are showing.' },
 
     { group: 'Clock', icon: 'clock', cat: 'Device', desc: 'The flip clock that takes over when the music stops.' },
     { k: 'clock', label: 'Clock screen', type: 'choice', def: 'paused', opts: [['off', 'Off'], ['paused', 'When paused'], ['idle', 'When nothing is playing']],
@@ -175,6 +192,8 @@ const Settings = (() => {
     { k: 'bgBlur', label: 'Background blur passes', type: 'range', min: 1, max: 12, step: 1, def: 6, help: 'Softness of the dynamic background. More passes = smoother, more GPU work.' },
     { k: 'bgFps', label: 'Background frame rate', type: 'choice', def: 'max', opts: [['max', 'Match display'], ['165', '165 fps'], ['144', '144 fps'], ['120', '120 fps'], ['100', '100 fps'], ['90', '90 fps'], ['75', '75 fps'], ['60', '60 fps'], ['45', '45 fps'], ['30', '30 fps'], ['24', '24 fps'], ['20', '20 fps'], ['15', '15 fps']],
       help: 'Cap for the dynamic background. Match display runs at the screen\'s own refresh rate (60, 90, 120, 144 Hz…); a phone never goes above its screen. The background moves slowly, so 30 fps is hard to tell apart and saves power.' },
+    { k: 'glass', label: 'Glass blur', desc: 'Frosted blur behind the controls and settings', type: 'toggle', def: true,
+      help: 'The controls, the settings button and the settings sheet blur what is behind them. Behind the moving dynamic background that blur is redone every frame, which slower phones feel (the controls opening stutters). Off: the same panels as tinted glass without the blur.' },
     { k: 'renderDistance', label: 'Lines kept drawn', type: 'range', min: 8, max: 60, step: 1, def: 20, help: 'Lines further than this from the current one are not drawn at all (long songs stay light). Raise it if you use a tiny text size.' },
 
     { group: 'Playback source', icon: 'source', cat: 'Source', desc: 'Follow Spotify on the computer, your Spotify account, or both.' },
@@ -236,7 +255,7 @@ const Settings = (() => {
   // Built-in presets (the shipped default config is 'Default'); applied on top of the defaults.
   const BUILTIN = {
     'Default': {},
-    'Smooth (slow phones)': { glow: false, letters: false, blurLines: false, bgRes: 0.35, bgBlur: 4, bgFps: '30', bgBeat: false, renderDistance: 14 },
+    'Smooth (slow phones)': { glow: false, letters: false, blurLines: false, glass: false, bgRes: 0.35, bgBlur: 4, bgFps: '30', bgBeat: false, renderDistance: 14 },
     'Full Spicy': { glow: true, glowStrength: 1.3, lift: true, liftAmount: 1.2, letters: true, blurLines: true, bgRes: 0.75, bgBlur: 8, bgFps: 'max', bgBeat: true, bgSaturation: 1.8 },
   };
 
@@ -265,6 +284,15 @@ const Settings = (() => {
   const fresh = !saved; // first run on this phone: take the desktop's last settings when the bridge sends them
   const S = { ...defaults, ...saved };
   if (typeof S.clockHaptic === 'boolean') S.clockHaptic = S.clockHaptic ? 'light' : 'off'; // was a toggle
+  // One time: the progress bar now defaults to "Under the cover"; phones that still had the old default (bottom edge) move over.
+  try {
+    if (saved && !localStorage.getItem('dock:m17b')) {
+      if (S.progress === 'bottom') S.progress = saved.progress = 'art';
+      S.blurLines = saved.blurLines = false; // crisp, translucent upcoming lines are the new look
+      localStorage.setItem(KEY, JSON.stringify(saved));
+      localStorage.setItem('dock:m17b', '1');
+    }
+  } catch (e) {}
   const listeners = [];
   let presets = {}, presetHook = () => {};
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
@@ -434,6 +462,7 @@ const Settings = (() => {
     const c = el('div', 'sl-sp-control');
     c.append(control(x));
     row.append(lw, c);
+    if (c.querySelector('select')) row.classList.add('sl-sp-row--choice'); // narrow sheets stack these (no :has() on Chrome 99)
     if (x.help) row.append(el('div', 'sl-sp-help', x.help)); // full row width, under the label + control
     if (x.k) row.dataset.row = x.k;
     return row;
@@ -488,10 +517,14 @@ const Settings = (() => {
     body.dataset.view = `${cur}|${q}`;
     pane.scrollTop = same ? top : 0;
     if (!same) rail.querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    window.onSettingsRender?.(); // toggles / choices re-render (sliders don't): the quick sheet follows
   }
   const findInput = document.getElementById('sfind');
   if (findInput) findInput.oninput = () => { query = findInput.value; render(); };
 
+  // A few settings as ready-made rows (the quick sheet in features.js): same controls, same live state as the full sheet.
+  const byKey = k => SCHEMA.find(x => x.k === k);
+  const rows = keys => keys.map(byKey).filter(x => x && (!x.when || x.when(S))).map(x => makeRow(x));
   const open = () => { render(); document.body.classList.add('settings-open'); };
   const close = () => document.body.classList.remove('settings-open');
   const reset = () => { Object.assign(S, defaults, { apiKey: S.apiKey }); save(); notify('*'); render(); };
@@ -511,7 +544,7 @@ const Settings = (() => {
   const setRemote = (k, v) => { if (k in defaults && typeof v === typeof defaults[k] && (x => !x.opts || x.opts.some(o => o[0] === v))(SCHEMA.find(x => x.k === k))) set(k, v); };
 
   return {
-    S, set, setRemote, schema, open, close, reset, load, fresh, render, BUILTIN, defaults, ICONS,
+    S, set, setRemote, schema, open, close, reset, load, fresh, render, rows, BUILTIN, defaults, ICONS,
     onChange: f => listeners.push(f),
     setPresets: p => { presets = p && typeof p === 'object' ? p : {}; render(); },
     onPreset: f => { presetHook = f; },
