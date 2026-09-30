@@ -38,13 +38,20 @@
     const st = document.documentElement.style, on = innerWidth > innerHeight && ['split', 'tv'].includes(S.layout);
     document.body.classList.toggle('fit-art', on);
     if (!on) return;
-    const pad = innerHeight * 0.04, meta = $('meta'), mt = parseFloat(getComputedStyle(meta).marginTop) || 0;
+    // Auto margins (style.css) split the spare height evenly: above the cover, above the title block, below it. The empty
+    // room the timeline leaves under itself is mirrored under the title block, so the gaps look equal, not just measure it.
+    const vm = Math.min(innerWidth, innerHeight) / 100, pt = 2 * vm, gap = 3.5 * vm, meta = $('meta');
     // (getClientRects, not offsetParent: both are position: fixed)
     const low = [$('times'), $('bar')].filter(e => e.getClientRects().length).map(e => e.getBoundingClientRect().top).filter(y => y > innerHeight / 2);
     const bottom = Math.min(innerHeight, ...low);
-    st.setProperty('--left-pb', `${innerHeight - bottom + pad}px`);
-    const tl = $('tl').getClientRects().length ? parseFloat(getComputedStyle($('artbox')).marginBottom) || 0 : 0; // the bar + times under the cover
-    st.setProperty('--art-max', `${Math.max(80, bottom - pad * 2 - meta.offsetHeight - mt - tl)}px`);
+    const hasTl = $('tl').getClientRects().length;
+    const tl = hasTl ? parseFloat(getComputedStyle($('artbox')).marginBottom) || 0 : 0; // the bar + times under the cover
+    // offsets, not rects: with the controls up the timeline is moved by a transform
+    const slack = hasTl ? Math.max(0, tl - ($('tl').offsetTop + $('tl').offsetHeight - $('art').offsetHeight)) : 0;
+    const a = Math.max(0, gap - slack);
+    st.setProperty('--left-pt', `${pt}px`);
+    st.setProperty('--left-pb', `${innerHeight - bottom + slack}px`);
+    st.setProperty('--art-max', `${Math.max(80, bottom - pt - tl - meta.offsetHeight - slack - 3 * a)}px`);
   });
   addEventListener('resize', fitArt);
   Settings.onChange(() => fitArt());

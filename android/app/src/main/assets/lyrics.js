@@ -93,7 +93,7 @@ const Lyrics = (() => {
     return out;
   }
 
-  const RTL = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+  const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/; // escapes, not literals: an NFC pass once split U+FB1D and the range swallowed Devanagari
   const div = (cls, text) => { const d = document.createElement('div'); d.className = cls; if (text) d.textContent = text; return d; };
 
   // Interlude: three dots, each owning a third of the gap (Spicy's musical-line / dotGroup).

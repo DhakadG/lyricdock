@@ -853,8 +853,9 @@ body.art-ctl #meta { transition: opacity .3s, transform .45s var(--ease); }
 body.art-ctl.ui #meta { opacity: 0; transform: translateY(3vmin); pointer-events: none; }
 
 /* ---- left column fit (fitArt): clear of the times + bar, cover capped to what's left */
-body.fit-art #left { box-sizing: border-box; padding: var(--left-pt, 4vmin) 0 var(--left-pb, 4vmin); }
-body.fit-art #artbox { max-width: var(--art-max, none); }
+body.fit-art #left { box-sizing: border-box; justify-content: flex-start; padding: var(--left-pt, 4vmin) 0 var(--left-pb, 4vmin); }
+body.fit-art #artbox { width: 100%; max-width: var(--art-max, none); margin-top: auto; }
+body.fit-art #meta { margin: auto 0; }
 /* ---- no lyrics: Default / TV centre the cover and say so under the title, quietly; elsewhere the note is centred */
 body.nolyrics.layout-split #lyrics, body.nolyrics.layout-tv #lyrics { display: none; }
 body.nolyrics.layout-split #left, body.nolyrics.layout-tv #left { flex: 1 1 auto; animation: nolyrIn .5s var(--ease); }
