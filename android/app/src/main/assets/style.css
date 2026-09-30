@@ -72,10 +72,15 @@ body.show-liked #heart { display: block; }
 /* ======================================================================= lyrics
    Spicy Lyrics look: not-sung / sung lines dim (Settings -> Other lines brightness), the active line full,
    words fill with a gradient sweep + glow + lift (anim.js). */
+/* Room to grow: the pane is widened on each side by --glx-l / --glx-r (measured to the real screen edge, notch and
+   corners - app.js lyricRoom) and the lines are set back in by the same amount. The text wraps exactly as before, but a
+   line that lifts, a word that swells and the glow around it have space instead of being cut at the pane's side.
+   Side margins go through --lyr-ml / --lyr-mr so layout rules and this widening add up. */
 #lyrics { flex: 1; position: relative; overflow: hidden; min-width: 0; min-height: 0;
+  margin-left: calc(var(--lyr-ml, 0px) - var(--glx-l, 0px)); margin-right: calc(var(--lyr-mr, 0px) - var(--glx-r, 0px));
   -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
-#lyrics.static { overflow-y: auto; -webkit-mask-image: none; }
-#lines { position: absolute; left: 0; right: 0; will-change: transform; }
+#lyrics.static { overflow-y: auto; -webkit-mask-image: none; padding-left: var(--glx-l, 0px); padding-right: var(--glx-r, 0px); }
+#lines { position: absolute; left: var(--glx-l, 0px); right: var(--glx-r, 0px); will-change: transform; }
 #lyrics.static #lines { position: static; padding: 12vmin 0; }
 /* (lyrics.js moves #lines with a spring, not a CSS transition: it keeps its velocity when the target changes.) */
 /* How a word is painted - the same way in every line state, so nothing pops when a line becomes active (this used to swap
@@ -1043,8 +1048,8 @@ body.no-glass.settings-open .sl-modal::before { background: linear-gradient(160d
 
 /* ---- Nothing sits on top of anything else (found by scripts/screen-audit.mjs on the phone):
    the battery / time corner keeps the lyrics clear of it... */
-body.stat-on.stat-tr #lyrics, body.stat-on.stat-br #lyrics { margin-right: 11vmin; }
-body.stat-on.stat-tl.layout-lyrics #lyrics, body.stat-on.stat-bl.layout-lyrics #lyrics { margin-left: 11vmin; }
+body.stat-on.stat-tr #lyrics, body.stat-on.stat-br #lyrics { --lyr-mr: 11vmin; }
+body.stat-on.stat-tl.layout-lyrics #lyrics, body.stat-on.stat-bl.layout-lyrics #lyrics { --lyr-ml: 11vmin; }
 /* ...Compact's title row ends before the gear, the quick bar and the battery... */
 body.layout-compact.stat-on.stat-tr #meta { padding-right: 16vmin; box-sizing: border-box; } /* clear of the battery; the quick bar only covers it while the controls are up */
 /* ...the song times on the edge bar lift the Cinema badge and the Now Bar pill clear of them (landscape too)... */
@@ -1067,7 +1072,7 @@ body.layout-compact #wrap { gap: 3.5vmin; }
 @media (orientation: portrait) {
   /* The battery / time corner sits above the content instead of on it. */
   body.stat-on:is(.stat-tr, .stat-tl) #wrap { padding-top: calc(var(--sa-t) + 13vmin); }
-  body.stat-on:is(.stat-tr, .stat-tl) #lyrics { margin-right: 0; }
+  body.stat-on:is(.stat-tr, .stat-tl) #lyrics { --lyr-mr: 0px; }
   /* Narrow sheet: a choice row stacks - label (and its hint) on top, the list full width underneath on one line - so
      neither the label nor the option ever gets squeezed into a wrapped, clipped box. */
   #qpanel header { padding: 14px 12px 8px 20px; }

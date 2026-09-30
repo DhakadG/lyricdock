@@ -620,10 +620,40 @@ function applyInsets() {
   const [ty, tx] = bar(man ? S.cornerPad : Math.max(insets.rtl, insets.rtr));
   st.setProperty('--bar-by', px(by)); st.setProperty('--bar-bx', px(bx));
   st.setProperty('--bar-ty', px(ty)); st.setProperty('--bar-tx', px(tx));
+  if (typeof lyricRoom === 'function') setTimeout(lyricRoom, 60);
 }
+
+// ---- room for the lyrics to grow sideways (style.css #lyrics): how far the pane may reach past its own sides before it
+// would touch something - the screen edge (plus the notch / manual edge padding), the cover column, the battery / time
+// corner. Up to 6 vmin each side, re-measured whenever the pane changes size (rotation, layout, insets, controls).
+const lyr = $('lyrics');
+let roomL = 0, roomR = 0;
+function lyricRoom() {
+  const r = lyr.getBoundingClientRect();
+  if (r.width < 20 || r.height < 20) return; // hidden (clock layouts): keep what we have
+  const l0 = r.left + roomL, r0 = r.right - roomR; // the pane's own sides, without the room
+  const root = getComputedStyle(document.documentElement), sa = k => parseFloat(root.getPropertyValue(k)) || 0;
+  let minX = sa('--sa-l') + 4, maxX = innerWidth - sa('--sa-r') - 4;
+  for (const id of ['left', 'stat']) { // neighbours beside the pane (vertically overlapping it)
+    const e = $(id); if (!e || !e.getClientRects().length || getComputedStyle(e).display === 'none') continue;
+    const b = e.getBoundingClientRect();
+    // only what sits beside the lit middle of the pane counts - the top and bottom 15 % are faded out anyway (the battery)
+    if (b.width < 2 || b.bottom <= r.top + r.height * 0.15 || b.top >= r.bottom - r.height * 0.15) continue;
+    if (b.right <= l0 + 1) minX = Math.max(minX, b.right + 6);
+    if (b.left >= r0 - 1) maxX = Math.min(maxX, b.left - 6);
+  }
+  const most = Math.min(innerWidth, innerHeight) * 0.06;
+  const L = Math.round(Math.max(0, Math.min(most, l0 - minX))), R = Math.round(Math.max(0, Math.min(most, maxX - r0)));
+  if (L === roomL && R === roomR) return;
+  roomL = L; roomR = R;
+  lyr.style.setProperty('--glx-l', `${L}px`); lyr.style.setProperty('--glx-r', `${R}px`);
+}
+new ResizeObserver(() => requestAnimationFrame(lyricRoom)).observe(lyr);
+addEventListener('resize', () => requestAnimationFrame(lyricRoom));
 
 // ---- settings -> page
 function apply(k) {
+  setTimeout(lyricRoom, 60); // a neighbour (cover side, battery corner) may have moved without the pane resizing
   const b = document.body;
   b.className = b.className.replace(/\b(layout|bg|align|prog|pp|scroll|art)-\S+/g, '').replace(/\s+/g, ' ').trim();
   b.classList.add(`layout-${S.layout}`, `bg-${S.bg}`, `align-${S.align}`, `prog-${S.progress}`, `pp-${S.ppAnim}`, `scroll-${S.scroll}`, `art-${S.artSide}`);
