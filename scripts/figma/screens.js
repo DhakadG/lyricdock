@@ -32,13 +32,13 @@ const cards = {}; for (const d of ['0', '9', '4', '1']) cards[d] = await img(`fc
 const cardSize = await cards['0'].getSizeAsync();
 
 // the orientation's section
-const secName = orient === 'land' ? '04 · Screens — Landscape (760 × 360)' : '04 · Screens — Portrait (360 × 760)';
+const secName = orient === 'land' ? '02 · Screens — Landscape (760 × 360)' : '03 · Screens — Portrait (360 × 760)';
 const [SW, SH] = orient === 'land' ? [760, 360] : [360, 760];
 const ROWH = SH + 110, ROWW = 320 + 5 * SW + 6 * 40;
 let sec = board.children.find(c => c.name === secName);
 if (!sec) {
   sec = frame(board, secName, ROWW + 80, 140 + ORDER.length * ROWH, solid('#0B0B0E'), 24);
-  sec.x = orient === 'land' ? 0 : 4600; sec.y = 2300; sec.clipsContent = false;
+  sec.x = orient === 'land' ? 0 : 4600; sec.y = 1080; sec.clipsContent = false;
   txt(sec, secName, 40, 'Extra Bold', solid('#E0B56B')).x = 40;
   const sub = txt(sec, 'Each row: blocks measured on the phone (Settings → Show block names) · the design built from 02 · Components · real phone screenshots (idle, controls up, quick settings). Demo song "Midnight Signal" at 0:19.5.', 16, 'Regular', solid(W, .6), ROWW - 80); sub.x = 40; sub.y = 56;
   for (const [i, h] of ['Layout', 'Wireframe · blocks', 'Design · components', 'Phone · idle', 'Phone · controls', 'Phone · quick settings'].entries()) { const t = txt(sec, h, 14, 'Semi Bold', solid(W, .5)); t.x = i ? 40 + 320 + (i - 1) * (SW + 40) : 40; t.y = 104; }

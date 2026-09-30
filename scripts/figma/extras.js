@@ -17,8 +17,8 @@ const img = async f => figma.createImage(new Uint8Array(await (await fetch(BASE 
 const imgFill = (im, mode = 'FILL') => ({ type: 'IMAGE', imageHash: im.hash, scaleMode: mode });
 const variant = (set, name) => set.children.find(c => c.name === name) ?? set.defaultVariant;
 const prop = (inst, start) => Object.keys(inst.componentProperties).find(k => k.startsWith(start));
-const X = 7200, CW = 1700;
-const section = (name, y, h, sub) => {
+const CW = 1700, ROW = 9250; // row 3 of the board: sections 04-08 left to right, after the screens
+const section = (name, X, y, h, sub) => {
   board.children.filter(c => c.name === name).forEach(c => c.remove());
   const s = frame(board, name, CW, h, solid('#0B0B0E'), 24); s.x = X; s.y = y;
   at(txt(s, name, 40, 'Extra Bold', solid(GOLD)), 40, 24); if (sub) at(txt(s, sub, 16, 'Regular', solid(W, .6), CW - 80), 40, 80);
@@ -29,7 +29,7 @@ const only = new Set(ARGS.only);
 const LS = await N(ids.line), RW = await N(ids.rows), cover = await img('figma/cover.png');
 
 if (only.has('05')) {
-  const s = section('05 · Lyrics anatomy', 1080, 780, 'How one line is drawn (anim.js · lyrics.js · style.css). Every state is a variant of the Lyric line component.');
+  const s = section('04 · Lyrics anatomy', 0, ROW, 780, 'How one line is drawn (anim.js · lyrics.js · style.css). Every state is a variant of the Lyric line component.');
   const stage = frame(s, 'Stage', 900, 620, solid('#000000'), 18); at(stage, 40, 130); stage.clipsContent = true;
   const bg = figma.createRectangle(); stage.appendChild(bg); bg.resize(1300, 900); at(bg, -200, -140); bg.fills = [imgFill(cover)]; bg.effects = [{ type: 'LAYER_BLUR', radius: 110, visible: true }];
   const dim = figma.createRectangle(); stage.appendChild(dim); dim.resize(900, 620); dim.fills = [solid('#000000', .45)];
@@ -58,7 +58,7 @@ if (only.has('05')) {
 }
 
 if (only.has('06')) {
-  const s = section('06 · Flip clock', 1940, 1330, 'The clock layouts use the same digit art as the app (fc-card-*.png is baked from the Digits frames on this page). Copies of the two art boards, the flip in motion on the phone, and the behaviour.');
+  const s = section('05 · Flip clock', 1780, ROW, 1330, 'The clock layouts use the same digit art as the app (fc-card-*.png is baked from the Digits frames on this page). Copies of the two art boards, the flip in motion on the phone, and the behaviour.');
   let y = 130;
   for (const id of ['157:1022', '157:1205']) {
     const src = await N(id); if (!src) continue;
@@ -83,7 +83,7 @@ if (only.has('06')) {
 }
 
 if (only.has('07')) {
-  const s = section('07 · Settings', 3310, 1000, 'The real sheets from the phone next to the sheet built from the Settings row component (label is a text property).');
+  const s = section('06 · Settings', 3560, ROW, 1000, 'The real sheets from the phone next to the sheet built from the Settings row component (label is a text property).');
   const land = await img('figma/land-settings.png'), port = await img('figma/port-settings.png');
   at(txt(s, 'Phone · landscape', 14, 'Semi Bold', solid(W, .5)), 40, 120); at(frame(s, 'Phone · settings (landscape)', 760, 360, imgFill(land), 14), 40, 144);
   at(txt(s, 'Phone · portrait', 14, 'Semi Bold', solid(W, .5)), 40, 530); at(frame(s, 'Phone · settings (portrait)', 200, 422, imgFill(port), 14), 40, 554);
@@ -113,7 +113,7 @@ if (only.has('07')) {
 }
 
 if (only.has('08')) {
-  const s = section('08 · Blank templates', 4350, 1000, 'Start new screens here. Safe area = the notch inset on the camera side (29.5 px on the M01) plus the edge gutter; both sides are kept clear whichever way the phone is turned.');
+  const s = section('08 · Blank templates', 7120, ROW, 1000, 'Start new screens here. Safe area = the notch inset on the camera side (29.5 px on the M01) plus the edge gutter; both sides are kept clear whichever way the phone is turned.');
   const blank = async (name, w, h, x, y, inset) => {
     const f = frame(s, name, w, h, solid('#000000'), 14); at(f, x, y); f.clipsContent = true;
     const bg = figma.createRectangle(); f.appendChild(bg); bg.resize(w * 1.4, h * 1.4); at(bg, -w * .2, -h * .2); bg.fills = [imgFill(cover)]; bg.effects = [{ type: 'LAYER_BLUR', radius: 100, visible: true }]; bg.opacity = .5; bg.name = 'Background · cover, blurred';
@@ -129,7 +129,7 @@ if (only.has('08')) {
   g.layoutGrids = [{ pattern: 'ROWS', alignment: 'STRETCH', gutterSize: 12, count: 2, offset: 30, visible: true, color: { r: .86, g: .75, b: .43, a: .08 } }];
 }
 if (only.has('09')) {
-  const s = section('09 · Interactions', 5410, 1330, 'Changing songs and layouts (1.7.x). Only the cover (or the song card) swipes: a tab slides in from the edge the song comes from, shows its name and +2 / +3 when reaching further, and turns white when letting go commits. The layout button opens a sketch of every layout.');
+  const s = section('07 · Interactions', 5340, ROW, 1330, 'Changing songs and layouts (1.7.x). Only the cover (or the song card) swipes: a tab slides in from the edge the song comes from, shows its name and +2 / +3 when reaching further, and turns white when letting go commits. The layout button opens a sketch of every layout.');
   // the real thing, on the phone (demo song, invented neighbours)
   const shots = [['land-swipe-next', 'Swipe: one song ahead'], ['land-swipe-two', 'Drag further: +2'], ['land-swipe-prev', 'Previous'], ['land-picker', 'Layout picker']];
   shots.forEach(([f, cap], i) => { const x = 40 + i * 410; at(txt(s, cap, 13, 'Semi Bold', solid(W, .55)), x, 130); });
@@ -163,12 +163,13 @@ if (only.has('09')) {
   const nm = figma.createComponent(); nm.name = 'Edge tab / song name'; nm.layoutMode = 'HORIZONTAL'; nm.primaryAxisSizingMode = 'AUTO'; nm.counterAxisSizingMode = 'AUTO';
   nm.paddingLeft = nm.paddingRight = 14; nm.paddingTop = nm.paddingBottom = 6; nm.cornerRadius = 99; nm.fills = [solid('#000000', .6)];
   const nmt = txt(nm, 'Night Bus', 14, 'Semi Bold'); nm.addComponentProperty('Song', 'TEXT', 'Night Bus'); nmt.componentPropertyReferences = { characters: Object.keys(nm.componentPropertyDefinitions)[0] };
-  s.appendChild(nm); at(txt(s, 'Song name (under the tab once armed)', 13, 'Semi Bold', solid(W, .55)), cx0 + 560, 358); at(nm, cx0 + 560, 380);
+  s.appendChild(nm); at(txt(s, 'Song name (under the tab once armed)', 13, 'Semi Bold', solid(W, .55)), cx0, cy0 - 36); at(nm, cx0, cy0 - 14);
+  cy0 += nm.height + 40;
   // layout card: the picker's cell, with its real sketch (from the phone's picker capture) as the image
   at(txt(s, 'Layout card — State (the picker cell; sketch is true to scale)', 13, 'Semi Bold', solid(W, .55)), cx0, cy0 - 22);
   const cards = [];
   for (const st of ['Off', 'On']) {
-    const c = figma.createComponent(); c.name = `State=${st}`; c.layoutMode = 'VERTICAL'; c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; c.resize(150, 10);
+    const c = figma.createComponent(); c.name = `State=${st}`; c.layoutMode = 'VERTICAL'; c.resize(150, 10); c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; // resize first: it would reset the auto height
     c.itemSpacing = 3; c.paddingLeft = c.paddingRight = 8; c.paddingTop = 8; c.paddingBottom = 10; c.cornerRadius = 14;
     c.fills = [st === 'On' ? solid(ACC, .12) : solid(W, .045)]; c.strokes = [st === 'On' ? solid(ACC) : solid(W, .08)]; c.strokeWeight = st === 'On' ? 2 : 1; c.strokeAlign = 'INSIDE';
     const sk = figma.createFrame(); sk.name = 'Sketch'; sk.resize(134, 64); sk.cornerRadius = 8; sk.fills = [solid('#0D0D11')]; c.appendChild(sk); sk.layoutAlign = 'STRETCH';

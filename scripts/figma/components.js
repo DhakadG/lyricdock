@@ -3,7 +3,7 @@
 await figma.loadAllPagesAsync();
 const page = figma.root.children.find(p => p.name === 'LyricDock · Design File'); await figma.setCurrentPageAsync(page);
 const board = page.children.find(c => c.name === 'LyricDock v2 — Design File');
-board.children.filter(c => c.name.startsWith('02 ·')).forEach(c => c.remove());
+board.children.filter(c => c.name.startsWith('01 ·')).forEach(c => c.remove());
 const F = { r: { family: 'Inter', style: 'Regular' }, m: { family: 'Inter', style: 'Medium' }, s: { family: 'Inter', style: 'Semi Bold' }, b: { family: 'Inter', style: 'Bold' }, x: { family: 'Inter', style: 'Extra Bold' }, l: { family: 'Inter', style: 'Light' } };
 for (const f of Object.values(F)) await figma.loadFontAsync(f);
 const styles = Object.fromEntries((await figma.getLocalTextStylesAsync()).filter(s => s.name.startsWith('LyricDock/')).map(s => [s.name.slice(10), s]));
@@ -19,8 +19,8 @@ const comp = (name, w, h) => { const c = figma.createComponent(); c.name = name;
 const W = '#FFFFFF';
 
 // section frame
-const sec = frame(board, '02 · Components', 3600, 2600, solid('#0B0B0E'), 24); sec.x = 0; sec.y = 1400;
-text(sec, '02 · Components', 'Sheet title', solid('#E0B56B')).x = 40;
+const sec = frame(board, '01 · Components', 3600, 2600, solid('#0B0B0E'), 24); sec.x = 0; sec.y = 1400;
+text(sec, '01 · Components', 'Sheet title', solid('#E0B56B')).x = 40;
 const place = (n, x, y, label) => { sec.appendChild(n); n.x = x; n.y = y; if (label) { const t = text(sec, label, 'Row label', solid(W, .6)); t.x = x; t.y = y - 24; } return n; };
 
 // ---- icons (the app's own paths, index.html)

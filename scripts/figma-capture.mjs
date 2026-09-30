@@ -42,7 +42,9 @@ const all = fs.existsSync(`${dir}/data.json`) ? JSON.parse(fs.readFileSync(`${di
 for (const L of layouts) {
   await ev(`Settings.set('layout', '${L}'); document.body.classList.remove('ui', 'qs-open'); 1`);
   await sleep(2400);
-  await ev(`demoAt(19500); 1`); // the same moment every time: an active held note, a duet line, background vocals in view
+  // the demo song again (the app replays Spotify's song whenever it re-checks the source), at the same moment every
+  // time: an active held note, a duet line, background vocals in view
+  await ev(`window.demoTrack && demoTrack('word'); demoAt(19500); 1`);
   await sleep(1400);
   shot(`${dir}/${orient}-${L}-idle.png`);
   all[`${orient}-${L}`] = JSON.parse(await ev(`JSON.stringify(${DATA})`));

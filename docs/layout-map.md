@@ -45,7 +45,7 @@ Landscape reference size 760 × 360 CSS px (Galaxy M01); all sizes are `vmin`, s
 
 ## Changing songs and layouts (1.7.x)
 - **Swipe to change songs** works only on the **Cover** (Default, TV view, Cover + clock) or the **Now playing** card (Player card, Compact, Cinema, Now Bar pill). Drag further to reach up to 3 songs each way; the **Edge tab** (`#swipeCue`) shows Next / Previous, +2 / +3 and the song's name, and turns white once letting go commits. Tap the cover = controls, double tap = like. Code: `swipe.js`; check on the phone: `node scripts/swipe-test.mjs`.
-- **▯ Layout picker** (quick bar, and the top of Settings → Layout): a true-to-scale sketch of every layout; tap to switch. Design file: *09 · Interactions*.
+- **▯ Layout picker** (quick bar, and the top of Settings → Layout): a true-to-scale sketch of every layout; tap to switch. Design file: *07 · Interactions*.
 
 ## Quick bar per layout
 Default / TV: ⇄ swap cover side · Aa romanization · ▯ layout picker · ⚙ quick settings.
