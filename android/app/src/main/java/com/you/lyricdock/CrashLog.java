@@ -31,6 +31,7 @@ class CrashLog implements Thread.UncaughtExceptionHandler {
         e.printStackTrace(new PrintWriter(w));
         String s = w.toString();
         note(ctx, "crash on " + t.getName() + ": " + (s.length() > 1500 ? s.substring(0, 1500) : s));
+        try { Reopen.now(ctx, "LyricDock closed after a problem", "Tap to reopen - it has been noted"); } catch (Throwable ignored) {}
         if (prev != null) prev.uncaughtException(t, e); // Android still records it and ends the process
     }
 

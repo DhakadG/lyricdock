@@ -234,9 +234,21 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         return "";
     }
 
+    // Settings -> Updates -> Reopen by itself: may the dock start itself after an update / crash (Reopen.java)?
+    @JavascriptInterface
+    public boolean canReopen() { return Reopen.canSelfStart(this); }
+
+    @JavascriptInterface
+    public void askReopen() {
+        try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + getPackageName()))); }
+        catch (Exception e) { try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)); } catch (Exception ignored) {} }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        Reopen.clear(this); // back on screen: the "tap to reopen" notification has done its job
+        if (web != null) web.evaluateJavascript("window.Settings&&Settings.render&&Settings.render()", null); // e.g. back from granting "Reopen by itself"
         hideBars();
         if (isOwner()) startLockTask();
     }
