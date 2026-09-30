@@ -286,7 +286,7 @@ function onPreload(m) {
 
 // ---- liked + audio quality (sent with every heartbeat)
 function onMeta(m) {
-  if (Number.isFinite(m.volume) && !(performance.now() < P.volLock)) $('vol').value = m.volume;
+  if (Number.isFinite(m.volume) && !(performance.now() < P.volLock)) { $('vol').value = m.volume; window.volMuted?.(); }
   $('ctl').classList.toggle('has-vol', Number.isFinite(m.volume) && S.showVolume);
   if (typeof m.liked === 'boolean' && performance.now() > P.heartLock) {
     P.liked = m.liked;

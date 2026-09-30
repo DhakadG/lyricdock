@@ -19,7 +19,11 @@
           <button id="pp" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path id="ppIcon"/></svg></button>
           <button id="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
           <button id="rep" class="small" aria-label="Repeat"><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg><i></i></button>
-          <input id="vol" type="range" min="0" max="100" step="1" aria-label="Volume">
+          <div id="volrow" data-block="Volume">
+            <button id="volDn" class="vi" aria-label="Volume down"><svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="vw" d="M15.5 9.2a4 4 0 0 1 0 5.6"/><path class="vx" d="M15.5 9.5l5 5m0-5-5 5"/></svg></button>
+            <input id="vol" type="range" min="0" max="100" step="1" aria-label="Volume">
+            <button id="volUp" class="vi" aria-label="Volume up"><svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="vw" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.3 6.6a7.8 7.8 0 0 1 0 10.8"/></svg></button>
+          </div>
           <div id="deckbar" data-block="Deck timeline"><div id="dtrack"><div id="dfill"></div></div><div id="dtimes"><span id="dcur">0:00</span><span id="ddur">0:00</span></div></div>
           <div id="lists" data-block="List buttons">
             <button data-list="queue" aria-label="Queue"><svg viewBox="0 0 24 24"><path d="M3 6h13v2H3zm0 5h13v2H3zm0 5h9v2H3zm15-2v-4l5 5-5 5v-4z"/></svg></button>

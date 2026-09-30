@@ -231,8 +231,18 @@ body.ui > #ctl { transform: translate(-50%, -50%) scale(1); }
   box-shadow: 0 1.2vmin 3vmin rgba(0, 0, 0, .35), 0 0 4vmin rgba(var(--acc), .45); }
 #ctl #pp:active { background: #e8e8ec; }
 #ctl #pp svg { width: 7vmin; height: 7vmin; }
-#vol { display: none; flex: 0 0 100%; box-sizing: border-box; margin: .6vmin 0 .2vmin; height: 4vmin; accent-color: rgb(var(--acc)); }
-#ctl.has-vol #vol { display: block; }
+/* Volume: a quiet speaker, the slider, a loud speaker - so the bar reads as volume at a glance. The speakers step it
+   by 10 (the left one shows muted at 0); they follow the pill's own scale, so it stays proportional everywhere. */
+#volrow { display: none; flex: 0 0 100%; align-items: center; gap: 1.2vmin; box-sizing: border-box; margin: .6vmin 0 .2vmin; }
+#ctl.has-vol #volrow { display: flex; }
+#vol { flex: 1; min-width: 0; margin: 0; height: 4vmin; accent-color: rgb(var(--acc)); }
+#ctl #volrow button.vi { flex: none; width: 6.4vmin; height: 6.4vmin; opacity: .75; }
+#ctl #volrow button.vi:active { opacity: 1; }
+#ctl #volrow .vi svg { width: 4.6vmin; height: 4.6vmin; }
+#volrow .vi path:first-child { fill: currentColor; }
+#volrow .vi .vw, #volrow .vi .vx { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+#volrow .vi .vx { display: none; }
+#volrow.muted #volDn .vw { display: none; } #volrow.muted #volDn .vx { display: inline; }
 #gear { position: fixed; top: calc(var(--sa-t) + var(--bar-ty) + 4vmin); right: calc(var(--sa-r) + var(--bar-tx) + 4vmin);
   width: 9vmin; height: 9vmin; border-radius: 50%; border: 0; z-index: 6; display: grid; place-items: center;
   background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .02)), var(--glass);
@@ -487,7 +497,7 @@ body.layout-player #deckbar { display: block; flex: 0 0 100%; order: -1; margin-
 body.layout-player #bar, body.layout-player #times { display: none; }
 body.layout-player #ctl #pp { background: transparent; color: #fff; box-shadow: none; width: 12vmin; height: 12vmin; }
 body.layout-player #ctl #pp svg { width: 9vmin; height: 9vmin; }
-body.layout-player #vol { margin: .4vmin 0; }
+body.layout-player #volrow { margin: .4vmin 0; }
 @media (orientation: portrait) {
   body.layout-player #wrap { flex-direction: column; gap: 2vmin; padding: calc(var(--sa-t) + 4vmin) calc(var(--sa-r) + 4vmin) calc(var(--sa-b) + 4vmin) calc(var(--sa-l) + 4vmin); }
   body.layout-player #left { display: contents; }
@@ -495,7 +505,7 @@ body.layout-player #vol { margin: .4vmin 0; }
   body.layout-player #meta::before { width: 14vmin; height: 14vmin; }
   body.layout-player #lyrics { order: 1; }
   body.layout-player #deck { order: 2; }
-  body.layout-player #lists, body.layout-player #vol { display: none; }
+  body.layout-player #lists, body.layout-player #volrow { display: none; }
 }
 
 /* ---- queue / recent / library / search / friends (slide-over), with browsing into playlists, albums, artists */
@@ -956,7 +966,16 @@ body.qs-open #qpanel { opacity: 1; visibility: visible; pointer-events: auto; tr
 #qbody .sl-sp-description { font-size: 11px; }
 /* Layout picker (features.js layoutGrid): a sketch per layout, the current one ringed in the cover's colour. */
 .lp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 4px 4px 8px; }
-@media (orientation: portrait) { .lp-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; } }
+/* Portrait: tall sketches don't fit a grid, so a sideways carousel of big cards - two and a bit in view (the cut one says
+   "there's more"), snapping to each, the current one centred when it opens. */
+@media (orientation: portrait) {
+  .lp-grid { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; padding: 6px 18px 14px; margin: 0 -8px; overscroll-behavior-x: contain;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 18px, #000 calc(100% - 18px), transparent); }
+  .lp-card { flex: 0 0 40%; scroll-snap-align: center; padding: 9px 9px 11px; border-radius: 16px; }
+  .lp-card svg { border-radius: 10px; margin-bottom: 8px; }
+  .lp-card b { font-size: 13px; }
+  .lp-card small { display: block; font-size: 11px; margin-top: 1px; }
+}
 /* In the quick sheet all nine fit without scrolling: a wider sheet, five across (landscape). */
 @media (orientation: landscape) {
   body.qs-layouts #qpanel { width: min(84vw, 660px); }
@@ -970,8 +989,6 @@ body.qs-open #qpanel { opacity: 1; visibility: visible; pointer-events: auto; tr
 .lp-card svg { display: block; width: 100%; height: auto; margin-bottom: 5px; border-radius: 8px; background: #0d0d11; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
 .lp-card b { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lp-card small { font-size: 10px; line-height: 1.25; color: rgba(255, 255, 255, .5); }
-@media (orientation: portrait) { .lp-card { padding: 6px 5px 8px; } .lp-card small { display: none; }
-  .lp-card b { font-size: 10px; line-height: 1.2; text-align: center; white-space: normal; letter-spacing: -.01em; min-height: 2.4em; } } /* two short lines, never cut off */
 .lp-card rect.c, .lp-card circle.c { fill: rgb(var(--acc)); opacity: .8; }
 .lp-card .p { fill: rgba(255, 255, 255, .16); } .lp-card .d { fill: rgba(255, 255, 255, .1); }
 .lp-card .t1 { fill: rgba(255, 255, 255, .92); } .lp-card .t { fill: rgba(255, 255, 255, .45); }

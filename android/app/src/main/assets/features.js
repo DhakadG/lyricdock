@@ -605,6 +605,8 @@
       $('wrap').animate([{ opacity: 0.2, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: ms(380), easing: 'cubic-bezier(.2,.8,.2,1)' });
       g.querySelectorAll('.lp-card').forEach(x => { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c); });
     });
+    // the portrait carousel opens on the current layout
+    requestAnimationFrame(() => { const c = g.querySelector('.lp-card.on'); if (c && g.scrollWidth > g.clientWidth) g.scrollLeft = c.getBoundingClientRect().left - g.getBoundingClientRect().left + g.scrollLeft - (g.clientWidth - c.offsetWidth) / 2; });
     return g;
   };
   let qMode = 'settings';
@@ -758,7 +760,12 @@
     P.volLock = performance.now() + 2000;
     cmdOf('volume', { v });
     window.notice?.(`Volume ${v}%`, 900);
+    window.volMuted();
   };
+  window.volMuted = () => $('volrow').classList.toggle('muted', +$('vol').value === 0); // the quiet speaker turns into "muted" at 0
+  $('volDn').onclick = () => window.volKey(-2); // the speakers step by 10
+  $('volUp').onclick = () => window.volKey(2);
+  $('vol').addEventListener('input', window.volMuted);
   window.mediaCmd = c => { if (['toggle', 'next', 'prev'].includes(c)) cmdOf(c); };
   window.dockWake = () => {
     lastPlayAt = Date.now(); clockDismissedAt = Date.now();
