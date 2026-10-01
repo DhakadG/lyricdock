@@ -980,7 +980,7 @@
     const card = document.createElement('div');
     card.className = 'cc';
     const p = Rtc.path?.(), linked = Rtc.open?.(), desk = Rtc.desk?.() || 'Spotify on your computer', vis = Rtc.discoverable?.() ?? {};
-    let dockOn = false; try { dockOn = !!Dock.kioskOn; } catch (e) {}
+    let dockOn = false; try { dockOn = !!Dock.kioskOn(); } catch (e) {}
     const state = linked ? `Connected to ${desk}` : P.source === 'web' ? 'Following your Spotify account' : 'Not connected';
     const how = linked ? `${p?.relayed ? 'Through a TURN relay' : 'Same network'}${p?.rtt != null ? ` · ${Math.round(p.rtt * 1000)} ms` : ''}`
       : P.source === 'web' ? 'Spotify on your computer isn\'t linked. Playback comes from your account instead.'
