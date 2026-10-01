@@ -1090,10 +1090,41 @@
     const inNight = S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo;
     const b = S.bright === 'system' ? -1 : S.bright === 'schedule' && inNight ? S.brightNight : S.brightDay;
     if (b !== window.__bright) { window.__bright = b; call('brightness', b); }
+    if (S.mediaNotif && S.lockLyric) return; // the lyric loop below owns the notification (the line replaces the artist)
     const mk = S.mediaNotif && P.id ? `${P.id}|${!!P.playing}|${$('title').textContent}` : '';
     if (mk !== mediaKey) { mediaKey = mk; call('media', mk ? $('title').textContent : '', $('artist').textContent, P.art || '', !!P.playing); }
   }
   setInterval(() => hardware(new Date().getHours()), 1000);
+
+  // ---- Home-screen widgets + lock screen (docs/widgets-plan.md). The shared now-playing state (the same shape an iOS
+  // Live Activity will use) goes to Android when the song, play state or sung line changes - and only while a widget
+  // is placed or a lock-screen option is on. Throttling and drawing happen natively (NowPlaying.java).
+  let widgets = false, sentKey = '', overLock = null;
+  const checkWidgets = () => { widgets = !!call('hasWidgets'); };
+  checkWidgets();
+  setInterval(checkWidgets, 60000);
+  window.dockWidgets = () => { checkWidgets(); sentKey = ''; }; // a widget was placed / resized (NowPlaying.redraw)
+  function nowState() {
+    const p = pos(), l = Lyrics.lineAt(p);
+    return {
+      v: 1, id: P.id, title: $('title').textContent, artist: $('artist').textContent, album: P.album || '', art: P.art || '',
+      accent: S.widgetAccent ? getComputedStyle(document.documentElement).getPropertyValue('--acc').trim() : '',
+      playing: !!P.playing, posMs: Math.round(p), atMs: Date.now(), durMs: Math.round(P.dur || 0),
+      line: l?.text ? { i: l.i, text: l.text, t: l.t, e: l.e } : null, prev: l?.prev || '', next: l?.next || [],
+      src: P.source === 'web' ? 'webapi' : 'bridge',
+    };
+  }
+  setInterval(() => {
+    const lock = !!(S.lockShow && P.playing);
+    if (lock !== overLock) { overLock = lock; call('showOverLock', lock); }
+    const lockLine = S.mediaNotif && S.lockLyric;
+    if (!P.id || (!widgets && !lockLine)) return;
+    const s = nowState(), key = `${s.id}|${s.playing}|${s.line?.i ?? -1}|${s.accent}`;
+    if (key === sentKey) return;
+    sentKey = key;
+    if (widgets) call('nowPlaying', JSON.stringify(s));
+    if (lockLine) call('media', s.title, s.line?.text || s.artist, s.art, s.playing); // lock-screen player: the sung line
+  }, 250);
 
   // ---- release notes: Settings -> Updates -> What's new, and once after the app updated itself.
   // **bold** and [text](link) -> bold / plain text (the input is already escaped).

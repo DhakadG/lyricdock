@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Cover" widget: the album cover (2x2), or a clock beside it when stretched wide (4x2). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp" android:minHeight="110dp" android:minResizeWidth="110dp" android:minResizeHeight="110dp"
+    android:targetCellWidth="2" android:targetCellHeight="2" android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0" android:initialLayout="@layout/w_cover" android:previewLayout="@layout/w_cover"
+    android:widgetCategory="home_screen|keyguard" />

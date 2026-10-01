@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Now playing" widget: resizes between the lyric strip (4x1), now playing (4x2) and lyrics (4x3+). Never polls:
+     the app pushes updates (NowPlaying.java). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp" android:minHeight="40dp" android:minResizeWidth="180dp" android:minResizeHeight="40dp"
+    android:targetCellWidth="4" android:targetCellHeight="2" android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0" android:initialLayout="@layout/w_now" android:previewLayout="@layout/w_now"
+    android:widgetCategory="home_screen|keyguard" />

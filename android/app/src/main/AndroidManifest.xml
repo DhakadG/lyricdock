@@ -44,6 +44,15 @@
             </intent-filter>
         </activity-alias>
         <receiver android:name=".MediaReceiver" android:exported="false" />
+        <!-- Home-screen widgets (NowPlaying.java draws both; they never poll) -->
+        <receiver android:name=".NowWidget" android:exported="false" android:label="LyricDock: now playing">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/w_now_info" />
+        </receiver>
+        <receiver android:name=".CoverWidget" android:exported="false" android:label="LyricDock: cover">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/w_cover_info" />
+        </receiver>
         <receiver android:name=".InstallReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

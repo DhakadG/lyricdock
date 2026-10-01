@@ -350,10 +350,21 @@ const Lyrics = (() => {
     return on ? Math.min(1, 0.45 + starts / 12) : 0.12;
   }
 
+  // Widgets / lock screen: the line being sung at p (ms) and its neighbours, as plain text. Instrumental gaps -> ''.
+  function lineAt(p) {
+    if (!synced || !lines.length) return null;
+    let i = -1;
+    for (let k = 0; k < lines.length && lines[k].t <= p; k++) i = k;
+    const text = x => (x && !x.dots ? x.el.textContent.replace(/\s+/g, ' ').trim().slice(0, 120) : '');
+    const on = i >= 0 && p < lines[i].e + 1500; // a little after the line ends, then the gap shows as empty
+    return { i, text: on ? text(lines[i]) : '', t: lines[i]?.t, e: lines[i]?.e, prev: text(lines[i - 1]), next: [text(lines[i + 1]), text(lines[i + 2])].filter(Boolean) };
+  }
+
   return {
     energy,
     build,
     update,
+    lineAt,
     fromSpicy,
     rank,
     rebuild: () => build(data),

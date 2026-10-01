@@ -6,7 +6,7 @@ import android.view.WindowManager;
 
 // Small UI-thread jobs posted from the page's JavaScript thread (no inner/anonymous classes - see DockServer).
 class UiOp implements Runnable {
-    static final int BRIGHTNESS = 1, WAKE = 2, JS = 3, CLEAR_CACHE = 4;
+    static final int BRIGHTNESS = 1, WAKE = 2, JS = 3, CLEAR_CACHE = 4, OVER_LOCK = 5;
     private final MainActivity a;
     private final int op;
     private final float f;
@@ -26,6 +26,8 @@ class UiOp implements Runnable {
             PowerManager pm = (PowerManager) a.getSystemService(MainActivity.POWER_SERVICE);
             PowerManager.WakeLock wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, "lyricdock:wake");
             wl.acquire(3000);
+        } else if (op == OVER_LOCK) {
+            if (Build.VERSION.SDK_INT >= 27) a.setShowWhenLocked(f > 0);
         } else if (op == CLEAR_CACHE && a.web != null) {
             a.web.clearCache(true);
         } else if (op == JS && a.web != null) {

@@ -3,6 +3,23 @@
 Status: proposal (October 2026). Nothing here is built yet. Android ships first. The iOS sections only fix the
 data shape now, so the iPhone version can reuse it later.
 
+
+> **Status (v1.8.5): Android phases 1-3 are shipped (widgets + lock screen).** Tested on an I2208 (Android 14):
+> - **"LyricDock: now playing"** picks its layout by height: a lyric strip (< 76 dp), now playing (`w_now`: cover,
+>   title, artist, the sung line in the cover's accent, progress, controls), or lyrics (`w_lyrics`, ≥ 200 dp:
+>   the line before, the sung line, the next two).
+> - **"LyricDock: cover"** shows the cover, or a clock beside it when ≥ 250 dp wide.
+> - **Drawing:** `NowPlaying.java` keeps the shared state, drawn from `Dock.nowPlaying(json)`.
+>   - A full update on a new song, a partial one on a new line or play state, at most every 400 ms.
+>   - Nothing while the screen is off. The state is saved for reboots and launcher restarts.
+>   - Placing or resizing a widget asks the running page to push now (`window.dockWidgets`).
+> - **JS (`features.js`):** sends only while a widget is placed or a lock-screen option is on.
+> - **Lock screen:** *Lyrics on the lock screen* puts the sung line in the media session's artist field (option A).
+>   *Show over the lock screen while playing* uses `setShowWhenLocked` (option C).
+> - **Settings → Screen:** *Widget colours from the cover*.
+> - **Not done:** the Live-Update experiment (option B) and iOS (phase 5). The JSON state already has the shape the
+>   iOS ContentState will use.
+
 ## 0. What exists today (checked in the code)
 
 - `MainActivity` hosts the WebView. JS calls Java through `Dock.*` (`@JavascriptInterface`), and Java calls JS

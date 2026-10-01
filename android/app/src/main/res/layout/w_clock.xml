@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Cover" widget, wide (4x2): a big clock beside the cover and the song. TextClock ticks on its own (no updates). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="horizontal" android:gravity="center_vertical" android:padding="12dp" android:background="@drawable/w_bg">
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+        <TextClock android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:format12Hour="h:mm" android:format24Hour="HH:mm" android:textColor="#FFFFFF" android:textSize="44sp"
+            android:fontFamily="sans-serif-light" />
+        <TextClock android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:format12Hour="EEE, d MMM" android:format24Hour="EEE, d MMM" android:textColor="#99FFFFFF" android:textSize="13sp" />
+        <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="10dp" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold"
+            android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/w_artist" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="#99FFFFFF" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+    </LinearLayout>
+    <ImageView android:id="@+id/w_cover" android:layout_width="104dp" android:layout_height="104dp" android:layout_marginStart="12dp"
+        android:scaleType="centerCrop" android:src="@drawable/w_art" android:clipToOutline="true" android:background="@drawable/w_art" />
+</LinearLayout>

@@ -185,6 +185,17 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     @JavascriptInterface
     public void checkUpdate(boolean install) { new Thread(new Updater(this, install)).start(); }
 
+    // Home-screen widgets: the page sends the now-playing state only while one is placed (NowPlaying draws it).
+    @JavascriptInterface
+    public boolean hasWidgets() { return NowPlaying.placed(this); }
+
+    @JavascriptInterface
+    public void nowPlaying(String json) { NowPlaying.push(this, json); }
+
+    // Settings -> Screen -> "Show over the lock screen while playing": the dock instead of the lock screen.
+    @JavascriptInterface
+    public void showOverLock(boolean on) { runOnUiThread(new UiOp(this, UiOp.OVER_LOCK, on ? 1 : 0, null)); }
+
     // Settings -> Storage: the WebView's HTTP cache (still covers, artist images, fonts) lives in the app's cache dir.
     @JavascriptInterface
     public long webCacheBytes() { return dirBytes(getCacheDir()); }
