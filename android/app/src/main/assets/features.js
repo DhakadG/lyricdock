@@ -658,7 +658,7 @@
     b.classList.toggle('line-accent', S.lineColor === 'accent');
     b.classList.toggle('duet', S.duetColors);
     b.classList.toggle('outline', S.outline);
-    b.classList.toggle('drift', S.bgDrift && (S.bg === 'blur' || S.bg === 'canvas' || S.bg === 'motion'));
+    b.classList.toggle('drift', S.bgDrift && (S.bg === 'blur' || S.bg === 'canvas' || S.bg === 'motion' || S.bg === 'motionblur'));
     call('setVolKeys', !!S.volKeys);
     b.classList.toggle('qs-on', !!S.qsEnabled);
     b.classList.toggle('show-blocks', !!S.showBlocks);
@@ -746,9 +746,12 @@
     if (canvases.size > 20) canvases.delete(canvases.keys().next().value);
     canvasTick();
   };
+  // The background video slot (#cv): Spotify Canvas, or the album's animated cover (sharp or blurred).
   function canvasTick() {
     const night = document.body.classList.contains('night');
-    const want = night ? null : S.bg === 'canvas' ? canvases.get(P.id) : S.bg === 'motion' ? motion.get(`tall:${P.id}`) : null;
+    const mirror = !night && S.bg === 'motionblur' && S.motionArt; // blur copies the cover video's frames: no second <video>
+    if (mirror) blurMirror(); else $('cvb')?.remove();
+    const want = night || mirror ? null : S.bg === 'canvas' ? canvases.get(P.id) : S.bg === 'motion' ? motion.get(`bg:${P.id}`) : S.bg === 'motionblur' ? motion.get(`cover:${P.id}`) : null;
     let v = document.getElementById('cv');
     if (!want) { v?.remove(); return; }
     if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
@@ -759,66 +762,81 @@
     $('bg').after(v);
   }
   setInterval(canvasTick, 1000);
+  // Blurred animated background while the cover is animated: its frames are copied (~15 fps) into a tiny canvas that
+  // CSS scales up and blurs. One download and one decoder - two <video>s streaming the same file block each other,
+  // and a second decoder is heavy on 2 GB phones.
+  let blurT = 0;
+  function blurMirror() {
+    if (!$('cvb')) $('bg').after(Object.assign(document.createElement('canvas'), { id: 'cvb', width: 64, height: 32 }));
+    if (blurT) return;
+    blurT = setInterval(() => {
+      const c = $('cvb'), v = $('mv');
+      if (!c) { clearInterval(blurT); blurT = 0; return; }
+      if (!v || v.readyState < 2) { c.classList.remove('on'); return; } // no animated cover: the blurred still shows
+      const h = Math.max(8, Math.round(64 * innerHeight / innerWidth)), sh = v.videoWidth * h / 64;
+      if (c.height !== h) c.height = h;
+      c.getContext('2d').drawImage(v, 0, Math.max(0, (v.videoHeight - sh) / 2), v.videoWidth, Math.min(sh, v.videoHeight), 0, 0, 64, h);
+      c.classList.add('on');
+    }, 66);
+  }
 
   // ---- Animated covers from LyricDock cloud: Apple Music's motion artwork (docs/lyricdock-cloud.md).
-  // Square video inside the cover; the tall 3:4 one is the 'Animated cover' background. The size asked for is what
-  // this screen shows (cover width x pixel ratio), so the phone gets a ~2 MB file and a 4K screen the 2160p one.
+  // Two slots: 'cover' (square, in the cover; also feeds the blurred background - same file, no extra data) and
+  // 'bg' (the sharp 'Animated cover' background: tall in portrait, square in landscape, sized to the screen).
+  // Size asked = pixels shown x the quality setting; the cloud picks the matching Apple encode.
   const ART_API = 'https://art.lyricdock.losthusky.qzz.io/v1';
   const HEVC = (() => { try { return MediaSource.isTypeSupported('video/mp4; codecs="hvc1.2.4.L153.B0"'); } catch (e) { return false; } })();
   const DEVICE = (() => { try { let d = localStorage.getItem('dock:device'); if (!d) localStorage.setItem('dock:device', d = crypto.randomUUID()); return d; } catch (e) { return ''; } })();
   const who = () => `&hevc=${HEVC ? 1 : 0}&d=${DEVICE}&v=${encodeURIComponent(appVersion)}`;
-  const motion = window.dockMotion = new Map(); // `${shape}:${song id}` -> playable URL, '' = none / still looking (exposed for debugging)
-  async function motionFor(t, shape) {
-    const k = `${shape}:${t?.id}`;
+  const QUALITY = { saver: 0.75, auto: 1, sharp: 1.5, max: 2 };
+  const timed = (url, ms) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, { signal: c.signal }).finally(() => clearTimeout(t)); };
+  const motion = window.dockMotion = new Map(); // `${slot}:${song id}` -> playable URL, '' = none / looking (exposed for debugging)
+  async function motionFor(t, slot) {
+    const k = `${slot}:${t?.id}`;
     if (!t?.id || !t.artist || !t.album || motion.has(k)) return;
     motion.set(k, '');
-    const px = Math.round(shape === 'tall' ? Math.max(innerWidth, innerHeight) : ($('art').offsetWidth || 300) * devicePixelRatio);
+    const portrait = innerHeight > innerWidth, shape = slot === 'bg' && portrait ? 'tall' : 'square', q = QUALITY[S.motionQuality] || 1;
+    const shown = slot === 'bg' ? Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio, 1.5) : ($('art').offsetWidth || 300) * devicePixelRatio;
     try {
-      const r = await fetch(`${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${px}${who()}`);
+      const r = await timed(`${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${Math.round(shown * q)}${S.motionQuality === 'max' ? '&q=max' : ''}${who()}`, 15000);
       const j = r.ok ? await r.json() : null;
-      if (typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video)) motion.set(k, await keptVideo(j.video, `${j.album.id}/${shape}/${j.variant.n}`));
-    } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 60000); } // offline / slow: retry in a minute
-    if (motion.size > 60) { const old = motion.keys().next().value; if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old)); motion.delete(old); }
+      if (typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video)) motion.set(k, await playable(j.video, `${j.album.id}/${shape}/${j.variant.n}`));
+    } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 60000); } // offline / slow: ask again in a minute
+    while (motion.size > 12) { const old = motion.keys().next().value; if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old)); motion.delete(old); }
     motionTick(); canvasTick();
   }
-  // Videos stay on the device (Cache Storage, ~300 MB, least recently played out first): a replayed album costs no data.
-  // Keyed by album/shape/variant, so the file isn't fetched again when the cloud moves it from Apple's CDN to R2.
-  // Downloaded once (not streamed + saved = twice); the still cover shows until it's ready, then the video fades in.
-  const VC_MAX = 300 * 2 ** 20, vcId = key => `https://dock.local/${key}`;
-  async function keptVideo(url, key) {
+
+  // Device copies (Cache Storage, size cap = setting, least recently played out first), a ladder like the cloud's:
+  // 'Save on the device' = second play (default: 1st play streams, 2nd downloads once, then free) / first play / never.
+  // Keyed by album/shape/variant, so a file the cloud moves from Apple's CDN to R2 isn't fetched again.
+  const vcId = key => `https://dock.local/${key}`, vcIdx = () => { try { return JSON.parse(localStorage.getItem('dock:videos') || '{}'); } catch (e) { return {}; } };
+  const vcSave = idx => { try { localStorage.setItem('dock:videos', JSON.stringify(idx)); } catch (e) {} };
+  async function playable(url, key) {
+    const id = vcId(key), idx = vcIdx(), e = idx[id] || [0, 0, 0]; // [bytes, last played, plays]
+    e[1] = Date.now(); e[2]++; idx[id] = e; vcSave(idx);
     let c;
-    try { c = await caches.open('dock-videos'); } catch (e) { return url; } // no Cache Storage: stream it
-    let r = await c.match(vcId(key));
-    if (!r) {
-      r = await fetch(url);
-      if (!r.ok) throw new Error(`video HTTP ${r.status}`);
-      r = new Response(await r.blob(), { headers: { 'content-type': 'video/mp4' } });
-      await c.put(vcId(key), r.clone());
-      trim(c, vcId(key), +r.headers.get('content-length') || 0);
-    } else touch(vcId(key));
-    return URL.createObjectURL(await r.blob());
-  }
-  async function trim(c, keep, size) {
-    touch(keep, size);
+    try { c = await caches.open('dock-videos'); } catch (err) { return url; } // no Cache Storage: stream
+    const hit = await c.match(id).catch(() => null);
+    if (hit) return URL.createObjectURL(await hit.blob());
+    if (S.motionKeep === 'never' || (S.motionKeep !== 'first' && e[2] < 2)) return url; // stream this time
     try {
-      const idx = JSON.parse(localStorage.getItem('dock:videos') || '{}');
-      let total = Object.values(idx).reduce((s, [n]) => s + n, 0);
-      for (const [u, [n]] of Object.entries(idx).sort((x, y) => x[1][1] - y[1][1])) {
-        if (total <= VC_MAX) break;
-        if (u !== keep) { await c.delete(u); total -= n; delete idx[u]; }
+      const r = await timed(url, 90000);
+      if (!r.ok) return url;
+      const blob = await r.blob();
+      await c.put(id, new Response(blob, { headers: { 'content-type': 'video/mp4' } }));
+      e[0] = blob.size; idx[id] = e;
+      let total = Object.values(idx).reduce((n, x) => n + (x[0] || 0), 0);
+      for (const [u, x] of Object.entries(idx).sort((p, q) => p[1][1] - q[1][1])) {
+        if (total <= S.motionCacheMB * 2 ** 20) break;
+        if (u !== id) { await c.delete(u); total -= x[0] || 0; delete idx[u]; }
       }
-      localStorage.setItem('dock:videos', JSON.stringify(idx));
-    } catch (e) {}
+      vcSave(idx);
+      return URL.createObjectURL(blob);
+    } catch (err) { return url; } // too slow / failed: stream it instead of showing nothing
   }
-  function touch(id, size) {
-    try {
-      const idx = JSON.parse(localStorage.getItem('dock:videos') || '{}');
-      idx[id] = [size ?? idx[id]?.[0] ?? 0, Date.now()];
-      localStorage.setItem('dock:videos', JSON.stringify(idx));
-    } catch (e) {}
-  }
+
   function motionTick() {
-    const want = S.motionArt && !document.body.classList.contains('night') ? motion.get(`square:${P.id}`) : '';
+    const want = S.motionArt && !document.body.classList.contains('night') ? motion.get(`cover:${P.id}`) : '';
     let v = $('mv');
     if (!want) { v?.remove(); return; }
     if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
@@ -831,12 +849,12 @@
   const swapBase = window.afterSwap;
   window.afterSwap = m => { swapBase(m); motionTick(); canvasTick(); }; // the old song's video leaves with its cover
   setInterval(() => {
-    if (S.motionArt) motionFor(P.cur, 'square');
-    if (S.bg === 'motion') motionFor(P.cur, 'tall');
+    if (S.motionArt || S.bg === 'motionblur') motionFor(P.cur, 'cover');
+    if (S.bg === 'motion') motionFor(P.cur, 'bg');
     motionTick();
   }, 1000);
   // Heartbeat for the dashboard's "active devices" (the cover lookups already count plays).
-  const ping = () => fetch(`${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${who()}`).catch(() => {});
+  const ping = () => timed(`${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${who()}`, 15000).catch(() => {});
   setTimeout(ping, 5000); setInterval(ping, 10 * 60000);
 
   // ---- phone hardware: volume keys (MainActivity forwards them while the setting is on), media notification,

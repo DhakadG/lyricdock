@@ -36,7 +36,8 @@ assert.deepStrictEqual(vs[0], { n: 'gr210_sdr_486x486', codec: 'avc1', w: 486, h
 // phone, cover 506 device px, no HEVC -> smallest H.264 that covers it, lowest bitrate
 assert.strictEqual(choose(vs, { px: 480 }).n, 'gr210_sdr_486x486');
 assert.strictEqual(choose(vs, { px: 480, hevc: true }).n, 'gr610_sdr_486x486');
-assert.strictEqual(choose(vs, { px: 506 }).n, 'gr290_sdr_1080x1080');
+assert.strictEqual(choose(vs, { px: 506 }).n, 'gr210_sdr_486x486'); // within 10%
+assert.strictEqual(choose(vs, { px: 560 }).n, 'gr290_sdr_1080x1080');
 // 4K desktop
 assert.strictEqual(choose(vs, { px: 2160, hevc: true }).n, 'gr693_sdr_2160x2160');
 assert.strictEqual(choose(vs, { px: 2160, hevc: true, q: 'max' }).n, 'gr698_sdr_2160x2160');

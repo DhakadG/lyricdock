@@ -99,7 +99,7 @@ export function choose(vs, { px, hevc, q }) {
   const ok = (vs || []).filter(v => v.codec === 'avc1' || (hevc && v.codec === 'hvc1'));
   if (!ok.length) return null;
   const side = v => Math.min(v.w, v.h), sizes = [...new Set(ok.map(side))].sort((a, b) => a - b);
-  const R = sizes.find(s => s >= px) ?? sizes.at(-1);
+  const R = sizes.find(s => s >= px * 0.9) ?? sizes.at(-1); // 10% under is invisible, and often a size class smaller
   const at = ok.filter(v => side(v) === R).sort((a, b) => a.bw - b.bw);
   return q === 'max' ? at.at(-1) : at[0];
 }

@@ -70,13 +70,14 @@ The iTunes Search API is **not** used: it rate-limits Cloudflare's shared IPs (H
 Apple already encodes every size, so the Worker picks instead of re-encoding (`choose()` in `cloud/src/store.js`):
 
 1. The app sends `px`, the pixels it will actually show (cover width × pixel ratio), and `hevc=1` if it can decode HEVC.
-2. The Worker takes the **smallest resolution ≥ px**, and at that resolution the **lowest bitrate** (`q=max`: the highest).
+2. The Worker takes the **smallest resolution ≥ 90% of px** (10% under is invisible), and at that resolution the
+   **lowest bitrate** (`q=max`: the highest).
 
 Real numbers (Plastic Beach, square):
 
 | Client | Gets | Size |
 |---|---|---|
-| Phone cover (Galaxy M01: 253 css px × 2, no HEVC) | 768p H.264 | ~3–5 MB (was 26 MB) |
+| Phone cover (Galaxy M01: 253 css px × 2 = 506, no HEVC) | 456p H.264 | ~1.3 MB (was 26 MB) |
 | Small cover (≤ 486 px) | 486p H.264 | ~2 MB |
 | 4K desktop (`px=2160&hevc=1`) | 2160p HEVC | ~21 MB |
 | 4K desktop, best (`&q=max`) | 2160p HEVC, top bitrate | ~63 MB |
@@ -94,23 +95,57 @@ Real numbers (Plastic Beach, square):
 * **Self-healing:** if a cached answer still points to an R2 file that was evicted, `/m/…` redirects (302) to Apple.
 * **Pinning** (dashboard) copies a file now and keeps it forever.
 
-## Device cache (in the app)
+## In the app
 
-`android/app/src/main/assets/features.js` → "Animated covers":
+Code: `android/app/src/main/assets/features.js`, section "Animated covers".
 
-* **First play** streams from the network right away, and a copy is saved in the background to Cache Storage
-  (`dock-videos`).
-* **Replays** play from the device (`blob:` URL) with zero data. The cache key is `album/shape/variant`, so it
-  doesn't download again when the cloud moves the file from Apple to R2.
-* **Limit:** about 300 MB, least recently played deleted first (index in `localStorage['dock:videos']`).
-* **Still covers** (Spotify's `i.scdn.co` images) are already kept by the WebView's HTTP cache (long `max-age`).
-* **Still asks the cloud each play:** the app still calls `/v1/cover` for every song, even for a replay it plays
-  from its own cache. That call is tiny and mostly answered at the edge, and it's what counts plays for promotion
-  and the dashboard.
+### Slots
 
-App settings:
-- *Now playing → Animated covers (Apple Music)*: the square video inside the cover.
-- *Background → Animated cover (Apple Music)*: the tall video full screen, the way Spotify Canvas works.
+| Slot | Shape | Size asked |
+|---|---|---|
+| `cover`: the video inside the cover | square | cover width × pixel ratio × quality |
+| `bg`: the sharp *Animated cover* background | tall in portrait, square in landscape | long screen side × min(pixel ratio, 1.5) × quality |
+
+### Backgrounds
+
+- **Animated cover, blurred:** copies the cover video's frames, about 15 times a second, into a 64 px canvas. CSS then
+  scales it up and blurs it (the `#cvb` element).
+  - It uses one download and one decoder. Two `<video>` elements streaming the same URL block each other in Chrome
+    (cache write lock), which is what made the M01 show nothing.
+  - With the cover animation off, it falls back to a single blurred `<video>`.
+- **No animated cover for the song:** the blurred still cover shows, as with Spotify Canvas.
+
+### Device cache (a ladder like the cloud's)
+
+- **Storage:** Cache Storage `dock-videos`, keyed by `album/shape/variant`. A file the cloud moves from Apple to R2
+  isn't fetched again.
+- **Index:** `localStorage['dock:videos']` stores `[bytes, last played, plays]` per file.
+- **Default: save from the second play.**
+  - The first play streams, so an album you hear once costs only that stream.
+  - The second play downloads once and plays from the copy.
+  - Later plays use no data.
+- **Timeouts:** 15 s for the lookup and 90 s for a download. A download that's too slow falls back to streaming
+  instead of showing nothing. A failed lookup is retried after a minute.
+- **Still covers** (Spotify's `i.scdn.co`) are already kept by the WebView's HTTP cache.
+- **Still asks the cloud each play:** the app calls `/v1/cover` for every song, even one it plays from its own
+  copy. That call is tiny and mostly answered at the edge, and it's what counts plays for promotion and the dashboard.
+
+### Settings (all user-changeable)
+
+| Setting | Options | Default |
+|---|---|---|
+| *Now playing → Animated covers (Apple Music)* | on / off | on |
+| *Animated cover quality* | Data saver (×0.75) · Fit the screen · Sharp (×1.5) · Best available (×2, top bitrate) | Fit the screen |
+| *Keep animated covers on this device* | From the second play · From the first play · Never (always stream) | second play |
+| *Space for saved covers* | 50–1000 MB | 150 MB on 2 GB-RAM phones, else 300 MB |
+| *Background* | … + *Animated cover (Apple Music)* (sharp) · *Animated cover, blurred* | Dynamic (unchanged) |
+
+Tested on:
+
+| Phone | Screen | Cover file | Result |
+|---|---|---|---|
+| Galaxy M01 (2 GB, no HEVC) | 360×760, cover 506 px | 456p, ~1.3 MB | Cover + blurred background in 12 s on a ~100 KB/s link |
+| I2208 | 1080×2408, cover 761 px | 768p | Cover + sharp background |
 
 ## API
 
@@ -179,6 +214,8 @@ Both are needed by the dashboard. The public API works without them.
    3. Run `npx wrangler secret put CF_API_TOKEN` and paste the token.
 
    Until it is set, promotion to R2 doesn't run, so every file streams from Apple. That's safe, just no R2 tier.
+3. Optional, for scripts and tests: `npx wrangler secret put ADMIN_API_TOKEN`. Then `Authorization: Bearer <token>`
+   works on the dashboard API. Delete it when you're done (`npx wrangler secret delete ADMIN_API_TOKEN`).
 
 ## Operating it
 

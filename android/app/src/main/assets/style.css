@@ -657,11 +657,15 @@ body.settings-peek .sl-cols { columns: 1; }
 
 /* ---- music-video background: 16:9 iframe scaled to cover, the blurred cover underneath while it loads */
 #yt { position: fixed; left: 50%; top: 50%; width: max(100vw, 177.78vh); height: max(100vh, 56.25vw); transform: translate(-50%, -50%) scale(1.02); border: 0; pointer-events: none; z-index: 0; }
-body.bg-video #bg, body.bg-canvas #bg, body.bg-motion #bg { display: block; }
+body.bg-video #bg, body.bg-canvas #bg, body.bg-motion #bg, body.bg-motionblur #bg { display: block; }
 /* Spotify Canvas: the looping video, cover-scaled; the blurred cover shows under it until it plays. */
 #cv { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; opacity: 0; transition: opacity .8s; pointer-events: none; }
 #cv.on { opacity: 1; }
-body:not(.bg-canvas):not(.bg-motion) #cv { display: none; }
+body:not(.bg-canvas):not(.bg-motion):not(.bg-motionblur) #cv { display: none; }
+/* Blurred animated cover: the video drawn at a quarter size and scaled up, so the blur is cheap on weak GPUs. */
+#cvb { position: fixed; z-index: 0; opacity: 0; transition: opacity .8s; pointer-events: none; }
+#cvb.on { opacity: 1; }
+body.bg-motionblur #cv, #cvb { inset: auto; left: -6vw; top: -6vh; width: 28vw; height: 28vh; transform: scale(4); transform-origin: 0 0; filter: blur(4px) saturate(1.5) brightness(.65); }
 /* Drift: the still blurred cover slowly pans and zooms (one GPU-composited layer). */
 body.drift #bg { animation: drift 38s ease-in-out infinite alternate; }
 @keyframes drift { 0% { transform: scale(1.4) translate(0, 0); } 33% { transform: scale(1.55) translate(-4%, 3%); } 66% { transform: scale(1.48) translate(4%, -2%); } 100% { transform: scale(1.6) translate(-2%, -4%); } }

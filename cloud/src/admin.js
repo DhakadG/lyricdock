@@ -14,7 +14,10 @@ async function sign(env, msg) {
   const k = await crypto.subtle.importKey('raw', enc.encode(`ld-session:${env.ADMIN_PASSWORD}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(msg))))).replace(/=+$/, '');
 }
+// Scripts / tests: "Authorization: Bearer <ADMIN_API_TOKEN>" when that optional secret is set.
+const bearer = async (req, env) => !!env.ADMIN_API_TOKEN && await sameSecret((req.headers.get('authorization') || '').replace(/^Bearer /, ''), env.ADMIN_API_TOKEN);
 async function authed(req, env) {
+  if (await bearer(req, env)) return true;
   const c = /(?:^|;\s*)ld_s=(\d+)\.([\w+/]+)/.exec(req.headers.get('cookie') || '');
   return !!c && +c[1] > Date.now() && (await sign(env, c[1])) === c[2];
 }
@@ -41,7 +44,7 @@ export async function admin(req, env, ctx, url) {
   if (!(await authed(req, env))) return p.startsWith('/api/') ? json({ error: 'login required' }, 401) : html(LOGIN(''));
   if (p === '/') return html(DASH);
   if (!p.startsWith('/api/')) return json({ error: 'not found' }, 404);
-  if (req.method === 'POST' && req.headers.get('origin') !== url.origin) return json({ error: 'bad origin' }, 403); // CSRF
+  if (req.method === 'POST' && req.headers.get('origin') !== url.origin && !(await bearer(req, env))) return json({ error: 'bad origin' }, 403); // CSRF
   try { return await api(req, env, url, p.slice(5)); }
   catch (e) { return json({ error: String(e?.message || e) }, 500); }
 }
@@ -66,7 +69,7 @@ async function api(req, env, url, p) {
       aeQuery(env, `SELECT blob6 AS country, ${S} AS n, COUNT(DISTINCT index1) AS devices FROM ${T} WHERE ${W} AND blob6 != '' GROUP BY country ORDER BY n DESC LIMIT 30`),
       aeQuery(env, `SELECT blob7 AS city, blob6 AS country, round(double4, 1) AS lat, round(double5, 1) AS lon, ${S} AS n, COUNT(DISTINCT index1) AS devices FROM ${T} WHERE ${W} AND double4 != 0 GROUP BY city, country, lat, lon ORDER BY n DESC LIMIT 500`),
       aeQuery(env, `SELECT blob4 AS id, blob12 AS name, blob13 AS artist, ${S} AS n FROM ${T} WHERE ${W} AND blob1 = 'cover' AND blob4 != '' GROUP BY id, name, artist ORDER BY n DESC LIMIT 15`),
-      aeQuery(env, `SELECT timestamp AS ts, blob2 AS path, double1 AS status, blob11 AS detail FROM ${T} WHERE ${W} AND double1 >= 500 ORDER BY timestamp DESC LIMIT 20`),
+      aeQuery(env, `SELECT timestamp AS ts, blob2 AS path, double1 AS status, blob11 AS detail FROM ${T} WHERE ${W} AND double1 >= 500 ORDER BY ts DESC LIMIT 20`),
       aeQuery(env, `SELECT COUNT(DISTINCT index1) AS active FROM ${T} WHERE timestamp > NOW() - INTERVAL '15' MINUTE AND index1 != ''`),
       config(env, true), listAll(env, 'm:'), listAll(env, 'a:'), listAll(env, 'l:'),
     ]);
@@ -85,7 +88,7 @@ async function api(req, env, url, p) {
 
   if (p === 'events') {
     const rows = await aeQuery(env, `SELECT timestamp AS ts, index1 AS device, blob1 AS kind, blob2 AS path, blob3 AS tier, blob4 AS album_id, blob5 AS media_key, blob6 AS country, blob7 AS city, blob8 AS colo,
-      blob9 AS version, blob11 AS detail, blob12 AS album, blob13 AS artist, double1 AS status, double2 AS ms, double3 AS bytes FROM ${T} WHERE ${W} ORDER BY timestamp DESC LIMIT ${Math.min(500, +q.get('limit') || 200)}`);
+      blob9 AS version, blob11 AS detail, blob12 AS album, blob13 AS artist, double1 AS status, double2 AS ms, double3 AS bytes FROM ${T} WHERE ${W} ORDER BY ts DESC LIMIT ${Math.min(500, +q.get('limit') || 200)}`);
     return json(rows.map(r => ({ ...r, ts: ms(r.ts) })));
   }
 
@@ -133,7 +136,7 @@ async function api(req, env, url, p) {
   }
 
   if (p === 'media') { // every file asked for in the last 90 days + everything in R2, with its rung
-    const [keys, plays, cfg] = await Promise.all([listAll(env, 'm:'), aeQuery(env, `SELECT blob5 AS key, any(blob12) AS album, any(blob13) AS artist, ${S} AS n, MIN(timestamp) AS first, MAX(timestamp) AS last,
+    const [keys, plays, cfg] = await Promise.all([listAll(env, 'm:'), aeQuery(env, `SELECT blob5 AS key, argMax(blob12, timestamp) AS album, argMax(blob13, timestamp) AS artist, ${S} AS n, MIN(timestamp) AS first, MAX(timestamp) AS last,
       SUM(IF(timestamp > NOW() - INTERVAL '${(await config(env)).promote_days}' DAY, _sample_interval, 0)) AS recent FROM ${T} WHERE timestamp > NOW() - INTERVAL '90' DAY AND blob5 != '' AND blob1 = 'cover' GROUP BY key ORDER BY last DESC LIMIT 1000`), config(env)]);
     const meta = new Map(keys.map(k => [k.name.slice(2), k.metadata || {}]));
     const rows = plays.map(r => ({ key: r.key, album: r.album, artist: r.artist, hits: n(r.n), recent: n(r.recent), first_hit: ms(r.first), last_hit: ms(r.last), ...(meta.get(r.key) || { tier: 'apple' }) }));
