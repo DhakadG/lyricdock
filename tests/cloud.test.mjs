@@ -9,6 +9,11 @@ assert.strictEqual(ms('Various Artists', 'The Twilight Saga: New Moon (OST)', 'V
 assert.strictEqual(ms('Bon Iver', 'The Twilight Saga: New Moon (OST) [Deluxe]', 'Various Artists', 'The Twilight Saga: New Moon (OST)'), 3);
 assert.strictEqual(ms('Bon Iver', 'New Moon', 'Various Artists', 'New Moon Hits'), 0); // compilation needs the exact name
 assert.strictEqual(ms('Taylor Swift', 'Midnights', 'Gorillaz', 'Midnights'), 0);
+assert.strictEqual(ms('Ye', 'Donda', 'Kanye West', 'Donda'), 0); // whole words: "ye" is not in "kanye"
+assert.strictEqual(norm('दिल से'), 'दिल से'); // matras survive
+assert.strictEqual(norm('(Untitled)'), 'untitled'); // never "" (which would match everything)
+assert.strictEqual(norm('Simon & Garfunkel'), 'simon and garfunkel');
+assert.strictEqual(parseVariants('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,CODECS="avc1.6",RESOLUTION=10x10\nhttps://a.apple.com@evil.com/x_video_a.m3u8', 'https://mvod.itunes.apple.com/p.m3u8').length, 0); // off-host
 import { choose } from '../cloud/src/store.js';
 
 assert.strictEqual(norm('Midnights (3am Edition)'), 'midnights');
@@ -58,4 +63,5 @@ assert.strictEqual(page.notes, 'notes');
 assert.strictEqual(page.tall_m3u8, null);
 assert.deepStrictEqual([page.name, page.artist, page.genre, page.release_date, page.copyright], ['Plastic Beach', 'Gorillaz', 'Pop', '2010-03-03', '℗ 2010 Parlophone']);
 assert.deepStrictEqual([page.tracks.length, page.tracks[0].id, page.tracks[0].composer], [1, '859844930', 'Damon Albarn']);
+assert.strictEqual(parsePage({ x: [{ numberOfSocialBadges: 1, description: '3 March 2010' }] }).release_date, '2010-03-03');
 console.log('cloud ok');

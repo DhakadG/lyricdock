@@ -605,15 +605,22 @@ Settings.onPreset((action, name) => send({ type: 'preset', action, name, S }));
 let insets = { l: 0, t: 0, r: 0, b: 0, rtl: 0, rtr: 0, rbl: 0, rbr: 0 };
 window.setInsets = o => { insets = { ...insets, ...o }; applyInsets(); };
 const pullInsets = () => { try { setInsets(JSON.parse(Dock.insets())); } catch (e) { applyInsets(); } };
+// Settings: while padding is being changed, lines show where content stops (accent = the notch side).
+let guideT = 0;
+window.flashGuide = () => { document.body.classList.add('pad-guide'); clearTimeout(guideT); guideT = setTimeout(() => document.body.classList.remove('pad-guide'), 3000); };
 function applyInsets() {
   const man = S.edgeMode === 'manual', st = document.documentElement.style, px = v => `${Math.round(v * 10) / 10}px`;
-  // The camera cutout is always kept clear (it moves with the rotation: top in portrait, left or right in landscape);
-  // Manual only adds side padding on top of it. (Manual used to replace the insets, which put text under the notch.)
-  const side = man ? S.edgePad : 0;
-  st.setProperty('--sa-l', px(Math.max(insets.l, side)));
-  st.setProperty('--sa-r', px(Math.max(insets.r, side)));
-  st.setProperty('--sa-t', px(insets.t));
-  st.setProperty('--sa-b', px(insets.b));
+  // Auto: the notch side gets exactly the cutout's safe inset (it moves with the rotation: top in portrait, left or
+  // right in landscape), every other edge uses the whole screen. Manual: the notch side gets 'Notch side padding' (you
+  // may go under the inset if your notch is small) and the other sides 'Side padding'.
+  const side = man ? S.edgePad : 0, notch = v => v > 0 ? (man ? S.notchPad : v) : null;
+  st.setProperty('--sa-l', px(notch(insets.l) ?? side));
+  st.setProperty('--sa-r', px(notch(insets.r) ?? side));
+  st.setProperty('--sa-t', px(notch(insets.t) ?? 0));
+  st.setProperty('--sa-b', px(notch(insets.b) ?? 0));
+  let g = document.getElementById('padGuide');
+  if (!g) { g = document.createElement('div'); g.id = 'padGuide'; g.innerHTML = '<i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i>'; document.body.append(g); }
+  for (const k of ['l', 'r', 't', 'b']) g.querySelector('.' + k).classList.toggle('notch', insets[k] > 0);
   const bar = r => { // raise by ~a quarter radius; inset = where the corner arc crosses that height
     if (r <= 0) return [0, 0];
     const y = Math.max(3, r * 0.25);
@@ -656,6 +663,7 @@ addEventListener('resize', () => requestAnimationFrame(lyricRoom));
 
 // ---- settings -> page
 function apply(k) {
+  if (['edgeMode', 'edgePad', 'notchPad'].includes(k)) window.flashGuide?.();
   setTimeout(lyricRoom, 60); // a neighbour (cover side, battery corner) may have moved without the pane resizing
   const b = document.body;
   b.className = b.className.replace(/\b(layout|bg|align|prog|pp|scroll|art)-\S+/g, '').replace(/\s+/g, ' ').trim();

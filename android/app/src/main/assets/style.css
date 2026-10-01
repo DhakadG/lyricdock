@@ -65,6 +65,18 @@ body.show-liked #heart { display: block; }
 body.heart-liked-only:not(.ui) #heart:not(.on) { display: none; } /* unliked: only while the controls are up */
 #mv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; opacity: 0; transition: opacity .6s; pointer-events: none; }
 #mv.on { opacity: 1; }
+/* Tall animated cover (3:4): the cover box follows the video while it plays (portrait: same width, more height). */
+body.cover-tall #art { aspect-ratio: 3 / 4; }
+body.fit-art.cover-tall #artbox { max-width: calc(var(--art-max, 100vh) * .75); }
+/* Padding guide (Settings): where content stops on each edge; the notch side in the accent colour. */
+#padGuide { position: fixed; inset: 0; z-index: 100000; pointer-events: none; opacity: 0; transition: opacity .3s; }
+body.pad-guide #padGuide { opacity: 1; }
+#padGuide i { position: absolute; background: rgba(255, 255, 255, .55); }
+#padGuide .l, #padGuide .r { top: 0; bottom: 0; width: 2px; }
+#padGuide .t, #padGuide .b { left: 0; right: 0; height: 2px; }
+#padGuide .l { left: var(--sa-l); } #padGuide .r { right: var(--sa-r); } #padGuide .t { top: var(--sa-t); } #padGuide .b { bottom: var(--sa-b); }
+#padGuide .notch { background: rgb(var(--acc)); box-shadow: 0 0 10px rgb(var(--acc)); width: 3px; }
+#padGuide .t.notch, #padGuide .b.notch { width: auto; height: 3px; }
 /* Animated covers: a tiny mark (three bars, like a waveform) in the corner. Never on still covers. */
 #art.animated::before { content: ''; position: absolute; left: 1.8vmin; bottom: 1.8vmin; z-index: 2; width: 2.2vmin; height: 1.6vmin; opacity: .7; pointer-events: none;
   background: linear-gradient(#fff, #fff) 0 100% / 22% 55% no-repeat, linear-gradient(#fff, #fff) 50% 100% / 22% 100% no-repeat, linear-gradient(#fff, #fff) 100% 100% / 22% 70% no-repeat;

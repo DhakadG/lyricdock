@@ -792,16 +792,21 @@
   const timed = (url, ms) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, { signal: c.signal }).finally(() => clearTimeout(t)); };
   const motion = window.dockMotion = new Map(); // `${slot}:${song id}` -> playable URL, '' = none / looking (exposed for debugging)
   const lookupUrl = (t, slot, warm) => {
-    const portrait = innerHeight > innerWidth, shape = slot === 'bg' && portrait ? 'tall' : 'square', q = QUALITY[S.motionQuality] || 1;
+    const portrait = innerHeight > innerWidth, q = QUALITY[S.motionQuality] || 1;
+    const shape = slot === 'bg' ? (portrait ? 'tall' : 'square') : coverTall() ? 'tall' : 'square';
     const shown = slot === 'bg' ? Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio, 1.5) : ($('art').offsetWidth || 300) * devicePixelRatio;
     return [shape, `${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${Math.round(shown * q)}${S.motionQuality === 'max' ? '&q=max' : ''}${warm ? '&warm=1' : ''}${who()}`];
   };
   async function lookup(t, slot, warm) {
-    const [shape, url] = lookupUrl(t, slot, warm), r = await timed(url, 15000), j = r.ok ? await r.json() : null;
-    return typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video) ? { url: j.video, key: `${j.album.id}/${shape}/${j.variant.n}` } : null;
+    const [asked, url] = lookupUrl(t, slot, warm), r = await timed(url, 15000), j = r.ok ? await r.json() : null;
+    const shape = j?.shape || asked; // a tall request falls back to square when the album has no tall cover
+    return typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video) ? { url: j.video, key: `${j.album.id}/${shape}/${j.variant.n}`, shape } : null;
   }
   // Warming (like the still covers): while a song plays, the next one's animated cover is looked up, and downloaded
   // too when the keep setting would save it on this play anyway. Logged as 'warm', so it never counts as a play.
+  // Cover shape: 'auto' = tall (3:4) in portrait where the height is free, square in landscape.
+  const coverTall = () => S.coverShape === 'tall' || (S.coverShape === 'auto' && innerHeight > innerWidth);
+  const tallOf = new Map(); // `cover:${song id}` -> the playing cover video is the tall one
   const warmed = window.dockWarm = new Map(); // `${slot}:${song id}` -> { url, key } | null
   async function warm(t, slot) {
     const k = `${slot}:${t?.id}`;
@@ -822,7 +827,7 @@
       let w = warmed.get(k);
       if (w) timed(lookupUrl(t, slot)[1], 15000).catch(() => {}); // already known: just count the play
       else w = await lookup(t, slot);
-      if (w) motion.set(k, await playable(w.url, w.key));
+      if (w) { motion.set(k, await playable(w.url, w.key)); tallOf.set(k, w.shape === 'tall'); }
     } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 60000); } // offline / slow: ask again in a minute
     while (motion.size > 12) { const old = motion.keys().next().value; if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old)); motion.delete(old); }
     motionTick(); canvasTick();
@@ -872,13 +877,16 @@
   function motionTick() {
     const want = S.motionArt && !document.body.classList.contains('night') ? motion.get(`cover:${P.id}`) : '';
     let v = $('mv');
-    $('art').classList.toggle('animated', !!want && !!v?.classList.contains('on') && v.dataset.src === want);
+    const live = !!want && !!v?.classList.contains('on') && v.dataset.src === want;
+    $('art').classList.toggle('animated', live);
+    const tall = live && !!tallOf.get(`cover:${P.id}`);
+    if (tall !== document.body.classList.contains('cover-tall')) { document.body.classList.toggle('cover-tall', tall); fitArt(); }
     if (!want) { v?.remove(); return; }
     if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
     v?.remove();
     v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
     v.dataset.src = want;
-    v.oncanplay = () => { v.classList.add('on'); $('art').classList.add('animated'); };
+    v.oncanplay = () => { v.classList.add('on'); motionTick(); };
     $('art').prepend(v); // first child: the controls, ripple and heart badge stay on top
   }
   const swapBase = window.afterSwap;
@@ -893,6 +901,9 @@
     }
     motionTick();
   }, 1000);
+  let wasTall = coverTall();
+  const reshape = () => { const t = coverTall(); if (t !== wasTall) { for (const k of [...motion.keys()]) if (k.startsWith('cover:')) motion.delete(k); warmed.clear(); } wasTall = t; };
+  addEventListener('resize', reshape); Settings.onChange(reshape);
   const swapAt = window.afterSwap;
   window.afterSwap = m => { P.curAt = performance.now(); swapAt(m); };
 

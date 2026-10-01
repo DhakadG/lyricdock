@@ -89,12 +89,12 @@ async function answer(env, cfg, url, ev) {
   if (p === '/v1/cover') {
     ev.kind = q.has('warm') ? 'warm' : 'cover'; // warm = the app preloading the next song: not a play
     if (!album) return json({ video: null, still: null }, 404);
-    const shape = q.get('shape') === 'tall' ? 'tall' : 'square';
+    const shape = q.get('shape') === 'tall' && album.tall_variants?.length ? 'tall' : 'square'; // no tall cover: the square one
     const px = Math.min(cfg.max_px, Math.max(64, +q.get('px') || 1080));
     // still = the real album cover (as large as Apple has it, up to px); poster = the video's first frame (up to 3840)
     const tall = shape === 'tall' && album.tall_art_url, cw = Math.min(px, album.cover_w || px);
     const pw = Math.min(px, (tall ? album.tall_w : album.art_w) || px), ph = tall ? Math.round(pw * 4 / 3) : pw;
-    const out = { album: { id: album.id, name: album.name, artist: album.artist }, still: still(album.cover_url || album.art_url, cw, cw),
+    const out = { shape, album: { id: album.id, name: album.name, artist: album.artist }, still: still(album.cover_url || album.art_url, cw, cw),
       poster: still(tall ? album.tall_art_url : album.art_url, pw, ph), colors: album.colors, video: null };
     const v = choose(shape === 'tall' ? album.tall_variants : album.square_variants, { px, hevc: cfg.allow_hevc && q.get('hevc') === '1', q: q.get('q') });
     if (v) {

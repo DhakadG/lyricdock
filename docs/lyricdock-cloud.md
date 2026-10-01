@@ -138,6 +138,10 @@ Code: `android/app/src/main/assets/features.js`, section "Animated covers".
 | *Animated cover quality* | Data saver (×0.75) · Fit the screen · Sharp (×1.5) · Best available (×2, top bitrate) | Fit the screen |
 | *Keep animated covers on this device* | From the second play · From the first play · Never (always stream) | second play |
 | *Space for saved covers* | 50–1000 MB | 150 MB on 2 GB-RAM phones, else 300 MB |
+| *Animated cover shape* | Auto (tall 3:4 in portrait, square in landscape) · Always square · Tall when available | Auto. The cover turns 3:4 only while a tall video plays; the cloud answers with the square video when an album has no tall one (`shape` in the response). |
+| *Load the next animated cover early* | on / off | on. Looks up the next song, and downloads it if the keep rule would save it on that play. Sent with `warm=1`, logged as kind `warm`, never counted as a play. |
+| *Mark animated covers* | on / off | on. A tiny waveform mark bottom-left, only while the cover is animated. |
+| *Settings → Storage* | Clear per item / Clear all | Shows saved animated covers (count + size), cached lyrics (last 500 songs, Cache Storage `dock-lyrics`), the WebView image/web cache (`Dock.webCacheBytes()`), total web storage. |
 | *Background* | … + *Animated cover (Apple Music)* (sharp) · *Animated cover, blurred* | Dynamic (unchanged) |
 
 Tested on:
