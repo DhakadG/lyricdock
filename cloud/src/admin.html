@@ -165,7 +165,8 @@ let lmap, layer;
 async function map() {
   if (!lmap) {
     lmap = L.map('map', { worldCopyJump: true }).setView([25, 20], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap, © CARTO', maxZoom: 12 }).addTo(lmap);
+    // Esri's dark-gray canvas: no API key (CARTO's basemaps now ask for one)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri, HERE, Garmin, © OpenStreetMap contributors', maxZoom: 16 }).addTo(lmap);
   }
   setTimeout(() => lmap.invalidateSize(), 50);
   const o = await api('overview?h=' + H());
