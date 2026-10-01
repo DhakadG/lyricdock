@@ -37,5 +37,5 @@ git push -q --atomic origin main "v$Version"
 gh release create "v$Version" $apk $helperExe "$root\extension\lyricdock.js#Spicetify loader (lyricdock.js, auto-updates)" "$root\extension\dock-bridge.js#Spicetify extension (dock-bridge.js, this version)" --title "LyricDock v$Version$(if ($Beta) { ' (beta)' })" --notes $Notes @(if ($Beta) { '--prerelease' })
 & "$PSScriptRoot\ping-update.ps1" # open phones update now (older builds without the listener: within 6 h)
 # The web app (app.lyricdock.losthusky.qzz.io) ships the same assets: open tabs pick it up through their service worker.
-if (-not $Beta) { & "$PSScriptRootbuild-web.ps1" -Deploy }
+if (-not $Beta) { & "$PSScriptRoot\build-web.ps1" -Deploy }
 Write-Host "Released v$Version - Spotify picks it up on next start (or within 30 min), open phones now."
