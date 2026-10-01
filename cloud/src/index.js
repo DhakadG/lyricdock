@@ -17,6 +17,11 @@ export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url), t0 = Date.now(), ev = { kind: 'api', path: url.pathname };
     if (url.hostname.startsWith('admin.')) return admin(req, env, ctx, url);
+    // Scanners probing for /.env, /wp-admin, /config.js...: nothing of ours, so no work and no analytics row.
+    if (!/^\/(v1\/[a-z]+|m\/[\w/]+\.mp4)?$/.test(url.pathname)) return new Response('not found', { status: 404, headers: { 'cache-control': 'public, max-age=86400' } });
+    // Per-IP rate limit on the API (the RL binding, wrangler.jsonc). A dock asks a few times per song.
+    if (url.pathname.startsWith('/v1/') && env.RL && !(await env.RL.limit({ key: req.headers.get('cf-connecting-ip') || '' })).success)
+      return json({ error: 'slow down' }, 429);
     let res;
     try { res = await publicApi(req, env, ctx, url, ev); }
     catch (e) { ev.detail = String(e?.message || e); res = json({ error: 'upstream or internal error' }, 502); }
@@ -49,6 +54,8 @@ async function publicApi(req, env, ctx, url, ev) {
   if (!cfg.api_enabled) return json({ error: 'API paused' }, 503);
   if (cfg.blocked.includes(q.get('d'))) return json({ error: 'blocked' }, 403);
   if (p === '/v1/health') return json({ ok: true });
+  // Every LyricDock sends its device id (features.js who()); anonymous callers are scrapers.
+  if (!/^[0-9a-f-]{36}$/.test(q.get('d') || '')) return json({ error: 'device id required' }, 400);
   if (p === '/v1/ping') { // heartbeat, or an app event (web app: open / install / update / error)
     const e = q.get('e');
     ev.kind = EVENTS.has(e) ? e : 'ping';
