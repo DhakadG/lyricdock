@@ -791,16 +791,38 @@
   const QUALITY = { saver: 0.75, auto: 1, sharp: 1.5, max: 2 };
   const timed = (url, ms) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, { signal: c.signal }).finally(() => clearTimeout(t)); };
   const motion = window.dockMotion = new Map(); // `${slot}:${song id}` -> playable URL, '' = none / looking (exposed for debugging)
+  const lookupUrl = (t, slot, warm) => {
+    const portrait = innerHeight > innerWidth, shape = slot === 'bg' && portrait ? 'tall' : 'square', q = QUALITY[S.motionQuality] || 1;
+    const shown = slot === 'bg' ? Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio, 1.5) : ($('art').offsetWidth || 300) * devicePixelRatio;
+    return [shape, `${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${Math.round(shown * q)}${S.motionQuality === 'max' ? '&q=max' : ''}${warm ? '&warm=1' : ''}${who()}`];
+  };
+  async function lookup(t, slot, warm) {
+    const [shape, url] = lookupUrl(t, slot, warm), r = await timed(url, 15000), j = r.ok ? await r.json() : null;
+    return typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video) ? { url: j.video, key: `${j.album.id}/${shape}/${j.variant.n}` } : null;
+  }
+  // Warming (like the still covers): while a song plays, the next one's animated cover is looked up, and downloaded
+  // too when the keep setting would save it on this play anyway. Logged as 'warm', so it never counts as a play.
+  const warmed = window.dockWarm = new Map(); // `${slot}:${song id}` -> { url, key } | null
+  async function warm(t, slot) {
+    const k = `${slot}:${t?.id}`;
+    if (!t?.id || !t.artist || !t.album || warmed.has(k) || motion.has(k)) return;
+    warmed.set(k, null);
+    try {
+      const w = await lookup(t, slot, true);
+      warmed.set(k, w);
+      if (w && (S.motionKeep === 'first' || (S.motionKeep === 'second' && (vcIdx()[vcId(w.key)]?.[2] || 0) >= 1))) save(w.url, w.key);
+    } catch (e) { warmed.delete(k); }
+    while (warmed.size > 8) warmed.delete(warmed.keys().next().value);
+  }
   async function motionFor(t, slot) {
     const k = `${slot}:${t?.id}`;
     if (!t?.id || !t.artist || !t.album || motion.has(k)) return;
     motion.set(k, '');
-    const portrait = innerHeight > innerWidth, shape = slot === 'bg' && portrait ? 'tall' : 'square', q = QUALITY[S.motionQuality] || 1;
-    const shown = slot === 'bg' ? Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio, 1.5) : ($('art').offsetWidth || 300) * devicePixelRatio;
     try {
-      const r = await timed(`${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${Math.round(shown * q)}${S.motionQuality === 'max' ? '&q=max' : ''}${who()}`, 15000);
-      const j = r.ok ? await r.json() : null;
-      if (typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video)) motion.set(k, await playable(j.video, `${j.album.id}/${shape}/${j.variant.n}`));
+      let w = warmed.get(k);
+      if (w) timed(lookupUrl(t, slot)[1], 15000).catch(() => {}); // already known: just count the play
+      else w = await lookup(t, slot);
+      if (w) motion.set(k, await playable(w.url, w.key));
     } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 60000); } // offline / slow: ask again in a minute
     while (motion.size > 12) { const old = motion.keys().next().value; if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old)); motion.delete(old); }
     motionTick(); canvasTick();
@@ -818,41 +840,105 @@
     try { c = await caches.open('dock-videos'); } catch (err) { return url; } // no Cache Storage: stream
     const hit = await c.match(id).catch(() => null);
     if (hit) return URL.createObjectURL(await hit.blob());
-    if (S.motionKeep === 'never' || (S.motionKeep !== 'first' && e[2] < 2)) return url; // stream this time
-    try {
-      const r = await timed(url, 90000);
-      if (!r.ok) return url;
-      const blob = await r.blob();
-      await c.put(id, new Response(blob, { headers: { 'content-type': 'video/mp4' } }));
-      e[0] = blob.size; idx[id] = e;
-      let total = Object.values(idx).reduce((n, x) => n + (x[0] || 0), 0);
-      for (const [u, x] of Object.entries(idx).sort((p, q) => p[1][1] - q[1][1])) {
-        if (total <= S.motionCacheMB * 2 ** 20) break;
-        if (u !== id) { await c.delete(u); total -= x[0] || 0; delete idx[u]; }
-      }
-      vcSave(idx);
-      return URL.createObjectURL(blob);
-    } catch (err) { return url; } // too slow / failed: stream it instead of showing nothing
+    if (!inflight.has(id) && (S.motionKeep === 'never' || (S.motionKeep !== 'first' && e[2] < 2))) return url; // stream this time
+    const blob = await save(url, key);
+    return blob ? URL.createObjectURL(blob) : url; // too slow / failed: stream it instead of showing nothing
+  }
+  const inflight = new Map(); // device id -> Promise<Blob | null>
+  function save(url, key) {
+    const id = vcId(key);
+    if (!inflight.has(id)) inflight.set(id, (async () => {
+      try {
+        const c = await caches.open('dock-videos'), hit = await c.match(id);
+        if (hit) return await hit.blob();
+        const r = await timed(url, 90000);
+        if (!r.ok) return null;
+        const blob = await r.blob();
+        await c.put(id, new Response(blob, { headers: { 'content-type': 'video/mp4' } }));
+        const idx = vcIdx(), e = idx[id] || [0, Date.now(), 0];
+        e[0] = blob.size; idx[id] = e;
+        let total = Object.values(idx).reduce((n, x) => n + (x[0] || 0), 0);
+        for (const [u, x] of Object.entries(idx).sort((p, q) => p[1][1] - q[1][1])) {
+          if (total <= S.motionCacheMB * 2 ** 20) break;
+          if (u !== id && x[0]) { await c.delete(u); total -= x[0]; x[0] = 0; }
+        }
+        vcSave(idx);
+        return blob;
+      } catch (err) { return null; } finally { setTimeout(() => inflight.delete(id), 0); }
+    })());
+    return inflight.get(id);
   }
 
   function motionTick() {
     const want = S.motionArt && !document.body.classList.contains('night') ? motion.get(`cover:${P.id}`) : '';
     let v = $('mv');
+    $('art').classList.toggle('animated', !!want && !!v?.classList.contains('on') && v.dataset.src === want);
     if (!want) { v?.remove(); return; }
     if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
     v?.remove();
     v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
     v.dataset.src = want;
-    v.oncanplay = () => v.classList.add('on');
+    v.oncanplay = () => { v.classList.add('on'); $('art').classList.add('animated'); };
     $('art').prepend(v); // first child: the controls, ripple and heart badge stay on top
   }
   const swapBase = window.afterSwap;
   window.afterSwap = m => { swapBase(m); motionTick(); canvasTick(); }; // the old song's video leaves with its cover
   setInterval(() => {
-    if (S.motionArt || S.bg === 'motionblur') motionFor(P.cur, 'cover');
+    const cover = S.motionArt || S.bg === 'motionblur';
+    if (cover) motionFor(P.cur, 'cover');
     if (S.bg === 'motion') motionFor(P.cur, 'bg');
+    if (S.motionWarm && P.next && (performance.now() - (P.curAt || 0) > 8000)) { // after the current one has settled
+      if (cover) warm(P.next, 'cover');
+      if (S.bg === 'motion') warm(P.next, 'bg');
+    }
     motionTick();
   }, 1000);
+  const swapAt = window.afterSwap;
+  window.afterSwap = m => { P.curAt = performance.now(); swapAt(m); };
+
+  // ---- Lyrics kept on the device (Cache Storage 'dock-lyrics', newest 500 songs): replays and offline start instantly.
+  const lyId = id => `https://dock.local/lyrics/${id}`;
+  window.lyricStore = {
+    put(id, lyr) {
+      if (!id || !Lyrics.rank(lyr)) return;
+      let body;
+      try { body = JSON.stringify(lyr); } catch (e) { return; } // now, before the renderer decorates the object
+      caches.open('dock-lyrics').then(async c => {
+        await c.put(lyId(id), new Response(body, { headers: { 'content-type': 'application/json' } }));
+        const keys = await c.keys();
+        for (const k of keys.slice(0, Math.max(0, keys.length - 500))) await c.delete(k);
+      }).catch(() => {});
+    },
+    get: id => caches.open('dock-lyrics').then(c => c.match(lyId(id))).then(r => r ? r.json() : null).catch(() => null),
+  };
+
+  // ---- Settings -> Storage: what is kept on this phone, and clearing it.
+  const fmtMB = b => b < 2 ** 20 ? `${Math.round(b / 1024)} KB` : `${(b / 2 ** 20).toFixed(b < 10 * 2 ** 20 ? 1 : 0)} MB`;
+  const st = { at: 0 };
+  async function measure() {
+    st.at = Date.now();
+    const vids = Object.values(vcIdx()).filter(x => x[0] > 0);
+    st.videos = `${vids.length} saved · ${fmtMB(vids.reduce((n, x) => n + x[0], 0))}`;
+    try {
+      const c = await caches.open('dock-lyrics'), keys = await c.keys();
+      let bytes = 0;
+      for (const k of keys) bytes += (await (await c.match(k)).blob()).size;
+      st.lyrics = `${keys.length} songs · ${fmtMB(bytes)}`;
+    } catch (e) { st.lyrics = 'unavailable'; }
+    try { st.web = fmtMB(Dock.webCacheBytes()); } catch (e) { st.web = 'unavailable'; }
+    try { const e = await navigator.storage.estimate(); st.total = `${fmtMB(e.usage || 0)} used by the app's web storage`; } catch (e) { st.total = ''; }
+    window.settingsRender?.();
+  }
+  window.dockStorage = {
+    text: k => { if (Date.now() - st.at > 4000) measure(); return st[k] ?? 'Counting…'; },
+    async clear(k) {
+      if (k === 'videos' || k === 'all') { await caches.delete('dock-videos'); localStorage.removeItem('dock:videos'); }
+      if (k === 'lyrics' || k === 'all') await caches.delete('dock-lyrics');
+      if (k === 'web' || k === 'all') try { Dock.clearWebCache(); } catch (e) {}
+      window.notice?.(k === 'all' ? 'Everything cleared' : 'Cleared');
+      setTimeout(measure, 600);
+    },
+  };
   // Heartbeat for the dashboard's "active devices" (the cover lookups already count plays).
   const ping = () => timed(`${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${who()}`, 15000).catch(() => {});
   setTimeout(ping, 5000); setInterval(ping, 10 * 60000);

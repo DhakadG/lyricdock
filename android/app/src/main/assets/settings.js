@@ -68,6 +68,10 @@ const Settings = (() => {
     { k: 'motionCacheMB', label: 'Space for saved covers', type: 'range', min: 50, max: 1000, step: 50, def: (navigator.deviceMemory || 4) <= 2 ? 150 : 300, unit: ' MB',
       when: s => s.motionKeep !== 'never' && (s.motionArt || s.bg === 'motion' || s.bg === 'motionblur'),
       help: 'When full, the covers played longest ago are removed first.' },
+    { k: 'motionWarm', label: 'Load the next animated cover early', type: 'toggle', def: true, when: s => s.motionArt || s.bg === 'motion' || s.bg === 'motionblur',
+      help: 'While a song plays, the next song\'s animated cover is looked up (and downloaded, if it would be saved anyway), so it starts the moment the song changes.' },
+    { k: 'motionBadge', label: 'Mark animated covers', type: 'toggle', def: true, when: s => s.motionArt,
+      help: 'A tiny mark in the corner of the cover while it is animated. Still covers never show it.' },
     { k: 'spin', label: 'Spinning cover (Now Bar)', type: 'toggle', def: true, when: s => s.layout === 'nowbar', help: 'The round cover in the Now Bar turns like a record while playing.' },
     { k: 'notices', label: 'Status notices', desc: 'Short messages: offline, rate limits, source changes, updates', type: 'toggle', def: true,
       help: 'Small toasts at the bottom for things worth knowing: network lost/back, Spicy API limits, switching between computer and account, pairing, updates.' },
@@ -210,6 +214,16 @@ const Settings = (() => {
       help: 'The controls, the settings button and the settings sheet blur what is behind them. Behind the moving dynamic background that blur is redone every frame, which slower phones feel (the controls opening stutters). Off: the same panels as tinted glass without the blur.' },
     { k: 'renderDistance', label: 'Lines kept drawn', type: 'range', min: 8, max: 60, step: 1, def: 20, help: 'Lines further than this from the current one are not drawn at all (long songs stay light). Raise it if you use a tiny text size.' },
 
+    { group: 'Storage', icon: 'disk', cat: 'Device', desc: 'What LyricDock keeps on this phone - animated covers, lyrics, images - and clearing it.' },
+    { label: 'Animated covers', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('videos'), info: () => window.dockStorage?.text('videos') ?? '',
+      help: 'Animated covers saved on the phone (see Now playing -> Keep animated covers). Cleared covers stream again next time.' },
+    { label: 'Lyrics', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('lyrics'), info: () => window.dockStorage?.text('lyrics') ?? '',
+      help: 'Lyrics of the last 500 songs, so a replay (or no internet) shows them instantly.' },
+    { label: 'Images & web cache', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('web'), info: () => window.dockStorage?.text('web') ?? '',
+      help: 'Still covers, artist pictures and other downloads the app keeps (the WebView cache). They download again when needed.' },
+    { label: 'Everything', type: 'action', text: () => 'Clear all', run: () => window.dockStorage?.clear('all'), info: () => window.dockStorage?.text('total') ?? '',
+      help: 'Clears all of the above. Your settings stay.' },
+
     { group: 'Playback source', icon: 'source', cat: 'Source', desc: 'Follow Spotify on the computer, your Spotify account, or both.' },
     { k: 'source', label: 'Source', type: 'choice', def: 'auto',
       desc: 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
@@ -287,6 +301,7 @@ const Settings = (() => {
     phone: 'M7 2.5h10v19H7zM11 18.5h2',
     clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3.2 2',
     gauge: 'M4 17a8 8 0 1 1 16 0M12 17l4.2-5.3M3 17h2M19 17h2',
+    disk: 'M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
     source: 'M4 15v-3a8 8 0 0 1 16 0v3M4 14.5h3v6H4zM17 14.5h3v6h-3z',
     layers: 'M12 3.5l8.5 4.5-8.5 4.5L3.5 8zM3.5 12.5l8.5 4.5 8.5-4.5M3.5 16.5l8.5 4.5 8.5-4.5',
     download: 'M12 3.5v11M7 10l5 5 5-5M4.5 20h15',
@@ -294,7 +309,7 @@ const Settings = (() => {
   };
   // Icon tile colours (Apple's system palette, dark mode): each section reads at a glance, like System Settings.
   const TINTS = { layout: '#0A84FF', note: '#FF375F', image: '#BF5AF2', text: '#FF9F0A', spark: '#64D2FF', phone: '#8E8E93', clock: '#5E5CE6',
-    gauge: '#30D158', source: '#FF453A', layers: '#FFD60A', download: '#0A84FF', link: '#30D158' };
+    gauge: '#30D158', disk: '#64D2FF', source: '#FF453A', layers: '#FFD60A', download: '#0A84FF', link: '#30D158' };
   const KEY = 'dock:settings';
   const defaults = Object.fromEntries(SCHEMA.filter(x => x.k).map(x => [x.k, x.def]));
   let saved = null;
@@ -352,7 +367,7 @@ const Settings = (() => {
     };
     // Touch-safe: the native range input grabs any touch that lands on it, which hijacks scrolling the sheet.
     // It is visual only here; a drag must go sideways (>8px, more horizontal than vertical) before it moves the
-    // value, a vertical swipe scrolls as normal (touch-action: pan-y), and a plain tap changes nothing.
+    // value, a vertical swipe scrolls as normal (touch-action: pan-y). Taps step it (see `end`).
     input.tabIndex = -1;
     const valueAt = cx => {
       const r = tw.getBoundingClientRect(), f = Math.min(1, Math.max(0, (cx - r.left) / r.width));
@@ -374,15 +389,41 @@ const Settings = (() => {
       const v = valueAt(e.clientX);
       if (v !== +input.value) { input.value = v; paint(v); set(x.k, v, false); }
     });
-    const end = () => { g = null; wrap.classList.remove('dragging'); };
+    const to = v => { v = +Math.min(x.max, Math.max(x.min, v)).toFixed(4); if (v !== +input.value) { input.value = v; paint(v); set(x.k, v, false); } };
+    const step = dir => to(+input.value + dir * x.step);
+    // A tap steps one notch towards the side tapped; a double tap puts the default back.
+    let lastTap = 0;
+    const end = e => {
+      if (g && !g.on && e.type === 'pointerup') {
+        const now = Date.now();
+        if (now - lastTap < 320) { to(x.def); lastTap = 0; }
+        else {
+          const r = tw.getBoundingClientRect(), at = r.left + (+input.value - x.min) / (x.max - x.min) * r.width;
+          step(e.clientX < at ? -1 : 1); lastTap = now;
+        }
+      }
+      g = null; wrap.classList.remove('dragging');
+    };
     tw.addEventListener('pointerup', end);
     tw.addEventListener('pointercancel', end);
-    reset.onclick = () => { input.value = x.def; paint(x.def); set(x.k, x.def, false); };
+    reset.onclick = () => to(x.def);
+    // - / + buttons: one notch per tap, repeating while held.
+    const nudge = (label, dir) => {
+      const b = el('button', 'sl-sp-slider-step', label);
+      b.setAttribute('aria-label', dir < 0 ? 'Less' : 'More');
+      let t = 0;
+      const stop = () => { clearTimeout(t); clearInterval(t); };
+      b.onpointerdown = e => { e.preventDefault(); step(dir); stop(); t = setTimeout(() => { t = setInterval(() => step(dir), 70); }, 400); };
+      b.onpointerup = b.onpointercancel = b.onpointerleave = stop;
+      return b;
+    };
     tw.append(track, fill);
     if (bipolar) { const ctr = el('div', 'sl-sp-slider-center'); ctr.style.left = (0 - x.min) / (x.max - x.min) * 100 + '%'; tw.append(ctr); }
     tw.append(input);
     meta.append(val, reset);
-    wrap.append(tw, meta);
+    const row = el('div', 'sl-sp-slider-row');
+    row.append(nudge('−', -1), tw, nudge('+', 1));
+    wrap.append(row, meta);
     paint(S[x.k]);
     return wrap;
   }
@@ -486,6 +527,7 @@ const Settings = (() => {
     return row;
   }
   function go(g) { cur = g; query = ''; const f = document.getElementById('sfind'); if (f) f.value = ''; render(); }
+  window.settingsRender = () => render();
   function render() {
     const body = document.querySelector('#settings .sl-modal-main-section');
     if (!body) return;

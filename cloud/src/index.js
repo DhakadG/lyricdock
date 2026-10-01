@@ -51,11 +51,11 @@ async function publicApi(req, env, ctx, url, ev) {
   if (p === '/v1/ping') { ev.kind = 'ping'; return json({ ok: true }); }
 
   // Rung 1: the edge cache. Same question (minus who asks) = same answer, no KV, no Apple.
-  const ck = new URL(url); ['d', 'v'].forEach(k => ck.searchParams.delete(k)); ck.searchParams.sort();
+  const ck = new URL(url); ['d', 'v', 'warm'].forEach(k => ck.searchParams.delete(k)); ck.searchParams.sort();
   const cacheKey = new Request(ck.href), hitRes = await caches.default.match(cacheKey);
   if (hitRes) {
     const meta = JSON.parse(hitRes.headers.get('x-ld-ev') || '{}');
-    Object.assign(ev, meta, { kind: p === '/v1/cover' ? 'cover' : 'api', tier: `edge/${meta.mtier || '-'}` });
+    Object.assign(ev, meta, { kind: p === '/v1/cover' ? (q.has('warm') ? 'warm' : 'cover') : 'api', tier: `edge/${meta.mtier || '-'}` });
     return hitRes;
   }
   const res = await answer(env, cfg, url, ev);
@@ -87,7 +87,7 @@ async function answer(env, cfg, url, ev) {
     return t ? json({ track: t, album: publicAlbum({ ...album, tracks: undefined }) }) : json({ track: null }, 404);
   }
   if (p === '/v1/cover') {
-    ev.kind = 'cover';
+    ev.kind = q.has('warm') ? 'warm' : 'cover'; // warm = the app preloading the next song: not a play
     if (!album) return json({ video: null, still: null }, 404);
     const shape = q.get('shape') === 'tall' ? 'tall' : 'square';
     const px = Math.min(cfg.max_px, Math.max(64, +q.get('px') || 1080));

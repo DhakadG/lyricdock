@@ -193,6 +193,7 @@ function swap(m, im, lyr) {
   P.art = m.art;
   P.dur = m.dur || P.dur;
   P.lyrics = lyr;
+  window.lyricStore?.put(m.id, lyr); // device copy for replays / offline (features.js)
   P.artistImg = artistImgs.get(m.id) ?? null;
   $('title').textContent = m.title || '';
   $('artist').textContent = m.artist || '';
@@ -211,6 +212,7 @@ function offerLyrics(id, lyr) {
   if (!lyr || id !== P.id || (P.lyrics && Lyrics.rank(lyr) <= Lyrics.rank(P.lyrics))) return;
   const first = !P.lyrics;
   P.lyrics = lyr;
+  window.lyricStore?.put(id, lyr);
   Lyrics.build(lyr);
   // Opacity only, on the list: #lyrics may still be running the song-change animation (two animations on one element
   // replace each other mid-flight = a visible jump), and #lines' transform belongs to the scroll spring.
@@ -256,6 +258,7 @@ async function onTrack(m) {
   const preLyr = pre.get(m.id)?.lyrics;
   swap(m, im, Lyrics.rank(m.lyrics) >= Lyrics.rank(preLyr) ? m.lyrics : preLyr ?? null);
   if (xfade) artFadeFrom(oldArt, ms(520));
+  if (!Lyrics.rank(P.lyrics)) window.lyricStore?.get(m.id).then(l => offerLyrics(m.id, l)); // nothing yet: the device copy
   if (sw) { $('art').classList.remove('art-wait'); $('art').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(280), easing: 'ease-out' }); }
   topUp(m.id);
   parts.forEach((el, i) => {
@@ -665,6 +668,7 @@ function apply(k) {
   b.classList.toggle('times', S.times);
   b.classList.toggle('show-liked', S.showLiked);
   b.classList.toggle('heart-liked-only', S.heartLikedOnly);
+  b.classList.toggle('no-motion-badge', !S.motionBadge);
   b.classList.toggle('show-quality', S.showQuality);
   try { Dock.setOrientation(S.orientation); } catch (e) {}
   applyInsets();

@@ -78,6 +78,9 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true); // settings persist in localStorage
         web.getSettings().setMediaPlaybackRequiresUserGesture(false); // muted music-video background autoplays
+        web.getSettings().setSupportZoom(false); // a dock, not a page: no pinch / double-tap zoom
+        web.getSettings().setBuiltInZoomControls(false);
+        web.getSettings().setTextZoom(100); // ignore the system font-size zoom (layout is sized in vmin)
         web.setWebViewClient(new PageClient()); // adds the Referer YouTube's embed needs; recovers a dead renderer
         web.setBackgroundColor(0xFF000000);
         web.addJavascriptInterface(this, "Dock"); // page -> PC (prev/play/next/seek); only @JavascriptInterface methods are exposed
@@ -181,6 +184,22 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     // App updates from GitHub Releases (Updater): install=false only checks.
     @JavascriptInterface
     public void checkUpdate(boolean install) { new Thread(new Updater(this, install)).start(); }
+
+    // Settings -> Storage: the WebView's HTTP cache (still covers, artist images, fonts) lives in the app's cache dir.
+    @JavascriptInterface
+    public long webCacheBytes() { return dirBytes(getCacheDir()); }
+
+    @JavascriptInterface
+    public void clearWebCache() { runOnUiThread(new UiOp(this, UiOp.CLEAR_CACHE, 0, null)); }
+
+    static long dirBytes(java.io.File f) {
+        if (f == null) return 0;
+        if (f.isFile()) return f.length();
+        long n = 0;
+        java.io.File[] kids = f.listFiles();
+        if (kids != null) for (java.io.File k : kids) n += dirBytes(k);
+        return n;
+    }
 
     @JavascriptInterface
     public String version() {
