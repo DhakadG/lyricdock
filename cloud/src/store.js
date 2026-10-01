@@ -57,9 +57,11 @@ export function track(env, e) {
     doubles: [e.status, e.ms, e.bytes, e.lat, e.lon, e.px, e.hevc ?? -1].map(v => +v || 0),
   });
 }
-export async function aeQuery(env, sql) {
+export async function aeQuery(env, sql, retry = 1) {
   if (!env.CF_API_TOKEN) throw new Error('CF_API_TOKEN secret not set (needed to read Analytics Engine)');
   const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/analytics_engine/sql`, { method: 'POST', headers: { authorization: `Bearer ${env.CF_API_TOKEN}` }, body: `${sql} FORMAT JSON` });
+  // AE's SQL API sometimes 500s when the dashboard sends its dozen queries at once: one more try.
+  if (r.status >= 500 && retry) { await new Promise(res => setTimeout(res, 400)); return aeQuery(env, sql, 0); }
   if (!r.ok) throw new Error(`Analytics Engine ${r.status}: ${(await r.text()).slice(0, 200)}`);
   return (await r.json()).data;
 }
