@@ -109,7 +109,8 @@ fn handle(mut s: TcpStream, subs: Subs) -> std::io::Result<()> {
             if let Some(v) = subs.lock().unwrap().get_mut(&topic) { v.retain(|tx| tx.send(msg.clone()).is_ok()); }
             reply(&mut s, "200 OK", &msg)
         }
-        "GET" if path == "/" => reply(&mut s, "200 OK", "LyricDock relay"),
+        // Spotify's extension probes this to find the helper, and passes the address on to the phone.
+        "GET" if path == "/" => reply(&mut s, "200 OK", &serde_json::json!({ "lyricdock": "relay", "ip": lan_ip() }).to_string()),
         _ => reply(&mut s, "404 Not Found", ""),
     }
 }

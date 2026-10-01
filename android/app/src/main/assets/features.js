@@ -30,8 +30,8 @@
     $('album').textContent = S.albumLine ? [a.album || P.album, a.year].filter(Boolean).join(' · ') : '';
     marquee($('album'));
   }
-  window.afterSwap = m => { document.body.classList.remove('q-new'); void document.body.offsetWidth; document.body.classList.add('q-new'); fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; P.next = null; remarquee(); albumLine(); badge(); hideChip(); };
-  window.afterPreload = m => { P.next = m; };
+  window.afterSwap = m => { document.body.classList.remove('q-new'); void document.body.offsetWidth; document.body.classList.add('q-new'); fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; if (P.next?.id === m.id) P.next = null; if (P.next2?.id === m.id) P.next2 = null; /* the bridge's preloads for the new song may already be here */ remarquee(); albumLine(); badge(); hideChip(); };
+  window.afterPreload = m => { if (m.ahead === 2) P.next2 = m; else P.next = m; }; // ahead: 1 = next, 2 = the one after
   // Cover + title in the left column (Default / TV, landscape): the column is padded clear of the song times and
   // progress bar, and the cover is capped so cover + title + artist + album always fit between them.
   window.fitArt = () => requestAnimationFrame(() => {
@@ -344,7 +344,9 @@
     else send({ type: 'list', ...msg });
   }
   window.onExtra = m => {
-    if (m.type === 'list') { if (m.which === 'queue') window.onQueue?.(m); showList(m); } // the queue also feeds the cover swipe
+    // The queue also feeds the cover swipe. A closed panel isn't drawn (~120 ms on a slow phone, mid song change):
+    // opening it asks again anyway.
+    if (m.type === 'list') { if (m.which === 'queue') window.onQueue?.(m); if (document.body.classList.contains('lists-open')) showList(m); }
     else if (m.type === 'acted') acted(m);
     else if (m.type === 'album' && m.id) { albums.set(m.id, m); if (m.id === P.id) albumLine(); }
   };
@@ -887,7 +889,8 @@
     v?.remove();
     v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
     v.dataset.src = want;
-    v.oncanplay = () => { v.classList.add('on'); motionTick(); };
+    // Fades in only once the song change has settled (app.js showArt): never pops in mid-transition.
+    v.oncanplay = () => { v.oncanplay = null; setTimeout(() => { if (v.isConnected) { v.classList.add('on'); motionTick(); } }, Math.max(0, (P.settleAt || 0) - performance.now())); };
     $('art').prepend(v); // first child: the controls, ripple and heart badge stay on top
   }
   const swapBase = window.afterSwap;
@@ -896,9 +899,9 @@
     const cover = S.motionArt || S.bg === 'motionblur';
     if (cover) motionFor(P.cur, 'cover');
     if (S.bg === 'motion') motionFor(P.cur, 'bg');
-    if (S.motionWarm && P.next && (performance.now() - (P.curAt || 0) > 8000)) { // after the current one has settled
-      if (cover) warm(P.next, 'cover');
-      if (S.bg === 'motion') warm(P.next, 'bg');
+    if (S.motionWarm && performance.now() - (P.curAt || 0) > 3000) for (const t of [P.next, P.next2]) { // the next two, once the current one has started
+      if (cover) warm(t, 'cover');
+      if (S.bg === 'motion') warm(t, 'bg');
     }
     motionTick();
   }, 1000);

@@ -48,12 +48,20 @@ const BLEND_SHADER = `
   uniform sampler2D u_texture1;
   uniform sampler2D u_texture2;
   uniform float u_blend;
+  uniform float u_radial; // LyricDock: 1 = the new image spreads out from u_center as u_blend goes 0 -> 1
+  uniform vec2 u_center;
+  uniform vec2 u_aspect;
   varying vec2 v_texCoord;
 
   void main() {
     vec4 color1 = texture2D(u_texture1, v_texCoord);
     vec4 color2 = texture2D(u_texture2, v_texCoord);
-    gl_FragColor = mix(color1, color2, u_blend);
+    float k = u_blend;
+    if (u_radial > 0.5) {
+      float r = u_blend * 1.35; // reaches past the farthest corner (distances are normalised to it)
+      k = 1.0 - smoothstep(r - 0.35, r, length((v_texCoord - u_center) * u_aspect));
+    }
+    gl_FragColor = mix(color1, color2, k);
   }
 `;
 // Tint shader - applies color to dark areas before blur
@@ -270,6 +278,9 @@ class Kawarp {
                 texture1: gl.getUniformLocation(this.blendProgram, "u_texture1"),
                 texture2: gl.getUniformLocation(this.blendProgram, "u_texture2"),
                 blend: gl.getUniformLocation(this.blendProgram, "u_blend"),
+                radial: gl.getUniformLocation(this.blendProgram, "u_radial"),
+                center: gl.getUniformLocation(this.blendProgram, "u_center"),
+                aspect: gl.getUniformLocation(this.blendProgram, "u_aspect"),
             },
             warp: {
                 texture: gl.getUniformLocation(this.warpProgram, "u_texture"),
@@ -505,6 +516,39 @@ class Kawarp {
      * Process a new image: blur it and start transition
      * This is the key optimization - blur only runs here, not every frame!
      */
+    /**
+     * LyricDock: the next image spreads out from this point (fractions of the canvas, 0..1 from the top left)
+     * instead of a flat crossfade. Applies to the next load only.
+     */
+    setOrigin(x, y) {
+        this.origin = [x, y];
+    }
+    // Draw the current -> next blend at transition progress t (0..1) into target.
+    drawBlend(target, t) {
+        const gl = this.gl;
+        gl.useProgram(this.blendProgram);
+        this.setupAttributes();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+        gl.viewport(0, 0, BLUR_SIZE, BLUR_SIZE);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.currentAlbumFBO.texture);
+        gl.uniform1i(this.uniforms.blend.texture1, 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.nextAlbumFBO.texture);
+        gl.uniform1i(this.uniforms.blend.texture2, 1);
+        const o = this.tOrigin;
+        gl.uniform1f(this.uniforms.blend.radial, o ? 1 : 0);
+        if (o) {
+            // normalise distances so the farthest canvas corner from the origin is 1
+            const w = this.canvas.width || 1, h = this.canvas.height || 1;
+            const far = Math.hypot(Math.max(o[0], 1 - o[0]) * w, Math.max(o[1], 1 - o[1]) * h);
+            gl.uniform2f(this.uniforms.blend.center, o[0], 1 - o[1]); // FBO textures are bottom-up
+            gl.uniform2f(this.uniforms.blend.aspect, w / far, h / far);
+        }
+        // radial: a decelerating spread; flat: the original cosine ease
+        gl.uniform1f(this.uniforms.blend.blend, o ? 1 - Math.pow(1 - t, 3) : 0.5 - 0.5 * Math.cos(t * Math.PI));
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
     processNewImage() {
         if (!this.hasImage) {
             this.blurSourceInto(this.nextAlbumFBO);
@@ -513,10 +557,23 @@ class Kawarp {
             this.isTransitioning = false;
             return;
         }
-        const previousAlbumFBO = this.currentAlbumFBO;
-        this.currentAlbumFBO = this.nextAlbumFBO;
-        this.nextAlbumFBO = previousAlbumFBO;
+        const elapsed = performance.now() - this.transitionStartTime;
+        if (this.isTransitioning && elapsed < this._transitionDuration) {
+            // LyricDock: a new cover mid-crossfade. Freeze what is on screen right now (old/new blend) as the
+            // "from" frame; swapping buffers here would snap to the half-shown cover (a visible flash).
+            this.drawBlend(this.blurFBO2, elapsed / this._transitionDuration);
+            const frozen = this.blurFBO2;
+            this.blurFBO2 = this.currentAlbumFBO;
+            this.currentAlbumFBO = frozen;
+        }
+        else {
+            const previousAlbumFBO = this.currentAlbumFBO;
+            this.currentAlbumFBO = this.nextAlbumFBO;
+            this.nextAlbumFBO = previousAlbumFBO;
+        }
         this.blurSourceInto(this.nextAlbumFBO);
+        this.tOrigin = this.origin || null;
+        this.origin = null;
         this.isTransitioning = true;
         this.transitionStartTime = performance.now();
     }
@@ -660,19 +717,7 @@ class Kawarp {
         }
         let currentTexture;
         if (this.isTransitioning && blendFactor < 1.0) {
-            gl.useProgram(this.blendProgram);
-            this.setupAttributes();
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.blurFBO1.framebuffer);
-            gl.viewport(0, 0, BLUR_SIZE, BLUR_SIZE);
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, this.currentAlbumFBO.texture);
-            gl.uniform1i(this.uniforms.blend.texture1, 0);
-            gl.activeTexture(gl.TEXTURE1);
-            gl.bindTexture(gl.TEXTURE_2D, this.nextAlbumFBO.texture);
-            gl.uniform1i(this.uniforms.blend.texture2, 1);
-            const easedBlend = 0.5 - 0.5 * Math.cos(blendFactor * Math.PI);
-            gl.uniform1f(this.uniforms.blend.blend, easedBlend);
-            gl.drawArrays(gl.TRIANGLES, 0, 6);
+            this.drawBlend(this.blurFBO1, blendFactor);
             currentTexture = this.blurFBO1.texture;
         }
         else {

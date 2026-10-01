@@ -27,14 +27,14 @@ const send = o => { const s = JSON.stringify(o); try { Dock.send(s); } catch (e)
 const sleep = t => new Promise(r => setTimeout(r, t));
 
 // ---- art cache: covers are decoded before they're shown, so animations never reveal a half-loaded image
-const arts = new Map(), pre = new Map();
+const arts = new Map(), pre = new Map(), ready = new Map(); // ready: url -> decoded image, readable synchronously
 function art(url) {
   if (!url) return Promise.resolve(null);
   if (!arts.has(url)) {
     const im = new Image();
     im.crossOrigin = 'anonymous'; // i.scdn.co sends ACAO:* - needed for WebGL + colour sampling
     im.src = url;
-    arts.set(url, im.decode().then(() => im, () => null));
+    arts.set(url, im.decode().then(() => { ready.set(url, im); if (ready.size > 12) ready.delete(ready.keys().next().value); return im; }, () => null));
     if (arts.size > 12) arts.delete(arts.keys().next().value);
   }
   return arts.get(url);
@@ -108,13 +108,14 @@ function background(url, im) {
   }
   paint(url, im);
 }
+let kwSrc = null;
 function paint(url, im) {
   const root = document.documentElement.style, dyn = S.bg === 'dynamic' || S.bg === 'artist'; // canvas / video: blurred cover under the video
   // Image still downloading (swap only waits ~0.9s): finish it, then update - otherwise the old song's colours stick.
   if (!im && url) art(url).then(i => { if (i && (P.art === url || P.artistImg === url)) paint(url, i); });
   $('bg').style.backgroundImage = url ? `url("${url}")` : 'none';
   if (dyn && im && kawarp()) {
-    try { kw.loadImageElement(im); kw.start(); } catch (e) {}
+    try { if (kwSrc !== im.src) { kwSrc = im.src; kw.loadImageElement(im); } kw.start(); } catch (e) {} // same picture again: no new crossfade
   } else kw?.stop();
   if (im) try {
     const cs = colours(im);
@@ -179,9 +180,15 @@ const IN = {
   stack: () => [{ transform: 'translateY(14%) scale(1.05)', opacity: 0 }, { transform: 'none', opacity: 1 }],
 };
 
-function swap(m, im, lyr) {
+// ---- song change ladder. Every route (button, swipe, song ended, Spotify's own controls) comes through here:
+//   0 ms    Spotify names the song (onTrack): title + lyrics leave (200 ms). The cover stays where it is.
+//   200 ms  swap(): title, artist, lyrics come in. The cover was decoded long ago in nearly every case (preload);
+//           if not, the old cover stays until the new one is ready - never a blank or half-loaded frame.
+//   cover   showArt(): in one frame the new cover crossfades in place with a small settle, the background spreads out
+//           from the cover's centre (kawarp shader, or the CSS bloom for blur / gradient) and the accent colours switch.
+//   +950ms  settled (P.settleAt): an animated cover (features.js) may fade in now, never mid-transition.
+function swap(m, im, lyr, swiped, artDone) {
   const changed = P.shown && P.cur && P.cur.id !== m.id;
-  P.prevArt = P.art;
   // History for the cover swipe's "previous" side (up to 3 back, with lyrics, so going back is instant).
   P.hist ??= [];
   if (P.cur && P.cur.id !== m.id) {
@@ -198,37 +205,88 @@ function swap(m, im, lyr) {
   P.artistImg = artistImgs.get(m.id) ?? null;
   $('title').textContent = m.title || '';
   $('artist').textContent = m.artist || '';
-  if (!P.artHold) $('art').style.backgroundImage = m.art ? `url("${m.art}")` : 'none';
-  if (changed) reveal(m.art, im); else background(m.art, im);
   Lyrics.build(lyr);
+  const mode = !changed ? 'none' : swiped ? 'landed' : 'swap';
+  if (artDone) P.settleAt = Math.max(P.settleAt || 0, performance.now() + ms(700));
+  else if (im || !m.art) showArt(m.art, im, mode);
+  else art(m.art).then(i => { if (P.id === m.id && P.art === m.art) showArt(m.art, i, mode); });
   window.afterSwap?.(m);
   window.refreshNeighbours?.();
 }
 
-// Song change (swipe, button, song ended - everything goes through swap): the new cover's glow grows out of the
-// cover's centre until it fills the screen, the real background (kawarp / blur / gradient) switches underneath it,
-// then the glow fades away. Scaled, not clip-path, so it runs on the compositor even on a slow phone.
-let revealing = null; // lands the bloom in progress (paints its background, hides the glow)
-function reveal(url, im) {
-  revealing?.(); // another song before the last bloom finished: land it now
-  const el = $('reveal'), b = document.body.classList;
-  if (!url || S.trackAnim === 'none' || b.contains('night') || b.contains('bg-black') || matchMedia('(prefers-reduced-motion: reduce)').matches) return background(url, im);
+// mode: 'swap' (song change), 'landed' (a swipe card already shows it), 'quiet' (same song, better art), 'none'.
+let artShown = null;
+function showArt(url, im, mode) {
+  const a = $('art'), old = artShown, blank = a.classList.contains('art-wait');
+  const still = S.trackAnim === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  artShown = url;
+  a.style.backgroundImage = url ? `url("${url}")` : 'none';
+  a.classList.remove('art-wait');
+  if (!still && blank) a.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(320), easing: 'ease-out' }); // empty swipe card fills in
+  else if (!still && old && old !== url && (mode === 'swap' || mode === 'quiet')) {
+    const dur = ms(mode === 'swap' ? 520 : 300), v = $('mv');
+    artFadeFrom(old, dur);
+    // An animated cover is on top: it fades out with the old cover instead of vanishing when the song switches.
+    if (mode === 'swap' && v?.classList.contains('on')) {
+      v.removeAttribute('id'); // features.js starts the new song's video fresh
+      Object.assign(v.style, { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit', pointerEvents: 'none', zIndex: 1 });
+      v.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur, easing: 'ease-in-out', fill: 'forwards' }).onfinish = () => v.remove();
+      a.classList.remove('animated');
+    }
+  }
+  // 'scale' (not 'transform'): the paused-shrink and swipe transforms on #art keep working underneath
+  if (!still && mode === 'swap') a.animate([{ scale: 0.95 }, { scale: 1 }], { duration: ms(700), easing: 'cubic-bezier(.34,1.3,.64,1)' });
+  if (!still && (mode === 'swap' || mode === 'landed')) spread(url, im); else background(url, im);
+  P.settleAt = performance.now() + ms(950);
+}
+
+// The cover's centre on screen, from layout (not the on-screen box: the cover may be mid-animation).
+function artCentre() {
   let a = $('artbox'), x = innerWidth / 2, y = innerHeight / 2;
-  if (a.offsetWidth) { // layout position, not the on-screen one: the cover may be mid out-animation
+  if (a.offsetWidth) {
     x = a.offsetWidth / 2; y = a.offsetHeight / 2;
     for (; a; a = a.offsetParent) { x += a.offsetLeft; y += a.offsetTop; }
   }
-  const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) / 0.72 + 60; // past the feathered edge and the blur
-  Object.assign(el.style, { display: 'block', width: `${2 * r}px`, height: `${2 * r}px`, left: `${x - r}px`, top: `${y - r}px`, backgroundImage: `url("${url}")` });
-  const anims = [el.animate([{ transform: 'scale(.04)', opacity: 0.6 }, { transform: 'scale(1)', opacity: 1 }], { duration: ms(720), easing: 'cubic-bezier(.3,.7,.2,1)', fill: 'forwards' })];
+  return [x, y];
+}
+
+// The new background spreads out from the cover. Kawarp does it in its blend shader (one GPU pass, no overlay);
+// the CSS backgrounds get the bloom below; the rest (video, black, night) just switch.
+function spread(url, im) {
+  const [x, y] = artCentre(), night = document.body.classList.contains('night');
+  if (!night && im && (S.bg === 'dynamic' || S.bg === 'artist') && kawarp()) {
+    kw.setOrigin(x / innerWidth, y / innerHeight);
+    kw.transitionDuration = ms(950);
+    return background(url, im);
+  }
+  if (!night && url && (S.bg === 'blur' || S.bg === 'gradient')) return bloom(url, im, x, y);
+  background(url, im);
+}
+
+// CSS backgrounds: a circle that looks like the new background grows from the cover (scaled, so it stays on the
+// compositor), the real background switches under it once it covers the screen, then it goes.
+let blooming = null; // lands the bloom in progress
+function bloom(url, im, x, y) {
+  blooming?.();
+  const el = $('reveal');
+  let look = { backgroundImage: `url("${url}")`, filter: '' };
+  if (S.bg === 'gradient') {
+    let cs = null;
+    try { cs = im && colours(im); } catch (e) {}
+    if (!cs) return background(url, im);
+    look = { backgroundImage: `linear-gradient(135deg, ${cs.join(', ')})`, filter: 'none' };
+  }
+  const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) / 0.72 + 60; // past the feathered edge
+  Object.assign(el.style, { display: 'block', width: `${2 * r}px`, height: `${2 * r}px`, left: `${x - r}px`, top: `${y - r}px`, ...look });
+  const anims = [el.animate([{ transform: 'scale(.05)' }, { transform: 'scale(1)' }], { duration: ms(900), easing: 'cubic-bezier(.25,.7,.25,1)', fill: 'forwards' })];
   let painted = false;
   const paintOnce = () => { if (!painted) { painted = true; background(url, im); } };
-  const land = revealing = () => { revealing = null; paintOnce(); anims.forEach(a => a.cancel()); el.style.display = 'none'; };
+  const land = blooming = () => { blooming = null; paintOnce(); anims.forEach(a => a.cancel()); el.style.display = 'none'; };
   anims[0].finished.then(() => {
-    if (revealing !== land) return;
-    paintOnce(); // covered: switch the real background underneath, then let the glow go
-    anims.push(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(520), easing: 'ease-out', fill: 'forwards' }));
-    anims[1].finished.then(() => revealing === land && land(), () => {});
+    if (blooming !== land) return;
+    paintOnce(); // the real background is the same picture: a short fade hides the hand-over
+    anims.push(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(260), easing: 'ease-out', fill: 'forwards' }));
+    anims[1].finished.then(() => blooming === land && land(), () => {});
   }, () => {});
 }
 
@@ -263,35 +321,40 @@ async function onTrack(m) {
   if (m.id === P.id) { // same song: lyrics arrived after the track, better ones replaced a fallback, or a swipe got confirmed
     P.optimistic = 0;
     if (sk) P.skip = null;
-    if (m.art && m.art !== P.art) { const old = P.art; P.art = m.art; P.cur && (P.cur.art = m.art); art(m.art).then(im => { if (P.id !== m.id || P.art !== m.art) return; $('art').style.backgroundImage = `url("${m.art}")`; if (old) artFadeFrom(old, ms(300)); background(m.art, im); }); }
+    if (m.art && m.art !== P.art) { P.art = m.art; P.cur && (P.cur.art = m.art); art(m.art).then(im => { if (P.id === m.id && P.art === m.art) showArt(m.art, im, 'quiet'); }); }
     offerLyrics(m.id, m.lyrics);
     topUp(m.id);
     return;
   }
-  const token = ++P.token;
-  // Next slides left, previous slides right. The bridge knows which (history), a phone tap knows too.
-  const outStyle = S.trackAnim, d = m.dir ?? (performance.now() - P.dirAt < 3000 ? P.dir : 1);
   // A swipe that landed on a song we knew nothing about: its card is already in place, so no out-animation here.
   const sw = performance.now() < (P.swipeWait || 0); P.swipeWait = 0;
-  const xfade = !sw && (outStyle === 'fade' || outStyle === 'blur') && P.art && m.art;
-  const oldArt = P.art;
-  const parts = sw || xfade ? [$('meta'), $('lyrics')] : [$('artbox'), $('meta'), $('lyrics')];
-  // Out-animation and cover decode run in parallel; the new cover is ready before it comes in.
-  // A swipe: no out-animation - the card already moved; everything else switches the moment Spotify names the song.
-  const outDone = !sw && outStyle !== 'none' && P.shown
-    ? Promise.all(parts.map((el, i) => el.animate(OUT[outStyle](d), { duration: ms(240), delay: ms(i * 30), easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished))
+  change(m, sw);
+}
+
+// The visible change to song m (from Spotify, or started early from the preload: jump / songEnd).
+async function change(m, sw) {
+  const token = ++P.token;
+  // Next slides left, previous slides right. The bridge knows which (history), a phone tap knows too.
+  const style = S.trackAnim, d = m.dir ?? (performance.now() - P.dirAt < 3000 ? P.dir : 1);
+  const parts = [$('meta'), $('lyrics')]; // the cover never leaves: the change grows out of it (showArt)
+  const outDone = !sw && style !== 'none' && P.shown
+    ? Promise.all(parts.map((el, i) => el.animate(OUT[style](d), { duration: ms(200), delay: ms(i * 30), easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished))
     : Promise.resolve();
-  const [im] = await Promise.all([Promise.race([art(m.art), sleep(900).then(() => null)]), outDone]);
+  // A decoded cover changes right away, together with the text leaving: the change starts on the press.
+  const hot = !sw && P.shown && m.art && ready.get(m.art);
+  if (hot) showArt(m.art, hot, 'swap');
+  // The text never waits long for a cold cover: swap() keeps the old cover up and switches when this one decodes.
+  const [im] = await Promise.all([Promise.race([art(m.art), sleep(260).then(() => null)]), outDone]);
   if (token !== P.token) return; // skipped again meanwhile
   const preLyr = pre.get(m.id)?.lyrics;
-  swap(m, im, Lyrics.rank(m.lyrics) >= Lyrics.rank(preLyr) ? m.lyrics : preLyr ?? null);
-  if (xfade) artFadeFrom(oldArt, ms(520));
+  swap(m, im, preLyr && Lyrics.rank(preLyr) >= Lyrics.rank(m.lyrics) ? preLyr : m.lyrics ?? null, sw, !!hot);
   if (!Lyrics.rank(P.lyrics)) window.lyricStore?.get(m.id).then(l => offerLyrics(m.id, l)); // nothing yet: the device copy
-  if (sw) { $('art').classList.remove('art-wait'); $('art').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(280), easing: 'ease-out' }); }
   topUp(m.id);
+  const sk = P.skip; // started early and Spotify confirmed during the out-animation: take its details now
+  if (sk?.early?.id === m.id) { const e = sk.early; sk.early = null; onTrack(e); }
   parts.forEach((el, i) => {
     el.getAnimations().forEach(a => a.cancel());
-    if (outStyle !== 'none' && !sw) el.animate(IN[outStyle](d), { duration: ms(560), delay: ms(i * 55), easing: EASE, fill: 'backwards' });
+    if (style !== 'none' && !sw && P.shown) el.animate(IN[style](d), { duration: ms(520), delay: ms(i * 50), easing: EASE, fill: 'backwards' });
   });
   P.shown = true;
 }
@@ -317,6 +380,7 @@ function onPreload(m) {
 
 // ---- liked + audio quality (sent with every heartbeat)
 function onMeta(m) {
+  if (m.repeat !== undefined) P.repeat = m.repeat; // 2 = this song on repeat: no early change at its end
   if (Number.isFinite(m.volume) && !(performance.now() < P.volLock)) { $('vol').value = m.volume; window.volMuted?.(); }
   $('ctl').classList.toggle('has-vol', Number.isFinite(m.volume) && S.showVolume);
   if (typeof m.liked === 'boolean' && performance.now() > P.heartLock) {
@@ -375,7 +439,7 @@ Web.onMessage(m => route('web', m));
 function route(src, m) {
   const s = SRC[src];
   s.heard = performance.now(); // any message proves the link is up (see 'stale' in the frame loop)
-  if (m.type === 'track') s.track = m;
+  if (m.type === 'track') { s.track = m; s.trackAt = performance.now(); }
   else if (m.type === 'preload') s.preload = m;
   else if (m.type === 'pos') { s.pos = m; s.at = performance.now(); s.playing = !!m.playing; }
   else return handle(m); // api / hello / presets / auth / diag: source-independent
@@ -552,6 +616,7 @@ window.swipeTo = k => {
   // "Previous" more than 3 s into a song only restarts it, so one extra press goes back the first song.
   for (let i = 0; i < n + (k < 0 && pos() > 3000 ? 1 : 0); i++) queueCmd(k > 0 ? 'next' : 'prev');
   P.dir = Math.sign(k); P.dirAt = now;
+  setTimeout(settleSkip, 5200); // after the skip window, whatever happened
   if (!t?.id) { P.swipeWait = now + 5000; return null; } // unknown song: the card lands empty, Spotify fills it in
   const prevSkip = P.skip && now < P.skip.until ? P.skip : null;
   const pass = new Set([...(prevSkip ? [...prevSkip.pass, prevSkip.target] : []), ...list.slice(0, n - 1).map(x => x.id), P.id]);
@@ -560,20 +625,50 @@ window.swipeTo = k => {
   P.optimistic = now + 2500; P.pos = 0; P.at = now; P.dur = t.dur || P.dur;
   return t;
 };
+// A skip burst can end somewhere other than where the phone went (Spotify dropped a skip, the queue changed), and the
+// songs it passed are ignored while it runs - so nothing would ever correct the screen. Once the source has been quiet
+// for a moment, the song it named last is the truth.
+function settleSkip() {
+  const s = SRC[P.source], t = s.track;
+  if (!t?.id || t.id === P.id) return;
+  if (performance.now() - (s.trackAt || 0) < 1200) return setTimeout(settleSkip, 400);
+  P.skip = null; P.swipeWait = 0;
+  onTrack({ ...t });
+}
 // The card is in place: title, lyrics, colours switch in the same frame (the cover image is already decoded).
 window.swipeLand = t => {
   const token = ++P.token, lyr = t.lyrics ?? pre.get(t.id)?.lyrics ?? null;
   art(t.art).then(im => {
     if (token !== P.token) return;
-    swap(t, im, lyr); topUp(t.id); P.shown = true;
+    swap(t, im, lyr, true); topUp(t.id); P.shown = true;
+    setTimeout(settleSkip, 1500);
     const sk = P.skip;
     if (sk?.target !== t.id) return;
     for (const x of sk.passed) P.hist.unshift({ ...x }); // skipped over = played, as far as Spotify's "previous" goes
     if (sk.early) { const m = sk.early; sk.early = null; onTrack(m); } // Spotify already confirmed it: take its details
   });
 };
-$('prev').onclick = () => cmd('prev', -1);
-$('next').onclick = () => cmd('next', 1);
+// Next / previous start on the press: the song is preloaded, so the change runs while Spotify catches up (~0.6 s) and
+// its confirmation only fills in details (onTrack, same song). If Spotify goes somewhere else, it still wins.
+function jump(k) {
+  const t = window.swipeTo(k); // sends the command, arms the skip guard
+  if (!t) { P.swipeWait = 0; return; } // nothing known: Spotify's answer animates as usual
+  change({ ...t, lyrics: t.lyrics ?? pre.get(t.id)?.lyrics ?? null, dir: Math.sign(k) }, false);
+}
+$('prev').onclick = () => pos() > 3000 ? cmd('prev', -1) : jump(-1); // late in a song, previous restarts it
+$('next').onclick = () => jump(1);
+// The song ran out and Spotify's next is known and decoded: change on time instead of ~0.5 s after the audio does.
+let endFor = null;
+function songEnd(real) {
+  const t = P.next, now = performance.now();
+  if (endFor === P.id || !P.playing || !P.dur || real < P.dur - 150 || P.repeat === 2 || P.skip || !t?.id || t.id === P.id) return;
+  endFor = P.id;
+  if (!arts.has(t.art)) return;
+  P.skip = { target: t.id, pass: new Set([P.id]), until: now + 5000, passed: [] };
+  P.optimistic = now + 2500; P.pos = 0; P.at = now; P.dur = t.dur || P.dur;
+  setTimeout(settleSkip, 5200); // paused at the end, repeat, queue changed: Spotify's word wins
+  change({ ...t, dir: 1 }, false);
+}
 $('pp').onclick = () => { P.pos = pos(); P.at = performance.now(); P.lockUntil = P.at + 400; setPlaying(!P.playing, true); cmd('toggle'); };
 $('heart').onclick = () => {
   P.liked = !P.liked;
@@ -774,6 +869,7 @@ const linkLog = window.linkLog = [];
     if (linkLog.length > 50) linkLog.shift();
   }
   const real = pos(), p = real + S.offset;
+  songEnd(real);
   fillCheck(real);
   if ((real / 1000 | 0) !== lastSec && !document.body.classList.contains('tl-drag')) {
     lastSec = real / 1000 | 0;

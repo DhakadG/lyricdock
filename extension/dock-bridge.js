@@ -13,7 +13,7 @@
 
   const URL_ = 'ws://127.0.0.1:8975';
   const P = Spicetify.Player, LS = Spicetify.LocalStorage;
-  let track = null, preload = null;
+  let track = null, preloads = [], trackUri = null; // trackUri: the song sendTrack last started on (set before any await)
   let last = { pos: 0, at: 0, playing: false };
 
   const safe = (f, d) => { try { return f(); } catch { return d; } }; // getProgress throws before anything loads
@@ -167,7 +167,15 @@
   const NTFY = 'https://ntfy.sh';
   // The self-hosted ntfy first (ntfy/, docs/ntfy.md): ntfy.sh's free daily quota runs out for a busy home IP.
   const LDR = 'https://ntfy.losthusky.qzz.io';
-  const relaysFor = S => [...new Set([LDR, relayFor(S), NTFY])];
+  // The LyricDock Helper's local relay, when it runs on this PC (probed, no setting needed): connection setup then
+  // also works without the internet, and the phone learns this PC's address from the hello to use it too.
+  const HELPER = 'http://127.0.0.1:8977';
+  let helperIp; // undefined = not probed yet, null = no helper
+  const probeHelper = () => fetch(`${HELPER}/`, { cache: 'no-store' }).then(r => r.json())
+    .then(j => { helperIp = /^\d+\.\d+\.\d+\.\d+$/.test(j?.ip || '') ? j.ip : null; }, () => { helperIp = null; });
+  probeHelper();
+  setInterval(probeHelper, 60000);
+  const relaysFor = S => [...new Set([LDR, relayFor(S), ...(helperIp ? [HELPER] : []), NTFY])];
   async function rtcOpen(code, attempt = 0) {
     if (typeof RTCPeerConnection === 'undefined') return null;
     const S = settingsFor(code), rs = relaysFor(S), RELAY = rs[attempt % rs.length];
@@ -371,12 +379,12 @@
     log(`${phoneName(code)} connected${s.kind === 'rtc' ? '' : ' over adb'}`);
     if (s.pc) linkPath(s);
     const S = settingsFor(code);
-    sendTo(s, { type: 'hello', last: S, presets: readJson(PRESETS_KEY, {}), paired: !!code, version: VERSION, desk: deskName() });
+    sendTo(s, { type: 'hello', last: S, presets: readJson(PRESETS_KEY, {}), paired: !!code, version: VERSION, desk: deskName(), ...(helperIp !== undefined ? { helper: helperIp } : {}) });
     if (code && dirty(code)) { sendTo(s, { type: 'load', S }); dirty(code, false); }
     renderPanel();
     if (track) sendTo(s, track); else sendTrack();
-    if (preload) sendTo(s, preload);
-    extraMsgs.forEach(m => sendTo(s, m));
+    preloads.forEach(m => sendTo(s, m));
+    for (const msgs of extraCache.values()) msgs.forEach(m => sendTo(s, m));
     beat();
   }
 
@@ -767,31 +775,51 @@
   async function sendTrack() {
     const it = item();
     if (!it?.uri) return;
+    trackUri = it.uri;
     const base = info(it, it.metadata || {});
     const dir = direction(base.id);
-    track = { type: 'track', ...base, dir, lyrics: await fromSpicyCache(base.id) }; // cache read: a few ms
+    const spicy = await fromSpicyCache(base.id); // cache read: a few ms
+    const job = lyricJobs.get(base.id); // fetched while this was the upcoming song: usually done already
+    track = { type: 'track', ...base, dir, lyrics: spicy ?? (job?.done ? await job : null) };
     send(track);
     beat();
     if (base.uri.startsWith('spotify:track:')) remember_(base, it);
     preloadNext();
     setTimeout(preloadNext, 3000); // Spotify's queue can lag the song change by a moment
     extras(it, base.id);
-    if (track.lyrics) return;
-    // Ads have no lyrics; local files and podcasts can't use Spotify's lyrics endpoint (it wants a track id).
-    const kind = it.uri.split(':')[1];
-    const lyrics = kind === 'ad' ? NONE
-      : (kind === 'track' ? await spotifyLyrics(base.id) : null) ?? (kind !== 'episode' ? await lrclib(it.metadata || {}) : null) ?? NONE;
-    if (item()?.uri !== it.uri) return; // skipped meanwhile
-    if (!track.lyrics) { track = { ...track, lyrics }; send(track); }
+    if (spicy) return;
+    if (!track.lyrics) {
+      const lyrics = await fetchLyrics(it, base.id);
+      if (item()?.uri !== it.uri) return; // skipped meanwhile
+      if (!track.lyrics) { track = { ...track, lyrics }; send(track); }
+    }
     upgradeFromSpicy(it.uri, base, dir);
   }
 
+  // Fallback lyrics (Spotify, then LRCLIB), fetched once per song - for the upcoming songs too, so a song change
+  // never waits on the network. Ads have no lyrics; local files and podcasts can't use Spotify's endpoint.
+  const lyricJobs = new Map(); // id -> Promise<lyrics> (.done once settled)
+  function fetchLyrics(it, id) {
+    if (lyricJobs.has(id)) return lyricJobs.get(id);
+    const kind = it.uri.split(':')[1];
+    const job = (async () => kind === 'ad' ? NONE
+      : (kind === 'track' ? await spotifyLyrics(id).catch(() => null) : null) ?? (kind !== 'episode' ? await lrclib(it.metadata || {}) : null) ?? NONE)();
+    job.then(L => { job.done = true; if (L === NONE && kind !== 'ad') setTimeout(() => lyricJobs.get(id) === job && lyricJobs.delete(id), 60000); }); // ponytail: retry "none" after a minute (may have been the network)
+    lyricJobs.set(id, job);
+    if (lyricJobs.size > 30) lyricJobs.delete(lyricJobs.keys().next().value);
+    return job;
+  }
+
   // Extras for the phone: the artist's picture ('Artist image' background), album + year, the Spotify Canvas
-  // (looping video) and tempo + loudness from Spotify's audio analysis. Kept for reconnects.
-  let extraMsgs = [];
+  // (looping video) and tempo + loudness from Spotify's audio analysis. Per song id, made for the upcoming songs
+  // too (the phone keeps them by id), and kept for reconnects.
+  const extraCache = new Map(); // id -> messages
   async function extras(it, id) {
-    extraMsgs = [];
-    const keep = m => { if (item()?.uri === it.uri) { extraMsgs.push(m); send(m); } };
+    if (extraCache.has(id)) return;
+    const msgs = [];
+    extraCache.set(id, msgs);
+    if (extraCache.size > 6) extraCache.delete(extraCache.keys().next().value);
+    const keep = m => { msgs.push(m); send(m); };
     const artistUri = it.artists?.[0]?.uri || it.metadata?.artist_uri || '';
     (async () => {
       let url = null;
@@ -837,14 +865,27 @@
     }
   }
 
-  // Preload: cover + whatever Spicy already has for the next track (no network).
+  // Preload the next two songs: cover + Spicy's cached lyrics at once, then fetched lyrics and the extras, so the
+  // phone has everything decoded and ready before the song changes. ahead: 1 = next, 2 = the one after.
   async function preloadNext() {
     const now = item()?.uri;
-    const n = (Spicetify.Queue?.nextTracks ?? []).map(t => t?.contextTrack).find(t => t?.uri?.startsWith('spotify:track:') && t.uri !== now);
-    if (!n || n.uri === preload?.uri) return;
-    const base = info(n, n.metadata || {});
-    preload = { type: 'preload', ...base, lyrics: await fromSpicyCache(base.id) };
-    send(preload);
+    const ns = (Spicetify.Queue?.nextTracks ?? []).map(t => t?.contextTrack)
+      .filter(t => t?.uri?.startsWith('spotify:track:') && t.uri !== now).slice(0, 2);
+    if (ns.map(n => n.uri).join() === preloads.map(p => p.uri).join()) return;
+    const sent = preloads;
+    preloads = [];
+    for (const [i, n] of ns.entries()) {
+      const base = info(n, n.metadata || {}), old = sent.find(p => p.uri === n.uri);
+      const p = { type: 'preload', ...base, ahead: i + 1, lyrics: old?.lyrics ?? await fromSpicyCache(base.id) };
+      preloads.push(p);
+      send(p);
+      extras(n, base.id);
+      if (!p.lyrics) fetchLyrics(n, base.id).then(L => {
+        if (L === NONE || p.lyrics || !preloads.includes(p)) return;
+        p.lyrics = L;
+        send(p);
+      });
+    }
   }
 
   // ---- right-click menu: "Show on LyricDock" (browse a playlist / album / artist on the phone) and
@@ -1486,11 +1527,15 @@
   addEventListener('lyricdock:update', () => { renderPanel(); safe(showUpdate); });
 
   // ---- sync: events + 500ms heartbeat + 100ms drift check (catches seeks instantly) + 1s link check.
-  P.addEventListener('songchange', sendTrack);
+  // Song change: Spotify's event, and the player state checked every 100 ms in case the event comes late or not at
+  // all - whichever sees it first sends it, once.
+  const changed = () => { const u = item()?.uri; if (u && u !== trackUri) sendTrack(); };
+  P.addEventListener('songchange', changed);
   P.addEventListener('onplaypause', beat);
   let tick = 0;
   every100ms(() => {
     tick++;
+    changed();
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     const expected = last.pos + (last.playing ? Date.now() - last.at : 0);
     if (tick % 5 === 0 || playing !== last.playing || Math.abs(pos - expected) > 250) beat();

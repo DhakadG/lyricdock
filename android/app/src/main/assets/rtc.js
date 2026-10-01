@@ -22,12 +22,28 @@ const Rtc = (() => {
   };
   // The self-hosted ntfy (ntfy/, docs/ntfy.md) comes first: ntfy.sh's free daily quota runs out for a busy home IP.
   const LDR = 'https://ntfy.losthusky.qzz.io';
-  const relays = () => [...new Set([LDR, relay(), NTFY])];
+  // The PC's LyricDock Helper, learned from Spotify's hello (it detects the helper by itself): connection setup keeps
+  // working with the internet down or the cloud relays unreachable. Not from the https web app: browsers block plain
+  // http/ws to LAN addresses there (mixed content), so it uses the TURN relay below instead.
+  const helper = () => {
+    const ip = localStorage.getItem('dock:helper');
+    return location.protocol !== 'https:' && /^\d+\.\d+\.\d+\.\d+$/.test(ip || '') ? `http://${ip}:8977` : null;
+  };
+  // Fallback order for connection setup: all are used at once (the phone listens on every one), so any one is enough.
+  const relays = () => [...new Set([LDR, relay(), helper(), NTFY].filter(Boolean))];
   const wsOf = u => u.replace(/^http/, 'ws');
   // Public STUN always joins the list: browsers hide this device's local addresses (random .local names), so the
   // public-address candidates are what lets two screens behind the same router still find each other.
   const STUN = { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] };
-  const ice = () => ({ iceServers: [STUN, ...String(SS().ice || '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
+  // TURN (Cloudflare Realtime) for the web app: short-lived credentials from its own Worker (/turn, signed-in only).
+  // ICE prefers a direct path (same Wi-Fi, then through the router) and only falls back to relaying through TURN when
+  // neither connects: browsers hide local addresses and many routers won't loop traffic back in.
+  let turn = [];
+  const fetchTurn = () => location.protocol === 'https:' && fetch('/turn', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null)
+    .then(j => { if (Array.isArray(j?.iceServers)) turn = j.iceServers; }).catch(() => {});
+  fetchTurn();
+  setInterval(fetchTurn, 4 * 3600e3); // credentials live 24 h
+  const ice = () => ({ iceServers: [STUN, ...turn, ...String(SS().ice || '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
     const [urls, username, credential] = e.split('|');
     return /^(stun|turns?):/.test(urls) ? { urls, ...(username ? { username, credential } : {}) } : null;
   }).filter(Boolean)] });
@@ -140,6 +156,9 @@ const Rtc = (() => {
         try { m = JSON.parse(p.join('')); } catch (x) { return; }
       }
       if (m.type === 'hello' && typeof m.desk === 'string') desk = m.desk.slice(0, 60);
+      if (m.type === 'hello') try { // the desktop's helper (or none any more)
+        if (/^\d+\.\d+\.\d+\.\d+$/.test(m.helper || '')) localStorage.setItem('dock:helper', m.helper); else if (m.helper === null) localStorage.removeItem('dock:helper');
+      } catch (x) {}
       onMsg(m);
     };
     ch.onclose = () => { lastLink = Date.now(); if (dc === ch) dc = null; };
