@@ -57,6 +57,19 @@ The app checks `window.LYRICDOCK_WEB` only where web and phone differ:
 
   Spotify's 2026 rules for development-mode apps: the app owner must have Premium, and at most 5 users.
 
+## Local network access (Chrome / Edge)
+
+- **The rule:** browsers (2026) keep public sites away from this PC and the home network until the user allows it.
+  Spotify-with-the-extension is there.
+- **When it asks:** 6 s after opening (unless the source is "Spotify account" only), a chip explains it.
+  - **Allow** triggers the browser's own prompt, by knocking on `127.0.0.1` and the router range with
+    `targetAddressSpace`.
+  - It's also under *Settings → Connection → Local network access*.
+- **What's logged:** the result goes to analytics (`lna-granted` / `lna-denied` / `lna-prompt`).
+
+Pairing signals go through the self-hosted ntfy (`docs/ntfy.md`). Both ends also add public STUN servers, because a
+browser hides its local addresses behind random `.local` names.
+
 ## Install as an app
 
 - **Chrome, Edge and Android:** a small chip appears about 8 s after opening ("Install LyricDock as an app"), using

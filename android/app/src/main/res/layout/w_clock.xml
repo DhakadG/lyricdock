@@ -1,20 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Cover" widget, wide (4x2): a big clock beside the cover and the song. TextClock ticks on its own (no updates). -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- "Cover", wide (4x2): a big heavy clock and the song beside the cover, over the blurred cover (the app's clock look).
+     TextClock ticks by itself (no updates). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/w_root" android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="horizontal" android:gravity="center_vertical" android:padding="12dp" android:background="@drawable/w_bg">
-    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-        <TextClock android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:format12Hour="h:mm" android:format24Hour="HH:mm" android:textColor="#FFFFFF" android:textSize="44sp"
-            android:fontFamily="sans-serif-light" />
-        <TextClock android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:format12Hour="EEE, d MMM" android:format24Hour="EEE, d MMM" android:textColor="#99FFFFFF" android:textSize="13sp" />
-        <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="10dp" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold"
-            android:maxLines="1" android:ellipsize="end" />
-        <TextView android:id="@+id/w_artist" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:textColor="#99FFFFFF" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+    android:background="@drawable/w_bg" android:clipToOutline="true">
+    <ImageView android:id="@+id/w_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:scaleType="centerCrop" android:src="@drawable/w_bg_empty" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal"
+        android:gravity="center_vertical" android:padding="14dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextClock android:layout_width="wrap_content" android:layout_height="wrap_content" android:format12Hour="h:mm" android:format24Hour="HH:mm"
+                android:textColor="#FFFFFF" android:textSize="40sp" android:fontFamily="sans-serif-black" android:includeFontPadding="false" android:maxLines="1" android:shadowColor="#66000000" android:shadowRadius="6" android:shadowDy="1" />
+            <TextClock android:layout_width="wrap_content" android:layout_height="wrap_content" android:format12Hour="EEEE, d MMMM"
+                android:format24Hour="EEEE, d MMMM" android:maxLines="1" android:textColor="#B3FFFFFF" android:textSize="12sp" android:fontFamily="sans-serif-medium" android:shadowColor="#66000000" android:shadowRadius="6" android:shadowDy="1" />
+            <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+                android:textColor="#FFFFFF" android:textSize="13sp" android:fontFamily="sans-serif-black" android:maxLines="1" android:ellipsize="end" android:shadowColor="#66000000" android:shadowRadius="6" android:shadowDy="1" />
+            <TextView android:id="@+id/w_artist" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="#A6FFFFFF" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:shadowColor="#66000000" android:shadowRadius="6" android:shadowDy="1" />
+        </LinearLayout>
+        <ImageView android:id="@+id/w_cover" android:layout_width="88dp" android:layout_height="88dp" android:layout_marginStart="12dp"
+            android:scaleType="centerCrop" android:src="@drawable/w_art" android:background="@drawable/w_art" android:clipToOutline="true" />
     </LinearLayout>
-    <ImageView android:id="@+id/w_cover" android:layout_width="104dp" android:layout_height="104dp" android:layout_marginStart="12dp"
-        android:scaleType="centerCrop" android:src="@drawable/w_art" android:clipToOutline="true" android:background="@drawable/w_art" />
-</LinearLayout>
+</FrameLayout>

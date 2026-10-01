@@ -14,6 +14,8 @@
   "kv_namespaces": [{ "binding": "KV", "id": "f93a89cd48b744afab7b6f3d7e226377" }],
   "r2_buckets": [{ "binding": "R2", "bucket_name": "lyricdock-covers" }],
   "analytics_engine_datasets": [{ "binding": "AE", "dataset": "lyricdock_events" }],
+  // v1 added a stopgap signalling relay (Durable Object "Topic"); replaced by the self-hosted ntfy (ntfy/), so v2 deletes it
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Topic"] }, { "tag": "v2", "deleted_classes": ["Topic"] }],
   "triggers": { "crons": ["*/30 * * * *"] },
   "observability": { "enabled": true }
 }

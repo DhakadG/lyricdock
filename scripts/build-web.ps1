@@ -31,7 +31,13 @@ if ($html -notmatch '</head>' -or $html -notmatch '</body>') { throw 'index.html
 $html = $html.Replace('</head>', "$head`n</head>").Replace('</body>', "<script src=`"install.js`"></script>`n</body>")
 Set-Content "$dist\index.html" $html -NoNewline
 
-foreach ($f in 'shim.js', 'sw.js') { (Get-Content "$dist\$f" -Raw).Replace('__VERSION__', $version) | Set-Content "$dist\$f" -NoNewline }
+(Get-Content "$dist\shim.js" -Raw).Replace('__VERSION__', $version) | Set-Content "$dist\shim.js" -NoNewline
+# The service worker's cache is named by version + a hash of every file, so any redeploy (even of the same version)
+# reaches open tabs and installed apps.
+$sha = [System.Security.Cryptography.SHA256]::Create()
+$all = Get-ChildItem $dist -Recurse -File | Where-Object Name -ne 'sw.js' | Sort-Object FullName | ForEach-Object { [IO.File]::ReadAllBytes($_.FullName) }
+$hash = -join ($sha.ComputeHash([byte[]]($all | ForEach-Object { $_ })) | Select-Object -First 4 | ForEach-Object { $_.ToString('x2') })
+(Get-Content "$dist\sw.js" -Raw).Replace('__VERSION__', "$version-$hash") | Set-Content "$dist\sw.js" -NoNewline
 $files = Get-ChildItem $dist -Recurse -File | Where-Object { $_.Name -notin 'sw.js', '_headers' } |
   ForEach-Object { $_.FullName.Substring($dist.Length + 1).Replace('\', '/') } |
   ForEach-Object { if ($_ -eq 'index.html') { './' } else { $_ } } | Sort-Object # the page is cached as / (see sw.js)

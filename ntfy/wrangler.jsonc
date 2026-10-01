@@ -1,0 +1,13 @@
+// Self-hosted ntfy (official image) on Cloudflare Containers. Docs: docs/ntfy.md. Deploy: npm i && npx wrangler deploy
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "ntfy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-25",
+  "workers_dev": false,
+  "routes": [{ "pattern": "ntfy.losthusky.qzz.io", "custom_domain": true }],
+  "containers": [{ "class_name": "Ntfy", "image": "docker.io/binwiederhier/ntfy:v2.28.0", "max_instances": 1, "instance_type": "lite" }],
+  "durable_objects": { "bindings": [{ "name": "NTFY", "class_name": "Ntfy" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Ntfy"] }],
+  "observability": { "enabled": true }
+}

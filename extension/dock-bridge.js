@@ -80,7 +80,9 @@
       const [urls, username, credential] = e.split('|');
       return /^(stun|turns?):/.test(urls) ? { urls, ...(username ? { username, credential } : {}) } : null;
     }).filter(Boolean);
-    return { iceServers: servers };
+    // Public STUN always joins: browser displays hide their local addresses (.local names), so public-address
+    // candidates are what still connects them (mirrors rtc.js).
+    return { iceServers: [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }, ...servers] };
   }
   const wsUrl = u => u.replace(/^http/, 'ws');
 
@@ -163,7 +165,9 @@
   // Offers go out on the chosen relay and ntfy.sh in turn (the phone listens on both), so a relay mismatch between
   // the two ends can never strand a paired phone.
   const NTFY = 'https://ntfy.sh';
-  const relaysFor = S => [...new Set([relayFor(S), NTFY])];
+  // The self-hosted ntfy first (ntfy/, docs/ntfy.md): ntfy.sh's free daily quota runs out for a busy home IP.
+  const LDR = 'https://ntfy.losthusky.qzz.io';
+  const relaysFor = S => [...new Set([LDR, relayFor(S), NTFY])];
   async function rtcOpen(code, attempt = 0) {
     if (typeof RTCPeerConnection === 'undefined') return null;
     const S = settingsFor(code), rs = relaysFor(S), RELAY = rs[attempt % rs.length];
@@ -1254,6 +1258,8 @@
           if (c.length !== 10) return safe(() => Spicetify.showNotification('That code should be 10 characters', true));
           addPair(c); panelPhone = c; ensureLink(); renderPanel();
         }))),
+      h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'LyricDock in a browser'),
+        h('small', {}, 'Open app.lyricdock.losthusky.qzz.io on any screen and pair it like a phone. Chrome / Edge ask to allow the "local network" - allow it, or the screen cannot reach Spotify here.'))),
       h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'How devices find each other'),
         h('small', {}, `Connection setup goes through ${r === NTFY ? 'ntfy.sh' : r.includes('127.0.0.1') ? 'the LyricDock Helper on this PC' : r} (always encrypted), with ntfy.sh as the fallback. Music and lyrics then flow directly between Spotify and the phone. Change it on the phone: Settings → Connection.`)), '')));
     return kids;

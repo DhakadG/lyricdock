@@ -180,6 +180,7 @@ const IN = {
 };
 
 function swap(m, im, lyr) {
+  const changed = P.shown && P.cur && P.cur.id !== m.id;
   P.prevArt = P.art;
   // History for the cover swipe's "previous" side (up to 3 back, with lyrics, so going back is instant).
   P.hist ??= [];
@@ -198,10 +199,37 @@ function swap(m, im, lyr) {
   $('title').textContent = m.title || '';
   $('artist').textContent = m.artist || '';
   if (!P.artHold) $('art').style.backgroundImage = m.art ? `url("${m.art}")` : 'none';
-  background(m.art, im);
+  if (changed) reveal(m.art, im); else background(m.art, im);
   Lyrics.build(lyr);
   window.afterSwap?.(m);
   window.refreshNeighbours?.();
+}
+
+// Song change (swipe, button, song ended - everything goes through swap): the new cover's glow grows out of the
+// cover's centre until it fills the screen, the real background (kawarp / blur / gradient) switches underneath it,
+// then the glow fades away. Scaled, not clip-path, so it runs on the compositor even on a slow phone.
+let revealing = null; // lands the bloom in progress (paints its background, hides the glow)
+function reveal(url, im) {
+  revealing?.(); // another song before the last bloom finished: land it now
+  const el = $('reveal'), b = document.body.classList;
+  if (!url || S.trackAnim === 'none' || b.contains('night') || b.contains('bg-black') || matchMedia('(prefers-reduced-motion: reduce)').matches) return background(url, im);
+  let a = $('artbox'), x = innerWidth / 2, y = innerHeight / 2;
+  if (a.offsetWidth) { // layout position, not the on-screen one: the cover may be mid out-animation
+    x = a.offsetWidth / 2; y = a.offsetHeight / 2;
+    for (; a; a = a.offsetParent) { x += a.offsetLeft; y += a.offsetTop; }
+  }
+  const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) / 0.72 + 60; // past the feathered edge and the blur
+  Object.assign(el.style, { display: 'block', width: `${2 * r}px`, height: `${2 * r}px`, left: `${x - r}px`, top: `${y - r}px`, backgroundImage: `url("${url}")` });
+  const anims = [el.animate([{ transform: 'scale(.04)', opacity: 0.6 }, { transform: 'scale(1)', opacity: 1 }], { duration: ms(720), easing: 'cubic-bezier(.3,.7,.2,1)', fill: 'forwards' })];
+  let painted = false;
+  const paintOnce = () => { if (!painted) { painted = true; background(url, im); } };
+  const land = revealing = () => { revealing = null; paintOnce(); anims.forEach(a => a.cancel()); el.style.display = 'none'; };
+  anims[0].finished.then(() => {
+    if (revealing !== land) return;
+    paintOnce(); // covered: switch the real background underneath, then let the glow go
+    anims.push(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(520), easing: 'ease-out', fill: 'forwards' }));
+    anims[1].finished.then(() => revealing === land && land(), () => {});
+  }, () => {});
 }
 
 // The bridge sends Spicy-cache results raw ({spicy}) and Spotify/LRCLIB ones already normalized.
@@ -346,6 +374,7 @@ Web.onMessage(m => route('web', m));
 
 function route(src, m) {
   const s = SRC[src];
+  s.heard = performance.now(); // any message proves the link is up (see 'stale' in the frame loop)
   if (m.type === 'track') s.track = m;
   else if (m.type === 'preload') s.preload = m;
   else if (m.type === 'pos') { s.pos = m; s.at = performance.now(); s.playing = !!m.playing; }
@@ -734,8 +763,11 @@ const linkLog = window.linkLog = [];
 (function tick(t) {
   const dt = Math.min(0.1, (t - lastT) / 1000) || 0.016;
   lastT = t;
-  // Bridge beats every 500ms; the Web API is polled every 1s (3s while paused).
-  const stale = !(P.at && performance.now() - P.at < (P.source === 'web' ? 7000 : 1500));
+  // Bridge beats every 500ms; the Web API is polled every 1s (3s while paused). Liveness is anything heard from the
+  // source, not P.at: beats are deliberately ignored for a moment after a skip or seek, and a song change can queue a
+  // big chunked track message ahead of them - neither is a lost link, so neither may flash "Reconnecting".
+  const heard = SRC[P.source].heard;
+  const stale = !(heard && performance.now() - heard < (P.source === 'web' ? 7000 : 2500));
   if (stale !== document.body.classList.contains('stale')) {
     document.body.classList.toggle('stale', stale);
     linkLog.push({ at: new Date().toLocaleTimeString(), stale }); // read over CDP when testing failover

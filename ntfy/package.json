@@ -1,0 +1,6 @@
+{
+  "name": "ntfy-cloudflare",
+  "private": true,
+  "description": "Self-hosted ntfy (official image) on Cloudflare Containers - see docs/ntfy.md",
+  "dependencies": { "@cloudflare/containers": "latest" }
+}

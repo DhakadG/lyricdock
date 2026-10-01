@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget card: dark glass, rounded like the system widgets. -->
+<!-- Widget card: near-black under the blurred cover, rounded like the system widgets (clipToOutline uses it). -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#EB141417" />
-    <corners android:radius="22dp" />
+    <solid android:color="#FF101013" />
+    <corners android:radius="26dp" />
 </shape>

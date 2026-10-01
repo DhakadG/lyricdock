@@ -20,12 +20,17 @@ const Rtc = (() => {
     if (S.relay === 'custom' && /^https?:\/\/\S+$/.test(S.relayUrl || '')) return S.relayUrl.replace(/\/+$/, '');
     return NTFY;
   };
-  const relays = () => [...new Set([relay(), NTFY])];
+  // The self-hosted ntfy (ntfy/, docs/ntfy.md) comes first: ntfy.sh's free daily quota runs out for a busy home IP.
+  const LDR = 'https://ntfy.losthusky.qzz.io';
+  const relays = () => [...new Set([LDR, relay(), NTFY])];
   const wsOf = u => u.replace(/^http/, 'ws');
-  const ice = () => ({ iceServers: String(SS().ice || '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
+  // Public STUN always joins the list: browsers hide this device's local addresses (random .local names), so the
+  // public-address candidates are what lets two screens behind the same router still find each other.
+  const STUN = { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] };
+  const ice = () => ({ iceServers: [STUN, ...String(SS().ice || '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
     const [urls, username, credential] = e.split('|');
     return /^(stun|turns?):/.test(urls) ? { urls, ...(username ? { username, credential } : {}) } : null;
-  }).filter(Boolean) });
+  }).filter(Boolean)] });
   // Connection log (Settings -> Connection), newest first.
   const events = [];
   const note = t => { events.unshift(`${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${t}`); events.length = Math.min(events.length, 20); };

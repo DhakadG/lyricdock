@@ -42,8 +42,9 @@
   let deferred = null;
   const ios = /iPhone|iPad/.test(navigator.userAgent) && !window.MSStream;
 
-  function chip(text, actionLabel, action) {
-    if (standalone() || snoozed() || document.getElementById('installChip')) return;
+  function chip(text, actionLabel, action, always = false) {
+    if (!always && (standalone() || snoozed())) return;
+    if (document.getElementById('installChip')) return;
     const el = document.createElement('div');
     el.id = 'installChip';
     el.innerHTML = `<img src="icons/icon-192.png" alt=""><span></span><button class="go"></button><button class="later" aria-label="Not now">✕</button>`;
@@ -74,6 +75,35 @@
   addEventListener('appinstalled', () => { document.getElementById('installChip')?.remove(); ping('installed'); });
   if (ios && !standalone()) setTimeout(() => chip('Add LyricDock to your Home Screen: tap Share, then "Add to Home Screen"'), 8000);
   window.lyricdockInstall = () => deferred ? (deferred.prompt(), true) : false;
+
+  // ---- Local network access. Chrome / Edge (2026) let a public site reach this PC or the home network - where Spotify
+  // with the LyricDock extension is - only after the user allows it. Explained first, then the browser's own prompt is
+  // triggered by a request to this PC and to the router address range (it fails; only the permission matters).
+  const LNA = ['local-network', 'loopback-network', 'local-network-access'];
+  async function lnaState() {
+    const states = [];
+    for (const name of LNA) {
+      try { states.push((await navigator.permissions.query({ name })).state); } catch (e) { /* not this browser */ }
+    }
+    if (!states.length) return 'unsupported'; // Firefox / Safari: nothing to ask
+    return states.includes('denied') ? 'denied' : states.includes('prompt') ? 'prompt' : 'granted';
+  }
+  async function lnaRequest() {
+    const knock = (url, space) => fetch(url, { mode: 'no-cors', cache: 'no-store', targetAddressSpace: space }).catch(() => {});
+    await Promise.all([knock('http://127.0.0.1:8977/', 'loopback'), knock('http://192.168.1.1/', 'local')]);
+    const s = await lnaState();
+    ping(s === 'granted' ? 'lna-granted' : 'lna-' + s);
+    window.notice?.(s === 'granted' ? 'Local network allowed - Spotify on your computer can connect' : s === 'denied'
+      ? 'Blocked: allow "Local network" for this site in the address bar\'s site settings' : 'Not decided yet - you can allow it any time in Settings -> Connection', 6000);
+    window.settingsRender?.();
+    return s;
+  }
+  window.lyricdockLna = { state: lnaState, request: lnaRequest };
+  // Asked once a session, while following (or looking for) Spotify on a computer - not for account-only setups.
+  setTimeout(async () => {
+    if (Settings.S.source === 'web' || await lnaState() !== 'prompt') return;
+    chip('Allow LyricDock to reach Spotify on your computer (your browser will ask about the local network)', 'Allow', lnaRequest, true);
+  }, 6000);
 
   // ---- full screen (desktop / Android browsers; a gesture is required, so it's offered, not forced)
   window.lyricdockFullscreen = () => document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {});

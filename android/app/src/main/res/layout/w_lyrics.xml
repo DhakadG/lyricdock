@@ -1,43 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Now playing" widget, large (4x3+): the lyrics - the line before, the sung line big, the next two - under the song. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- "Now playing", large (4x3+): the app's lyric view - the line before faded, the sung line big and heavy, the next
+     two fading out - over the blurred cover, with the song and controls in a slim header. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/w_root" android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:padding="14dp" android:background="@drawable/w_bg">
-
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
-        android:gravity="center_vertical">
-        <ImageView android:id="@+id/w_cover" android:layout_width="44dp" android:layout_height="44dp"
-            android:scaleType="centerCrop" android:src="@drawable/w_art" android:clipToOutline="true" android:background="@drawable/w_art" />
-        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-            android:layout_marginStart="10dp" android:orientation="vertical">
-            <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
-            <TextView android:id="@+id/w_artist" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:textColor="#99FFFFFF" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+    android:background="@drawable/w_bg" android:clipToOutline="true">
+    <ImageView android:id="@+id/w_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:scaleType="centerCrop" android:src="@drawable/w_bg_empty" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="14dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:id="@+id/w_cover" android:layout_width="40dp" android:layout_height="40dp"
+                android:scaleType="centerCrop" android:src="@drawable/w_art" android:background="@drawable/w_art" android:clipToOutline="true" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginStart="10dp" android:orientation="vertical">
+                <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" android:textSize="13sp" android:fontFamily="sans-serif-medium" android:maxLines="1" android:ellipsize="end" android:shadowColor="#66000000" android:shadowRadius="6" android:shadowDy="1" />
+                <TextView android:id="@+id/w_artist" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:textColor="#A6FFFFFF" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:shadowColor="#66000000" android:shadowRadius="6" android:shadowDy="1" />
+            </LinearLayout>
+            <ImageButton android:id="@+id/w_prev" android:layout_width="34dp" android:layout_height="match_parent" android:background="@null"
+                android:src="@android:drawable/ic_media_previous" android:tint="#FFFFFF" android:scaleType="center" android:contentDescription="Previous" />
+            <ImageButton android:id="@+id/w_play" android:layout_width="38dp" android:layout_height="match_parent" android:background="@null"
+                android:src="@android:drawable/ic_media_play" android:tint="#FFFFFF" android:scaleType="center" android:contentDescription="Play or pause" />
+            <ImageButton android:id="@+id/w_next" android:layout_width="34dp" android:layout_height="match_parent" android:background="@null"
+                android:src="@android:drawable/ic_media_next" android:tint="#FFFFFF" android:scaleType="center" android:contentDescription="Next" />
         </LinearLayout>
-        <ImageButton android:id="@+id/w_prev" android:layout_width="36dp" android:layout_height="36dp" android:background="@null"
-            android:src="@android:drawable/ic_media_previous" android:contentDescription="Previous" />
-        <ImageButton android:id="@+id/w_play" android:layout_width="40dp" android:layout_height="36dp" android:background="@null"
-            android:src="@android:drawable/ic_media_play" android:contentDescription="Play or pause" />
-        <ImageButton android:id="@+id/w_next" android:layout_width="36dp" android:layout_height="36dp" android:background="@null"
-            android:src="@android:drawable/ic_media_next" android:contentDescription="Next" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+            android:orientation="vertical" android:gravity="center_vertical">
+            <TextView android:id="@+id/w_prevline" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="#59FFFFFF" android:textSize="15sp" android:fontFamily="sans-serif-black" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/w_line" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="5dp" android:layout_marginBottom="5dp" android:textColor="#FFFFFF" android:textSize="23sp"
+                android:fontFamily="sans-serif-black" android:maxLines="2" android:ellipsize="end" android:lineSpacingMultiplier=".88"
+                android:shadowColor="#80FFFFFF" android:shadowRadius="14" />
+            <TextView android:id="@+id/w_next1" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="#80FFFFFF" android:textSize="15sp" android:fontFamily="sans-serif-black" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/w_next2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+                android:textColor="#40FFFFFF" android:textSize="15sp" android:fontFamily="sans-serif-black" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <ProgressBar android:id="@+id/w_progress" style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent" android:layout_height="3dp" android:max="1000"
+            android:progressTint="#FFFFFF" android:progressBackgroundTint="#40FFFFFF" />
     </LinearLayout>
-
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
-        android:orientation="vertical" android:gravity="center_vertical" android:layout_marginTop="6dp">
-        <TextView android:id="@+id/w_prevline" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:textColor="#59FFFFFF" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
-        <TextView android:id="@+id/w_line" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="6dp" android:layout_marginBottom="6dp" android:textColor="#FFFFFF" android:textSize="21sp"
-            android:textStyle="bold" android:maxLines="3" android:ellipsize="end" />
-        <TextView android:id="@+id/w_next1" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:textColor="#80FFFFFF" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
-        <TextView android:id="@+id/w_next2" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="2dp" android:textColor="#4DFFFFFF" android:textSize="15sp" android:textStyle="bold"
-            android:maxLines="1" android:ellipsize="end" />
-    </LinearLayout>
-
-    <ProgressBar android:id="@+id/w_progress" style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginTop="6dp"
-        android:max="1000" android:progressTint="#FFFFFF" android:progressBackgroundTint="#33FFFFFF" />
-</LinearLayout>
+</FrameLayout>

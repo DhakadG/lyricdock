@@ -33,3 +33,5 @@ helper/src-tauri/gen/
 # web app build output + local browser-automation scratch
 web/dist/
 .playwright-mcp/
+
+node_modules/

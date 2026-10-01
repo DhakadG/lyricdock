@@ -31,6 +31,9 @@ html, body { touch-action: pan-x pan-y; } /* scroll yes, pinch-zoom no (manipula
 body.bg-dynamic #bgc, body.bg-artist #bgc { display: block; }
 #bg { display: none; background: #111 center/cover; transform: scale(1.4); filter: blur(60px) saturate(1.7) brightness(.7); }
 body.bg-blur #bg { display: block; }
+/* Song change: the new cover's glow blooms out of the cover's centre (app.js reveal). Transform/opacity only, so it stays on the compositor. */
+#reveal { position: fixed; display: none; border-radius: 50%; background: #111 center/cover; pointer-events: none; will-change: transform, opacity;
+  filter: blur(60px) saturate(1.7) brightness(.7); -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent); mask-image: radial-gradient(closest-side, #000 72%, transparent); }
 #bgGrad { display: none; background: linear-gradient(135deg, var(--c1, #333), var(--c2, #181818), var(--c3, #050505));
   background-size: 300% 300%; animation: gradmove calc(18s / var(--as)) ease-in-out infinite alternate; }
 body.bg-gradient #bgGrad { display: block; }
