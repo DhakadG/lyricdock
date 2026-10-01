@@ -1,0 +1,19 @@
+// LyricDock cloud: API + admin dashboard + info page. Docs: docs/lyricdock-cloud.md. Deploy: npx wrangler deploy
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "lyricdock-cloud",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-25",
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "lyricdock.losthusky.qzz.io", "custom_domain": true },
+    { "pattern": "art.lyricdock.losthusky.qzz.io", "custom_domain": true },
+    { "pattern": "admin.lyricdock.losthusky.qzz.io", "custom_domain": true }
+  ],
+  "vars": { "ACCOUNT_ID": "7264f13407836386c92ab90f874af318" },
+  "kv_namespaces": [{ "binding": "KV", "id": "f93a89cd48b744afab7b6f3d7e226377" }],
+  "r2_buckets": [{ "binding": "R2", "bucket_name": "lyricdock-covers" }],
+  "analytics_engine_datasets": [{ "binding": "AE", "dataset": "lyricdock_events" }],
+  "triggers": { "crons": ["*/30 * * * *"] },
+  "observability": { "enabled": true }
+}

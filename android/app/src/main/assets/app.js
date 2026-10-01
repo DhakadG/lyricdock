@@ -664,6 +664,7 @@ function apply(k) {
   b.classList.toggle('blurlines', S.blurLines);
   b.classList.toggle('times', S.times);
   b.classList.toggle('show-liked', S.showLiked);
+  b.classList.toggle('heart-liked-only', S.heartLikedOnly);
   b.classList.toggle('show-quality', S.showQuality);
   try { Dock.setOrientation(S.orientation); } catch (e) {}
   applyInsets();

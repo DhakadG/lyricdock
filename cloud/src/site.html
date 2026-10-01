@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LyricDock</title>
+<style>
+:root { --bg: #0b0b0e; --text: #ececf1; --dim: #8d8d98; --acc: #1ed760; --card: #15151a; --line: #25252c; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, sans-serif; }
+main { max-width: 760px; margin: auto; padding: 56px 16px; }
+h1 { font-size: 44px; margin: 0 0 8px; letter-spacing: -.02em; } h1 span { color: var(--acc); }
+h2 { margin-top: 44px; font-size: 20px; }
+p { color: var(--dim); } a { color: var(--acc); }
+code, pre { font-family: ui-monospace, monospace; font-size: 13px; }
+pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-x: auto; color: var(--text); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; } td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; } td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lyric<span>Dock</span></h1>
+  <p>A phone on your desk that becomes a Spotify lyrics dock: word-synced lyrics, the album art, controls. This domain hosts the dock's cloud helpers.</p>
+  <p><a href="https://github.com/DhakadG/lyricdock">Source on GitHub</a></p>
+
+  <h2>Cover API</h2>
+  <p>Base URL <code>https://art.lyricdock.losthusky.qzz.io</code>. Album details and Apple Music&rsquo;s animated covers, looked up once and indexed. Open CORS; plain GET.</p>
+  <table>
+    <tr><td><code>GET /v1/cover</code></td><td><code>artist</code>, <code>album</code>, <code>px</code> (size needed), <code>hevc=1</code>, <code>shape=square|tall</code>, <code>q=max</code> → still image + the best-fitting animated cover video</td></tr>
+    <tr><td><code>GET /v1/album</code></td><td><code>artist</code>, <code>album</code> → album details, colours, editorial notes, every video variant, track list</td></tr>
+    <tr><td><code>GET /v1/track</code></td><td><code>artist</code>, <code>album</code>, <code>title</code> → one track's details</td></tr>
+    <tr><td><code>GET /v1/health</code></td><td>is it up</td></tr>
+  </table>
+  <pre>curl "https://art.lyricdock.losthusky.qzz.io/v1/cover?artist=Gorillaz&amp;album=Plastic%20Beach&amp;px=1080"</pre>
+  <p style="margin-top:44px;font-size:13px">Personal, non-commercial project. Artwork and metadata belong to their owners and come from Apple's public catalogue.</p>
+</main>
+</body>
+</html>

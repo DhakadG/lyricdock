@@ -658,7 +658,7 @@
     b.classList.toggle('line-accent', S.lineColor === 'accent');
     b.classList.toggle('duet', S.duetColors);
     b.classList.toggle('outline', S.outline);
-    b.classList.toggle('drift', S.bgDrift && (S.bg === 'blur' || S.bg === 'canvas'));
+    b.classList.toggle('drift', S.bgDrift && (S.bg === 'blur' || S.bg === 'canvas' || S.bg === 'motion'));
     call('setVolKeys', !!S.volKeys);
     b.classList.toggle('qs-on', !!S.qsEnabled);
     b.classList.toggle('show-blocks', !!S.showBlocks);
@@ -747,7 +747,8 @@
     canvasTick();
   };
   function canvasTick() {
-    const want = S.bg === 'canvas' && !document.body.classList.contains('night') ? canvases.get(P.id) : null;
+    const night = document.body.classList.contains('night');
+    const want = night ? null : S.bg === 'canvas' ? canvases.get(P.id) : S.bg === 'motion' ? motion.get(`tall:${P.id}`) : null;
     let v = document.getElementById('cv');
     if (!want) { v?.remove(); return; }
     if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
@@ -758,6 +759,85 @@
     $('bg').after(v);
   }
   setInterval(canvasTick, 1000);
+
+  // ---- Animated covers from LyricDock cloud: Apple Music's motion artwork (docs/lyricdock-cloud.md).
+  // Square video inside the cover; the tall 3:4 one is the 'Animated cover' background. The size asked for is what
+  // this screen shows (cover width x pixel ratio), so the phone gets a ~2 MB file and a 4K screen the 2160p one.
+  const ART_API = 'https://art.lyricdock.losthusky.qzz.io/v1';
+  const HEVC = (() => { try { return MediaSource.isTypeSupported('video/mp4; codecs="hvc1.2.4.L153.B0"'); } catch (e) { return false; } })();
+  const DEVICE = (() => { try { let d = localStorage.getItem('dock:device'); if (!d) localStorage.setItem('dock:device', d = crypto.randomUUID()); return d; } catch (e) { return ''; } })();
+  const who = () => `&hevc=${HEVC ? 1 : 0}&d=${DEVICE}&v=${encodeURIComponent(appVersion)}`;
+  const motion = window.dockMotion = new Map(); // `${shape}:${song id}` -> playable URL, '' = none / still looking (exposed for debugging)
+  async function motionFor(t, shape) {
+    const k = `${shape}:${t?.id}`;
+    if (!t?.id || !t.artist || !t.album || motion.has(k)) return;
+    motion.set(k, '');
+    const px = Math.round(shape === 'tall' ? Math.max(innerWidth, innerHeight) : ($('art').offsetWidth || 300) * devicePixelRatio);
+    try {
+      const r = await fetch(`${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${px}${who()}`);
+      const j = r.ok ? await r.json() : null;
+      if (typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video)) motion.set(k, await keptVideo(j.video, `${j.album.id}/${shape}/${j.variant.n}`));
+    } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 60000); } // offline / slow: retry in a minute
+    if (motion.size > 60) { const old = motion.keys().next().value; if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old)); motion.delete(old); }
+    motionTick(); canvasTick();
+  }
+  // Videos stay on the device (Cache Storage, ~300 MB, least recently played out first): a replayed album costs no data.
+  // Keyed by album/shape/variant, so the file isn't fetched again when the cloud moves it from Apple's CDN to R2.
+  // Downloaded once (not streamed + saved = twice); the still cover shows until it's ready, then the video fades in.
+  const VC_MAX = 300 * 2 ** 20, vcId = key => `https://dock.local/${key}`;
+  async function keptVideo(url, key) {
+    let c;
+    try { c = await caches.open('dock-videos'); } catch (e) { return url; } // no Cache Storage: stream it
+    let r = await c.match(vcId(key));
+    if (!r) {
+      r = await fetch(url);
+      if (!r.ok) throw new Error(`video HTTP ${r.status}`);
+      r = new Response(await r.blob(), { headers: { 'content-type': 'video/mp4' } });
+      await c.put(vcId(key), r.clone());
+      trim(c, vcId(key), +r.headers.get('content-length') || 0);
+    } else touch(vcId(key));
+    return URL.createObjectURL(await r.blob());
+  }
+  async function trim(c, keep, size) {
+    touch(keep, size);
+    try {
+      const idx = JSON.parse(localStorage.getItem('dock:videos') || '{}');
+      let total = Object.values(idx).reduce((s, [n]) => s + n, 0);
+      for (const [u, [n]] of Object.entries(idx).sort((x, y) => x[1][1] - y[1][1])) {
+        if (total <= VC_MAX) break;
+        if (u !== keep) { await c.delete(u); total -= n; delete idx[u]; }
+      }
+      localStorage.setItem('dock:videos', JSON.stringify(idx));
+    } catch (e) {}
+  }
+  function touch(id, size) {
+    try {
+      const idx = JSON.parse(localStorage.getItem('dock:videos') || '{}');
+      idx[id] = [size ?? idx[id]?.[0] ?? 0, Date.now()];
+      localStorage.setItem('dock:videos', JSON.stringify(idx));
+    } catch (e) {}
+  }
+  function motionTick() {
+    const want = S.motionArt && !document.body.classList.contains('night') ? motion.get(`square:${P.id}`) : '';
+    let v = $('mv');
+    if (!want) { v?.remove(); return; }
+    if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
+    v?.remove();
+    v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
+    v.dataset.src = want;
+    v.oncanplay = () => v.classList.add('on');
+    $('art').prepend(v); // first child: the controls, ripple and heart badge stay on top
+  }
+  const swapBase = window.afterSwap;
+  window.afterSwap = m => { swapBase(m); motionTick(); canvasTick(); }; // the old song's video leaves with its cover
+  setInterval(() => {
+    if (S.motionArt) motionFor(P.cur, 'square');
+    if (S.bg === 'motion') motionFor(P.cur, 'tall');
+    motionTick();
+  }, 1000);
+  // Heartbeat for the dashboard's "active devices" (the cover lookups already count plays).
+  const ping = () => fetch(`${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${who()}`).catch(() => {});
+  setTimeout(ping, 5000); setInterval(ping, 10 * 60000);
 
   // ---- phone hardware: volume keys (MainActivity forwards them while the setting is on), media notification,
   // brightness schedule, and "wake" from Spotify (Ctrl+Alt+W / right-click menu).
