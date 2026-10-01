@@ -455,12 +455,12 @@ const autoUpdate = () => S.autoUpdate && checkUpdate(true);
 setTimeout(autoUpdate, 15000);           // shortly after start
 setInterval(autoUpdate, 6 * 3600 * 1000); // and every 6 hours (fallback: the ping below is the fast path)
 
-// Update ping: scripts/ping-update.ps1 (run by release.ps1) publishes "update" to this ntfy.sh topic, and every open
+// Update ping: scripts/ping-update.ps1 (run by release.ps1) publishes "update" to this ntfy topic, and every open
 // dock checks GitHub at once and installs - even with "Update automatically" off, so a release rolls out in seconds.
 // The ping carries nothing trusted: it only starts the normal check, and Android installs nothing that isn't signed
 // with our key. Reconnects resume from the last message seen, so a ping sent while offline still arrives (ntfy
 // keeps messages 12 h). ponytail: public topic; worst case a stranger makes docks check GitHub early.
-const PING = 'https://ntfy.sh/lyricdock-update-ping-v1';
+const PING = 'https://ntfy.losthusky.qzz.io/lyricdock-update-ping-v1'; // self-hosted ntfy (docs/ntfy.md)
 let lastPing = 0, retry = 5000;
 (function listen(since) {
   let es;
