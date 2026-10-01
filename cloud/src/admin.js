@@ -61,7 +61,7 @@ async function api(req, env, url, p) {
 
   if (p === 'overview') {
     const bucket = hours <= 24 ? 1 : hours <= 168 ? 6 : 24; // hours per chart bar
-    const [totals, kinds, tiers, series, countries, points, topAlbums, errors, active, cfg, m, a, l] = await Promise.all([
+    const [totals, kinds, tiers, series, countries, points, topAlbums, errors, active, platforms, cfg, m, a, l] = await Promise.all([
       aeQuery(env, `SELECT ${S} AS n, SUM(double2 * _sample_interval) / ${S} AS ms, SUM(double3 * _sample_interval) AS bytes, COUNT(DISTINCT index1) AS devices, SUM(IF(double1 >= 500, _sample_interval, 0)) AS errors FROM ${T} WHERE ${W}`),
       aeQuery(env, `SELECT blob1 AS kind, ${S} AS n FROM ${T} WHERE ${W} GROUP BY kind`),
       aeQuery(env, `SELECT blob3 AS tier, ${S} AS n FROM ${T} WHERE ${W} AND blob1 IN ('cover', 'media') GROUP BY tier ORDER BY n DESC`),
@@ -71,13 +71,14 @@ async function api(req, env, url, p) {
       aeQuery(env, `SELECT blob4 AS id, blob12 AS name, blob13 AS artist, ${S} AS n FROM ${T} WHERE ${W} AND blob1 = 'cover' AND blob4 != '' GROUP BY id, name, artist ORDER BY n DESC LIMIT 15`),
       aeQuery(env, `SELECT timestamp AS ts, blob2 AS path, double1 AS status, blob11 AS detail FROM ${T} WHERE ${W} AND double1 >= 500 ORDER BY ts DESC LIMIT 20`),
       aeQuery(env, `SELECT COUNT(DISTINCT index1) AS active FROM ${T} WHERE timestamp > NOW() - INTERVAL '15' MINUTE AND index1 != ''`),
+      aeQuery(env, `SELECT blob14 AS plat, COUNT(DISTINCT index1) AS devices, ${S} AS n FROM ${T} WHERE ${W} AND blob14 != '' GROUP BY plat ORDER BY devices DESC`),
       config(env, true), listAll(env, 'm:'), listAll(env, 'a:'), listAll(env, 'l:'),
     ]);
     const r2 = m.filter(k => k.metadata?.tier === 'r2'), t = totals[0] || {};
     return json({
       bucket: bucket * 36e5, config: cfg,
       totals: { n: n(t.n), ms: n(t.ms), bytes: n(t.bytes), devices: n(t.devices), errors: n(t.errors) },
-      kinds, tiers, countries, points, topAlbums,
+      kinds, tiers, countries, points, topAlbums, platforms,
       series: series.map(r => ({ t: ms(r.t), kind: r.kind, n: n(r.n), ms: n(r.ms) })),
       errors: errors.map(e => ({ ...e, ts: ms(e.ts) })),
       devs: { active: n(active[0]?.active), total: n(t.devices) },
@@ -94,7 +95,8 @@ async function api(req, env, url, p) {
 
   if (p === 'devices') {
     const [rows, cfg] = await Promise.all([aeQuery(env, `SELECT index1 AS id, MIN(timestamp) AS first_seen, MAX(timestamp) AS last_seen, ${S} AS calls, argMax(blob9, timestamp) AS version, argMax(blob10, timestamp) AS model,
-      argMax(blob7, timestamp) AS city, argMax(blob6, timestamp) AS country, MAX(double7) AS hevc, MAX(double6) AS px FROM ${T} WHERE timestamp > NOW() - INTERVAL '90' DAY AND index1 != '' GROUP BY id ORDER BY last_seen DESC LIMIT 500`), config(env, true)]);
+      argMax(blob7, timestamp) AS city, argMax(blob6, timestamp) AS country, MAX(double7) AS hevc, MAX(double6) AS px,
+      argMax(blob14, timestamp) AS plat, argMax(blob15, timestamp) AS screen, argMax(blob16, timestamp) AS tz, argMax(blob17, timestamp) AS lang FROM ${T} WHERE timestamp > NOW() - INTERVAL '90' DAY AND index1 != '' GROUP BY id ORDER BY last_seen DESC LIMIT 500`), config(env, true)]);
     return json(rows.map(r => ({ ...r, first_seen: ms(r.first_seen), last_seen: ms(r.last_seen), hevc: r.hevc < 0 ? null : r.hevc, blocked: cfg.blocked.includes(r.id) })));
   }
   if (p === 'device' && req.method === 'POST') {

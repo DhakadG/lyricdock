@@ -29,3 +29,7 @@ graphify-out/
 
 helper/src-tauri/target/
 helper/src-tauri/gen/
+
+# web app build output + local browser-automation scratch
+web/dist/
+.playwright-mcp/

@@ -1,0 +1,10 @@
+// LyricDock web app: static assets only (no Worker code - requests are free). Build first: ./scripts/build-web.ps1
+// Docs: docs/web-app.md
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "lyricdock-app",
+  "compatibility_date": "2026-09-25",
+  "workers_dev": false,
+  "routes": [{ "pattern": "app.lyricdock.losthusky.qzz.io", "custom_domain": true }],
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application", "html_handling": "auto-trailing-slash" }
+}

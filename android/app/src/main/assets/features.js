@@ -725,7 +725,8 @@
     const f = document.createElement('iframe');
     f.id = 'yt';
     f.allow = 'autoplay; encrypted-media';
-    f.src = `https://video.lyricdock.app/player?v=${id}&t=${Math.max(0, now() / 1000 | 0)}`; // served by PageClient.java
+    const host = window.LYRICDOCK_WEB ? location.origin : 'https://video.lyricdock.app'; // phone: PageClient.java; web: player.html
+    f.src = `${host}/player?v=${id}&t=${Math.max(0, now() / 1000 | 0)}`;
     $('bg').after(f); // above the blurred-cover fallback, below the dim layer and the lyrics
     vidAt = Date.now();
   }
@@ -950,8 +951,18 @@
       setTimeout(measure, 600);
     },
   };
-  // Heartbeat for the dashboard's "active devices" (the cover lookups already count plays).
-  const ping = () => timed(`${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${who()}`, 15000).catch(() => {});
+  // Anonymous usage for the dashboard: which platform and screen, never who or what. Heartbeat every 10 min
+  // ("active devices"), plus events from the web app (open / install / update / error).
+  const env = () => {
+    const app = matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone === true;
+    const plat = window.LYRICDOCK_WEB ? (app ? 'pwa' : 'web') : 'android';
+    let tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+    return `&plat=${plat}&scr=${screen.width}x${screen.height}@${+devicePixelRatio.toFixed(2)}&tz=${encodeURIComponent(tz)}&lang=${encodeURIComponent(navigator.language || '')}`;
+  };
+  window.cloudPing = (e, detail) => timed(`${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${e ? `&e=${e}` : ''}`
+    + `${detail ? `&x=${encodeURIComponent(String(detail).slice(0, 300))}` : ''}${who()}${env()}`, 15000).catch(() => {});
+  const ping = () => window.cloudPing();
   setTimeout(ping, 5000); setInterval(ping, 10 * 60000);
 
   // ---- phone hardware: volume keys (MainActivity forwards them while the setting is on), media notification,

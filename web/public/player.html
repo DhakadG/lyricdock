@@ -1,0 +1,14 @@
+<!doctype html>
+<!-- Music-video background wrapper (the web twin of PageClient.java): an https page around YouTube's player,
+     so the embed gets a real referrer; postMessage commands from the app are passed through. -->
+<html><head><meta charset="utf-8"><meta name="referrer" content="origin">
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:absolute;inset:0;width:100%;height:100%;border:0}</style>
+</head><body>
+<iframe id="p" allow="autoplay; encrypted-media"></iframe>
+<script>
+  const q = new URLSearchParams(location.search), id = /^[\w-]{11}$/.test(q.get('v') || '') ? q.get('v') : '', t = /^\d{1,6}$/.test(q.get('t') || '') ? q.get('t') : '0';
+  document.getElementById('p').src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&loop=1&playlist=${id}`
+    + `&playsinline=1&rel=0&iv_load_policy=3&enablejsapi=1&origin=${encodeURIComponent(location.origin)}&start=${t}`;
+  addEventListener('message', e => { if (e.source === parent) document.getElementById('p').contentWindow.postMessage(e.data, '*'); });
+</script>
+</body></html>

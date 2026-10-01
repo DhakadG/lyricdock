@@ -69,6 +69,7 @@ img.th { width: 36px; height: 36px; border-radius: 6px; vertical-align: middle; 
     </div>
     <div class="two">
       <div class="card"><h3>Countries</h3><div class="scroll"><table id="countries"></table></div></div>
+      <div class="card"><h3>Platforms & app events</h3><div class="scroll"><table id="platforms"></table></div></div>
       <div class="card"><h3>Recent errors</h3><div class="scroll"><table id="errors"></table></div></div>
     </div>
   </section>
@@ -157,6 +158,9 @@ async function overview() {
   chart('cMs', { type: 'line', data: { labels: lbl, datasets: kinds.map((k, i) => ({ label: k, borderColor: COLORS[i % 7], tension: .3, pointRadius: 0, data: ts.map(t => o.series.find(r => r.t === t && r.kind === k)?.ms ?? null) })) } });
   chart('cTier', { type: 'doughnut', data: { labels: o.tiers.map(r => r.tier || '–'), datasets: [{ data: o.tiers.map(r => r.n), backgroundColor: COLORS, borderWidth: 0 }] }, options: { plugins: { legend: { position: 'right' } } } });
   $('topAlbums').innerHTML = '<tr><th>Album</th><th>Artist</th><th>Plays</th></tr>' + o.topAlbums.map(a => `<tr class="click" onclick="album('${a.id}')"><td>${esc(a.name)}</td><td>${esc(a.artist)}</td><td>${n(a.n)}</td></tr>`).join('');
+  const evk = ['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error'];
+  $('platforms').innerHTML = '<tr><th>Platform</th><th>Devices</th><th>Requests</th></tr>' + (o.platforms || []).map(p => `<tr><td>${esc(p.plat)}</td><td>${n(p.devices)}</td><td>${n(p.n)}</td></tr>`).join('')
+    + o.kinds.filter(k => evk.includes(k.kind)).map(k => `<tr><td class="muted">event: ${esc(k.kind)}</td><td></td><td>${n(k.n)}</td></tr>`).join('');
   $('countries').innerHTML = '<tr><th>Country</th><th>Requests</th><th>Devices</th></tr>' + o.countries.map(c => `<tr><td>${esc(c.country)}</td><td>${n(c.n)}</td><td>${n(c.devices)}</td></tr>`).join('');
   $('errors').innerHTML = o.errors.length ? '<tr><th>When</th><th>Path</th><th>Status</th><th>Detail</th></tr>' + o.errors.map(e => `<tr><td>${ago(e.ts)}</td><td class="mono">${esc(e.path)}</td><td>${e.status}</td><td class="mono">${esc(e.detail)}</td></tr>`).join('') : '<tr><td class="muted">No errors 🎉</td></tr>';
 }
@@ -245,8 +249,8 @@ async function loadR2() {
 
 async function devices() {
   const rows = await api('devices');
-  $('devT').innerHTML = '<tr><th>Device</th><th>Model</th><th>App</th><th>Where</th><th>HEVC</th><th>Cover px</th><th>Calls</th><th>First seen</th><th>Last seen</th><th></th></tr>' + rows.map(d =>
-    `<tr><td class="mono">${esc(d.id.slice(0, 12))}${Date.now() - d.last_seen < 9e5 ? ' <span class="pill r2">online</span>' : ''}</td><td>${esc(d.model)}</td><td>${esc(d.version)}</td><td>${esc([d.city, d.country].filter(Boolean).join(', '))}</td><td>${d.hevc == null ? '?' : d.hevc ? 'yes' : 'no'}</td><td>${d.px || ''}</td><td>${n(d.calls)}</td><td>${ago(d.first_seen)}</td><td>${ago(d.last_seen)}</td>
+  $('devT').innerHTML = '<tr><th>Device</th><th>Platform</th><th>Model</th><th>Screen</th><th>App</th><th>Where</th><th>HEVC</th><th>Cover px</th><th>Calls</th><th>First seen</th><th>Last seen</th><th></th></tr>' + rows.map(d =>
+    `<tr><td class="mono">${esc(d.id.slice(0, 12))}${Date.now() - d.last_seen < 9e5 ? ' <span class="pill r2">online</span>' : ''}</td><td>${esc(d.plat || '–')}</td><td>${esc(d.model)}</td><td class="mono">${esc(d.screen || '')}</td><td>${esc(d.version)}</td><td>${esc([d.city, d.country].filter(Boolean).join(', '))}</td><td>${d.hevc == null ? '?' : d.hevc ? 'yes' : 'no'}</td><td>${d.px || ''}</td><td>${n(d.calls)}</td><td>${ago(d.first_seen)}</td><td>${ago(d.last_seen)}</td>
     <td><button class="${d.blocked ? 'ok' : 'danger'}" onclick="devAct('${esc(d.id)}',${!d.blocked})">${d.blocked ? 'unblock' : 'block'}</button> <button onclick="confirm('Forget this device?') && devAct('${esc(d.id)}',0,1)">forget</button></td></tr>`).join('');
 }
 async function devAct(id, blocked, del) { await api('device', { id, blocked, delete: !!del }); devices(); }

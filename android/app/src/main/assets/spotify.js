@@ -3,7 +3,8 @@
 // Spotify app (Client ID in settings) with Authorization Code + PKCE - there is no client secret anywhere.
 // Emits the same messages as the bridge (track / pos / preload), so everything downstream is shared.
 const Web = (() => {
-  const REDIRECT = 'http://127.0.0.1:8976/callback', KEY = 'dock:spotify';
+  // Phone: LoginClient.java catches the loopback redirect. Browser: a real page, /callback on the app's own origin.
+  const REDIRECT = window.LYRICDOCK_WEB ? `${location.origin}/callback` : 'http://127.0.0.1:8976/callback', KEY = 'dock:spotify', PENDING = 'dock:spPending';
   const SCOPES = 'user-read-playback-state user-read-currently-playing user-modify-playback-state user-library-read user-library-modify';
   let tok = {}, pending = null, status = '', backoff = 0, wanted = false, timer = null, cur = null, state = {}, hist = [], out = () => {};
   try { tok = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
@@ -20,6 +21,7 @@ const Web = (() => {
     const verifier = rand(48), st = rand(12);
     const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
     pending = { verifier, state: st };
+    try { localStorage.setItem(PENDING, JSON.stringify(pending)); } catch (e) {} // the web sign-in reloads the page
     const q = new URLSearchParams({ client_id: cid(), response_type: 'code', redirect_uri: REDIRECT,
       code_challenge_method: 'S256', code_challenge: challenge, scope: SCOPES, state: st });
     say('Signing in…');
@@ -27,7 +29,8 @@ const Web = (() => {
   }
 
   async function onAuth(m) {
-    const p = pending;
+    let p = pending;
+    try { p ||= JSON.parse(localStorage.getItem(PENDING) || 'null'); localStorage.removeItem(PENDING); } catch (e) {}
     pending = null;
     if (!m.url || !p) return say('Sign-in cancelled');
     const u = new URL(m.url);

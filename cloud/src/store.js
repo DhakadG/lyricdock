@@ -46,12 +46,14 @@ export async function setConfig(env, patch) {
 }
 
 // ---- Analytics Engine: one data point per request (fire-and-forget, no database).
-// blobs: 1 kind, 2 path, 3 tier, 4 album id, 5 media key, 6 country, 7 city, 8 colo, 9 app version, 10 model, 11 detail, 12 album, 13 artist
+// blobs: 1 kind, 2 path, 3 tier, 4 album id, 5 media key, 6 country, 7 city, 8 colo, 9 app version, 10 model, 11 detail, 12 album, 13 artist,
+//        14 platform (android / web / pwa), 15 screen (WxH@dpr), 16 time zone, 17 language
 // doubles: 1 status, 2 ms, 3 bytes, 4 lat, 5 lon, 6 px, 7 hevc (1/0/-1 unknown)
 export function track(env, e) {
   env.AE?.writeDataPoint({
     indexes: [(e.device || '').slice(0, 96)],
-    blobs: [e.kind, e.path, e.tier, e.album_id, e.media_key, e.country, e.city, e.colo, e.version, e.model, e.detail, e.album, e.artist].map(v => String(v ?? '').slice(0, 300)),
+    blobs: [e.kind, e.path, e.tier, e.album_id, e.media_key, e.country, e.city, e.colo, e.version, e.model, e.detail, e.album, e.artist,
+      e.plat, e.screen, e.tz, e.lang].map(v => String(v ?? '').slice(0, 300)),
     doubles: [e.status, e.ms, e.bytes, e.lat, e.lon, e.px, e.hevc ?? -1].map(v => +v || 0),
   });
 }

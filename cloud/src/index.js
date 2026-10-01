@@ -10,6 +10,7 @@ import { admin } from './admin.js';
 import SITE from './site.html';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'range', 'Access-Control-Expose-Headers': '*' };
+const EVENTS = new Set(['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error']);
 const json = (body, status = 200, cache = 'no-store') => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json', 'cache-control': cache } });
 
 export default {
@@ -48,10 +49,15 @@ async function publicApi(req, env, ctx, url, ev) {
   if (!cfg.api_enabled) return json({ error: 'API paused' }, 503);
   if (cfg.blocked.includes(q.get('d'))) return json({ error: 'blocked' }, 403);
   if (p === '/v1/health') return json({ ok: true });
-  if (p === '/v1/ping') { ev.kind = 'ping'; return json({ ok: true }); }
+  if (p === '/v1/ping') { // heartbeat, or an app event (web app: open / install / update / error)
+    const e = q.get('e');
+    ev.kind = EVENTS.has(e) ? e : 'ping';
+    ev.detail = (q.get('x') || '').slice(0, 300);
+    return json({ ok: true });
+  }
 
   // Rung 1: the edge cache. Same question (minus who asks) = same answer, no KV, no Apple.
-  const ck = new URL(url); ['d', 'v', 'warm'].forEach(k => ck.searchParams.delete(k)); ck.searchParams.sort();
+  const ck = new URL(url); ['d', 'v', 'warm', 'plat', 'scr', 'tz', 'lang'].forEach(k => ck.searchParams.delete(k)); ck.searchParams.sort();
   const cacheKey = new Request(ck.href), hitRes = await caches.default.match(cacheKey);
   if (hitRes) {
     const meta = JSON.parse(hitRes.headers.get('x-ld-ev') || '{}');
@@ -117,6 +123,8 @@ function publicAlbum(a) {
 function log(env, req, url, ev, res, ms) {
   const cf = req.cf || {}, q = url.searchParams, ua = req.headers.get('user-agent') || '';
   const model = (/Android [\d.]+; ([^;)]+?)(?: Build|\))/.exec(ua) || [])[1] || (/Windows|Mac OS X|Linux|iPhone|iPad/.exec(ua) || [])[0] || '';
+  const clip = k => (q.get(k) || '').slice(0, 40);
   track(env, { ...ev, status: res.status, ms, device: q.get('d'), version: q.get('v'), model, country: cf.country, city: cf.city, colo: cf.colo,
-    lat: cf.latitude, lon: cf.longitude, px: q.get('px'), hevc: q.has('hevc') ? +(q.get('hevc') === '1') : -1 });
+    lat: cf.latitude, lon: cf.longitude, px: q.get('px'), hevc: q.has('hevc') ? +(q.get('hevc') === '1') : -1,
+    plat: clip('plat'), screen: clip('scr'), tz: clip('tz'), lang: clip('lang') });
 }
