@@ -97,9 +97,21 @@ const Rtc = (() => {
     if (subs.has(k)) return;
     const ws = new WebSocket(`${wsOf(r)}/${t}/ws`);
     subs.set(k, ws);
+    ws.again = () => subscribe(r, t, onMessage);
     ws.onmessage = e => { let ev; try { ev = JSON.parse(e.data); } catch (x) { return; } if (ev.event === 'message') onMessage(ev.message, r, t); };
     ws.onclose = () => { if (subs.get(k) === ws) { subs.delete(k); setTimeout(() => want.has(k) && subscribe(r, t, onMessage), 3000); } };
   }
+  // A phone that dozed comes back with sockets that look open but are dead (no close event), so it stopped answering
+  // Find devices until the app restarted. Timers stand still during a doze: a 15 s tick that arrives over a minute late
+  // means the phone slept - open every subscription again (as on coming back on screen). ntfy's own keep-alive is a
+  // WebSocket ping the page never sees, so silence alone can't tell a dead socket from a quiet topic.
+  function reopenAll() {
+    // A snapshot: again() adds to subs, and a Map's iterator would visit those new entries too (a loop that never ends).
+    for (const [k, ws] of [...subs]) { subs.delete(k); ws.onclose = null; try { ws.close(); } catch (e) {} if (want.has(k)) ws.again(); }
+  }
+  let tick = Date.now();
+  setInterval(() => { if (Date.now() - tick > 90e3) reopenAll(); tick = Date.now(); }, 15e3); // 90 s: hidden browser tabs tick once a minute
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reopenAll(); });
   const want = new Set();
   function sync(list) { // list: [[relay, topic, handler]]
     const keys = new Set(list.map(([r, t]) => `${r} ${t}`));

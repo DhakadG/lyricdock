@@ -1287,7 +1287,7 @@
     const box = h('div', { className: 'ldx-box' });
     if (!s) {
       box.append(h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'Look for phones running LyricDock'),
-        h('small', {}, 'Finds every phone with LyricDock open on this network, and phones signed in to your Spotify account anywhere. You confirm on the phone; nothing to type.')),
+        h('small', {}, 'Finds every phone with LyricDock open on this network, and phones signed in to your Spotify account anywhere. Both screens show the same 6 digits: confirm on each; nothing to type.')),
         btn('Find devices', () => findDevices(), true)));
     } else {
       for (const d of found) {
