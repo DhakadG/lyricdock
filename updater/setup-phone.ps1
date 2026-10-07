@@ -76,7 +76,7 @@ Ok "Found $model"
 Section 'INSTALLING'
 Step 3 'Downloading the latest LyricDock app...'
 try {
-    $rel = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 20
+    $rel = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 60
     $asset = $rel.assets | Where-Object name -like '*.apk' | Select-Object -First 1
     if (-not $asset) { throw 'the latest release has no APK' }
     $apk = Join-Path $env:TEMP $asset.name

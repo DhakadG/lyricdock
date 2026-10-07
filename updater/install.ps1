@@ -46,7 +46,7 @@ Banner
 Section 'CHECKING REQUIREMENTS'
 
 Step 1 'Checking network connectivity...'
-try { $latest = (Invoke-RestMethod "$Raw/extension/version.json?t=$([DateTime]::UtcNow.Ticks)" -TimeoutSec 15).version }
+try { $latest = (Invoke-RestMethod "$Raw/extension/version.json?t=$([DateTime]::UtcNow.Ticks)" -TimeoutSec 60).version } # 60: Windows PowerShell 5.1 can spend ~21 s on a first connect that then works
 catch { Fail "Can't reach GitHub ($($_.Exception.Message)). Check your connection and run this again." }
 if ($latest -notmatch '^\d+\.\d+\.\d+$') { Fail "GitHub returned an unexpected version ('$latest')." }
 Ok 'Network connected'
@@ -99,7 +99,7 @@ if (-not $spicetify) {
     Info 'Spicetify is not installed - installing it...'
     $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } elseif ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x32' }
     try {
-        $rel = Invoke-RestMethod 'https://api.github.com/repos/spicetify/cli/releases/latest' -TimeoutSec 20
+        $rel = Invoke-RestMethod 'https://api.github.com/repos/spicetify/cli/releases/latest' -TimeoutSec 60
         $asset = $rel.assets | Where-Object { $_.name -like "*windows-$arch.zip" } | Select-Object -First 1
         if (-not $asset) { throw "no Windows $arch build in $($rel.tag_name)" }
         $zip = Join-Path $env:TEMP $asset.name
@@ -197,7 +197,7 @@ Info 'Phone not set up yet? Do this once, either way:'
 Info '  - on the phone: install the APK from https://github.com/DhakadG/lyricdock/releases/latest'
 Info '  - or from this PC over USB (also turns on full-screen kiosk mode):'
 Info '      iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/setup-phone.ps1 | iex'
-Info 'Then connect once: Spotify -> LyricDock (top-bar button) -> Devices -> Find devices, and tap Allow on the phone.'
+Info 'Then connect once: Spotify -> LyricDock (top-bar button) -> Devices -> Find devices, tap Allow on the phone and Same digits in Spotify.'
 Info 'After that the phone app updates itself.'
 
 Write-Host ''
