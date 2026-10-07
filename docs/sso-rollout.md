@@ -89,11 +89,11 @@ Google client facts (for checking the user's setup):
 
 PowerShell, repo root, branch `web-fixes-apple`.
 
-- [ ] **Files present**:
+- [x] **Files present** (2026-10-08; first TURN pair was an SFU app by mistake, replaced with a real TURN key):
   `Test-Path secrets/google-client.json, secrets/TURN_KEY_ID.txt, secrets/TURN_KEY_TOKEN.txt, secrets/SSO_PRIVATE_JWK.json, secrets/PUBLISH_TOKEN.txt`
   - Also check the JSON is the right client: `.web.redirect_uris` contains `https://auth.lyricdock.losthusky.qzz.io/callback`
     and `.web.project_id` is `youtubedata-lyricsdockapp`. Print only those two fields, never the secret.
-- [ ] **Secrets into Cloudflare**. If auto mode blocks `wrangler secret put`, the user runs these lines:
+- [x] **Secrets into Cloudflare** (2026-10-08: auth 3, web 2; ntfy PUBLISH_TOKEN + LYRICDOCK_PUBLISH_TOKEN go in with the ntfy deploy). If auto mode blocks `wrangler secret put`, the user runs these lines:
   ```powershell
   function put($dir, $name, $file) { Push-Location $dir; try { (Get-Content $file -Raw).Trim() | npx wrangler secret put $name } finally { Pop-Location } }
   $g = (Get-Content secrets/google-client.json -Raw | ConvertFrom-Json).web
