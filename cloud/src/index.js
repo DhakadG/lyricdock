@@ -8,6 +8,10 @@ import { still } from './apple.js';
 import { config, resolve, choose, mediaTier, serveR2, maintain, track } from './store.js';
 import { admin } from './admin.js';
 import SITE from './site.html';
+import PRIVACY from './privacy.html';
+import TERMS from './terms.html';
+
+const PAGES = { '/': SITE, '/privacy': PRIVACY, '/terms': TERMS }; // the info site (Google's consent screen links /privacy and /terms)
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'range', 'Access-Control-Expose-Headers': '*' };
 const EVENTS = new Set(['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error', 'lna-granted', 'lna-denied', 'lna-prompt', 'control-fail']);
@@ -18,7 +22,7 @@ export default {
     const url = new URL(req.url), t0 = Date.now(), ev = { kind: 'api', path: url.pathname };
     if (url.hostname.startsWith('admin.')) return admin(req, env, ctx, url);
     // Scanners probing for /.env, /wp-admin, /config.js...: nothing of ours, so no work and no analytics row.
-    if (!/^\/(v1\/[a-z]+|m\/[\w/]+\.mp4)?$/.test(url.pathname)) return new Response('not found', { status: 404, headers: { 'cache-control': 'public, max-age=86400' } });
+    if (!/^\/(v1\/[a-z]+|m\/[\w/]+\.mp4|privacy|terms)?$/.test(url.pathname)) return new Response('not found', { status: 404, headers: { 'cache-control': 'public, max-age=86400' } });
     // Per-IP rate limit on the API (the RL binding, wrangler.jsonc). A dock asks a few times per song.
     if (url.pathname.startsWith('/v1/') && env.RL && !(await env.RL.limit({ key: req.headers.get('cf-connecting-ip') || '' })).success)
       return json({ error: 'slow down' }, 429);
@@ -37,7 +41,7 @@ async function publicApi(req, env, ctx, url, ev) {
   const p = url.pathname, q = url.searchParams;
   if (!url.hostname.startsWith('art.')) { // the info site
     ev.kind = 'page';
-    return p === '/' ? new Response(SITE, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } }) : json({ error: 'not found' }, 404);
+    return PAGES[p] ? new Response(PAGES[p], { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } }) : json({ error: 'not found' }, 404);
   }
 
   const m = p.match(/^\/m\/(\d+\/(?:square|tall)\/[a-z0-9_]+)\.mp4$/);

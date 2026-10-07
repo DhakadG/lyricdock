@@ -20,8 +20,14 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } td { padding:
 <body>
 <main>
   <h1>Lyric<span>Dock</span></h1>
-  <p>A phone on your desk that becomes a Spotify lyrics dock: word-synced lyrics, the album art, controls. This domain hosts the dock's cloud helpers.</p>
-  <p><a href="https://github.com/DhakadG/lyricdock">Source on GitHub</a></p>
+  <p>A phone on your desk, or any browser, that becomes a Spotify lyrics dock: word-synced lyrics, the album art and
+  playback controls for whatever you play.</p>
+  <p><a href="https://app.lyricdock.losthusky.qzz.io/">Open the web app</a> · <a href="https://github.com/DhakadG/lyricdock">Source on GitHub</a></p>
+
+  <h2>Signing in</h2>
+  <p>The web app uses Sign in with Google only to let you in. LyricDock receives your name, email address and profile
+  picture, keeps them in a cookie in your browser for 14 days, and never stores or shares them. Your Spotify sign-in stays
+  on your device. Details: <a href="/privacy">privacy policy</a> and <a href="/terms">terms of service</a>.</p>
 
   <h2>Cover API</h2>
   <p>Base URL <code>https://art.lyricdock.losthusky.qzz.io</code>. Album details and Apple Music&rsquo;s animated covers, looked up once and indexed. Open CORS; plain GET.</p>
@@ -32,7 +38,8 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } td { padding:
     <tr><td><code>GET /v1/health</code></td><td>is it up</td></tr>
   </table>
   <pre>curl "https://art.lyricdock.losthusky.qzz.io/v1/cover?artist=Gorillaz&amp;album=Plastic%20Beach&amp;px=1080"</pre>
-  <p style="margin-top:44px;font-size:13px">Personal, non-commercial project. Artwork and metadata belong to their owners and come from Apple's public catalogue.</p>
+  <p style="margin-top:44px;font-size:13px">Personal, non-commercial project. Artwork and metadata belong to their owners and come from Apple's public catalogue.
+  · <a href="/privacy">Privacy policy</a> · <a href="/terms">Terms of service</a> · <a href="mailto:ghanisht.kumawat@gmail.com">Contact</a></p>
 </main>
 </body>
 </html>

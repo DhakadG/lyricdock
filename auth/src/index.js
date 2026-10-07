@@ -8,6 +8,7 @@
 import { AUTH, COOKIE, b64u, cookie, verify } from '../sso.js';
 
 const ROOT = 'lyricdock.losthusky.qzz.io'; // the session cookie's domain, and the only sites sign-in returns to
+const INFO = `https://${ROOT}`; // the info site: home page, /privacy, /terms (cloud/src)
 const STATE = '__Host-ld_st'; // host-only, so another subdomain can't plant or read it
 const SESSION_TTL = 14 * 86400;
 const STATE_TTL = 600;
@@ -29,8 +30,8 @@ const redirect = (location, cookies = []) => {
 const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const page = (body, status = 200) => new Response(`<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>LyricDock sign-in</title>
 <style>body{font:16px system-ui,sans-serif;background:#0d0d0f;color:#eee;display:grid;place-items:center;min-height:100vh;margin:0}main{max-width:340px;padding:24px;text-align:center}
-.b{border:0;font:inherit;cursor:pointer}a.b,.b{display:inline-block;margin-top:16px;padding:12px 20px;border-radius:10px;background:#fff;color:#111;text-decoration:none;font-weight:600}img{width:56px;height:56px;border-radius:50%}p{color:#aaa}</style>
-<main>${body}</main>`, { status, headers: { ...SEC, 'content-type': 'text/html; charset=utf-8' } });
+.f{margin-top:28px;font-size:13px}.f a{color:#aaa}.b{border:0;font:inherit;cursor:pointer}a.b,.b{display:inline-block;margin-top:16px;padding:12px 20px;border-radius:10px;background:#fff;color:#111;text-decoration:none;font-weight:600}img{width:56px;height:56px;border-radius:50%}p{color:#aaa}</style>
+<main>${body}<p class=f><a href="${INFO}/privacy">Privacy</a> · <a href="${INFO}/terms">Terms</a></p></main>`, { status, headers: { ...SEC, 'content-type': 'text/html; charset=utf-8' } });
 
 // Only https pages on our own domain may be returned to: anything else becomes the auth home page (no open redirect).
 function safeRd(raw) {

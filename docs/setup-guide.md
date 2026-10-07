@@ -74,10 +74,10 @@ https://console.cloud.google.com/auth/branding?project=youtubedata-lyricsdockapp
 |---|---|
 | App name | `LyricDock` (already filled) |
 | User support email | `ghanisht.kumawat@gmail.com` |
-| App logo | **leave empty**. A logo sends the app to Google's brand review, which takes days. |
-| Application home page | `https://lyricdock.losthusky.qzz.io/` |
-| Application privacy policy link | leave empty |
-| Application terms of service link | leave empty |
+| App logo | upload `docs\brand\lyricdock-logo-120.png` (120×120 PNG, 9 KB, made from the app icon) |
+| Application home page | `https://lyricdock.losthusky.qzz.io/` (describes the app and links to the two pages below) |
+| Application privacy policy link | `https://lyricdock.losthusky.qzz.io/privacy` |
+| Application terms of service link | `https://lyricdock.losthusky.qzz.io/terms` |
 | Authorized domains | click **+ Add domain** → `losthusky.qzz.io` |
 | Developer contact information | `ghanisht.kumawat@gmail.com` |
 
@@ -98,6 +98,18 @@ https://console.cloud.google.com/auth/audience?project=youtubedata-lyricsdockapp
 
 While it was in "Testing", only accounts listed as test users could sign in. LyricDock only asks for name, email and
 profile picture, so Google doesn't review the app; publishing is instant.
+
+### 1.4b Brand verification (so the consent screen shows "LyricDock" and the logo)
+
+With a logo, Google reviews the app's branding before showing it to users. Sign-in keeps working while the review runs.
+
+1. Left menu → **Verification centre** → **Verify branding** (or **Prepare for verification**) → **Submit**.
+2. Google checks these. All are in place:
+   - The home page is on the verified domain and explains the app.
+   - The home page links to the privacy policy.
+   - The privacy policy is on the same domain and says what is done with Google user data.
+3. Google emails `ghanisht.kumawat@gmail.com`, usually within a few working days.
+   - If they ask for changes to the home page or the privacy policy, tell Claude: both live in `cloud/src/`.
 
 ### 1.5 Data access: nothing to do
 

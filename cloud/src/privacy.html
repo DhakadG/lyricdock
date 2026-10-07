@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LyricDock privacy policy</title>
+<style>
+:root { --bg: #0b0b0e; --text: #ececf1; --dim: #a3a3ad; --acc: #1ed760; --line: #25252c; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 system-ui, sans-serif; }
+main { max-width: 760px; margin: auto; padding: 48px 16px 72px; }
+h1 { font-size: 36px; margin: 0 0 4px; letter-spacing: -.02em; } h1 a { color: inherit; text-decoration: none; } h1 span { color: var(--acc); }
+h2 { margin-top: 36px; font-size: 20px; } p, li { color: var(--dim); } a { color: var(--acc); } strong { color: var(--text); }
+code { font-family: ui-monospace, monospace; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; } td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--dim); } td:first-child { color: var(--text); width: 34%; }
+footer { margin-top: 48px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1><a href="/">Lyric<span>Dock</span></a> privacy policy</h1>
+  <p>Effective 8 October 2026.</p>
+
+  <p>LyricDock shows word-synced lyrics, album art and playback controls for what you play on Spotify, on a phone, a
+  tablet or in a web browser. It is a personal, non-commercial project by Ghanishth Kumawat. This page explains what
+  LyricDock collects, why, and what you can do about it. Questions:
+  <a href="mailto:ghanisht.kumawat@gmail.com">ghanisht.kumawat@gmail.com</a>.</p>
+
+  <h2>The short version</h2>
+  <ul>
+    <li>LyricDock does not sell, rent or share your data, show ads, or build profiles of you.</li>
+    <li>Your Spotify sign-in stays on your device. LyricDock's servers never see it.</li>
+    <li>Google sign-in only tells LyricDock your name, email address and profile picture, to let you into the web app.
+      It isn't stored in a database.</li>
+    <li>The apps send anonymous usage data (no name, no email, no IP address), deleted after about three months.</li>
+  </ul>
+
+  <h2>Signing in with Google</h2>
+  <p>The LyricDock web app (<code>app.lyricdock.losthusky.qzz.io</code>) and its admin pages use
+  <strong>Sign in with Google</strong> at <code>auth.lyricdock.losthusky.qzz.io</code>.</p>
+  <ul>
+    <li><strong>What LyricDock receives:</strong> your name, email address, profile picture, Google account ID, and
+      whether Google has verified the email address. These are the basic <code>openid</code>, <code>email</code> and
+      <code>profile</code> permissions. LyricDock asks for nothing else: no access to Gmail, Drive, Contacts or any other
+      Google data.</li>
+    <li><strong>How it's used:</strong> only to let you into the web app, to show who is signed in, and to check that an
+      account is allowed into the admin pages.</li>
+    <li><strong>Where it's kept:</strong> in a signed cookie in your browser (<code>__Secure-ld_sso</code>) that expires
+      after 14 days. LyricDock keeps no database of users. A second cookie (<code>__Host-ld_st</code>) lives for at most
+      10 minutes while you sign in, to protect the sign-in from forgery.</li>
+    <li><strong>Sharing:</strong> none. Google user data is never sold, transferred to others, used for advertising, or
+      used to train AI models.</li>
+  </ul>
+  <p>LyricDock's use and transfer of information received from Google APIs adheres to the
+  <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
+  including the Limited Use requirements.</p>
+
+  <h2>Spotify</h2>
+  <ul>
+    <li><strong>Following your Spotify account</strong> ("Sign in with Spotify"):
+      <ul>
+        <li>You sign in with your own Spotify developer app (your Client ID).</li>
+        <li>The sign-in tokens are stored only on your device, in the app or browser storage.</li>
+        <li>Requests go straight from your device to Spotify; LyricDock's servers are never involved.</li>
+        <li>LyricDock reads what is playing, your queue, recently played, library and playlists, and sends the controls
+          you press (play, skip, volume, like). It does this only to show and control your music.</li>
+      </ul>
+    </li>
+    <li><strong>Following Spotify on your computer</strong> (the LyricDock extension):
+      <ul>
+        <li>Your computer and your screen talk directly to each other.</li>
+        <li>The short messages they exchange to find each other pass through a relay
+          (<a href="https://ntfy.sh">ntfy</a> or LyricDock's own copy of it), encrypted with your pairing code, so the
+          relay only ever sees unreadable data.</li>
+        <li>When the two are on different networks, the connection may run through Cloudflare's relay (TURN). It only
+          forwards the encrypted connection.</li>
+      </ul>
+    </li>
+  </ul>
+  <p>You can remove LyricDock's access to Spotify at any time at
+  <a href="https://www.spotify.com/account/apps/">spotify.com/account/apps</a>.</p>
+
+  <h2>Anonymous usage data</h2>
+  <p>The apps report a little usage data to LyricDock's cloud (<code>art.lyricdock.losthusky.qzz.io</code>), so it can
+  count active screens, spot errors and run the album-art service:</p>
+  <table>
+    <tr><td>A random device ID</td><td>Made on your device, not linked to your name, email or accounts</td></tr>
+    <tr><td>App and device</td><td>App version, platform (Android, web, installed web app), device or browser type,
+      screen size, time zone, language</td></tr>
+    <tr><td>Events</td><td>App opened, installed or updated, an error (its message and code location only), a Spotify
+      command that failed (which command and Spotify's reason)</td></tr>
+    <tr><td>Album-art lookups</td><td>The artist and album names of songs whose cover is looked up</td></tr>
+    <tr><td>Approximate location</td><td>Country and city, worked out by Cloudflare from the connection. The IP address
+      itself is not stored.</td></tr>
+  </table>
+  <p>This data is kept for about three months and then deleted automatically. Because it can't be linked back to you,
+  it can't be found or deleted on request before then.</p>
+
+  <h2>Other services the apps contact</h2>
+  <p>To do their job, the apps contact these services directly from your device. Each has its own privacy policy.</p>
+  <ul>
+    <li><strong>LRCLIB</strong> (lyrics): the song's title, artist, album and length.</li>
+    <li><strong>Spicy Lyrics API</strong> (lyrics): only if you add your own key; the Spotify track ID.</li>
+    <li><strong>Apple Music's public catalogue</strong> (album art and animated covers): reached through LyricDock's
+      cloud with the artist and album names.</li>
+    <li><strong>YouTube or Piped</strong> (music-video background): only if you choose that background; the song's title
+      and artist.</li>
+    <li><strong>Cloudflare and Google STUN servers</strong>: help two devices find a connection path.</li>
+    <li><strong>GitHub</strong>: update checks and release notes.</li>
+    <li><strong>Google Fonts</strong>: font files.</li>
+  </ul>
+
+  <h2>Data kept on your device</h2>
+  <p>Your settings, the pairing code, Spotify sign-in tokens, and saved lyrics and animated covers (for offline use and
+  fewer downloads) stay in the app's or browser's storage on your device.</p>
+  <ul>
+    <li>Clear the saved lyrics and covers in <strong>Settings → Storage</strong>.</li>
+    <li>Sign out of Spotify in <strong>Settings → Playback source</strong>.</li>
+    <li>Or remove everything by uninstalling the app or clearing the site's data in your browser.</li>
+  </ul>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li>Sign out of the web app at <a href="https://auth.lyricdock.losthusky.qzz.io/">auth.lyricdock.losthusky.qzz.io</a>.</li>
+    <li>Remove LyricDock's access to your Google account at
+      <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>.</li>
+    <li>For anything else, or to ask what LyricDock knows about you, email
+      <a href="mailto:ghanisht.kumawat@gmail.com">ghanisht.kumawat@gmail.com</a>.</li>
+  </ul>
+
+  <h2>Security</h2>
+  <p>All connections use HTTPS. Sign-in cookies are signed and can't be read by scripts. Pairing messages are
+  end-to-end encrypted. No system is perfectly secure, but LyricDock keeps as little as it can, so there is little to
+  lose.</p>
+
+  <h2>Children</h2>
+  <p>LyricDock is not directed at children under 13 and does not knowingly collect their data.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, this page is updated and the date at the top changes with it.</p>
+
+  <footer><a href="/">Home</a> · <a href="/terms">Terms of service</a> · <a href="https://app.lyricdock.losthusky.qzz.io/">Web app</a></footer>
+</main>
+</body>
+</html>
