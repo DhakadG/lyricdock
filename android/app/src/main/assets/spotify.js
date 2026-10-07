@@ -6,10 +6,11 @@ const Web = (() => {
   // Phone: LoginClient.java catches the loopback redirect. Browser: a real page, /callback on the app's own origin.
   const REDIRECT = window.LYRICDOCK_WEB ? `${location.origin}/callback` : 'http://127.0.0.1:8976/callback', KEY = 'dock:spotify', PENDING = 'dock:spPending';
   const SCOPES = 'user-read-playback-state user-read-currently-playing user-modify-playback-state user-library-read user-library-modify';
-  let tok = {}, pending = null, status = '', backoff = 0, wanted = false, timer = null, cur = null, state = {}, hist = [], out = () => {};
+  // busy: this page load is the return from Spotify's sign-in page (web), so the setup screen waits for the result.
+  let tok = {}, pending = null, status = '', backoff = 0, wait = 5, lastDevice = null, busy = location.pathname === '/callback', wanted = false, timer = null, cur = null, state = {}, hist = [], out = () => {};
   try { tok = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tok)); } catch (e) {} };
-  const cid = () => (Settings.S.spClientId || '').trim();
+  const cid = () => (Settings.S.spClientId || '').trim().toLowerCase();
   const loggedIn = () => !!tok.refresh && tok.cid === cid();
   const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   const rand = n => b64url(crypto.getRandomValues(new Uint8Array(n)));
@@ -32,12 +33,33 @@ const Web = (() => {
     let p = pending;
     try { p ||= JSON.parse(localStorage.getItem(PENDING) || 'null'); localStorage.removeItem(PENDING); } catch (e) {}
     pending = null;
-    if (!m.url || !p) return say('Sign-in cancelled');
+    // Back-navigation (e.g. a trackpad swipe) through Spotify's page lands on /callback again: nothing to do if signed in.
+    if (!p && loggedIn()) { busy = false; return; }
+    const ok = await finish(m, p);
+    if (ok) navigator.storage?.persist?.().catch(() => {}); // Safari would otherwise wipe the sign-in after 7 days unvisited
+    busy = false;
+    if (ok) { window.notice?.(status, 4000); kick(); }
+    else window.Setup?.open('web'); // the error shows where the user signs in, not in a closed settings row
+  }
+  async function finish(m, p) {
+    if (!m.url || !p) return say('Sign-in cancelled. Try again.'), false;
     const u = new URL(m.url);
-    if (u.searchParams.get('state') !== p.state) return say('Sign-in failed (state mismatch)');
-    const code = u.searchParams.get('code');
-    if (!code) return say(`Sign-in failed: ${u.searchParams.get('error') || 'no code'}`);
-    if (await token({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, client_id: cid(), code_verifier: p.verifier })) kick();
+    if (u.searchParams.get('state') !== p.state) return say('Sign-in failed (state mismatch). Try again.'), false;
+    const code = u.searchParams.get('code'), err = u.searchParams.get('error');
+    if (err === 'access_denied') return say('You cancelled the sign-in on Spotify\'s page.'), false;
+    if (!code) return say(`Sign-in failed: ${err || 'no code'}`), false;
+    tok = {}; // a new sign-in may be another account: drop the old one's id and name
+    if (!(await token({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, client_id: cid(), code_verifier: p.verifier }))) return false;
+    // A development-mode Spotify app hands tokens to anyone, then answers 403 for accounts missing from its
+    // User Management list. Check now, or the screen would say "Signed in" and never show a song.
+    const r = await api('GET', '/me');
+    if (r?.status === 403) {
+      tok = {}; save();
+      return say('Spotify refused this account for that Client ID. The app\'s owner must add the email of THIS Spotify account under User Management in the developer dashboard (max 5 people).'), false;
+    }
+    if (r?.json?.id) { tok.uid = r.json.id; tok.name = r.json.display_name || r.json.id; save(); } // uid: account auto-pairing
+    say(`Signed in${tok.name ? ` as ${tok.name}` : ''}`);
+    return true;
   }
 
   async function token(params) {
@@ -51,15 +73,20 @@ const Web = (() => {
     }
     tok = { ...tok, cid: cid(), access: j.access_token, refresh: j.refresh_token || tok.refresh, exp: Date.now() + (j.expires_in - 60) * 1000 };
     save();
-    say('Signed in');
-    if (!tok.uid) api('GET', '/me').then(r => { if (r?.json?.id) { tok.uid = r.json.id; save(); } }); // for account auto-pairing
     return true;
   }
 
+  // One refresh at a time: parallel calls share it. Two refreshes with the same token race, and the loser's
+  // invalid_grant would sign the user out.
+  let refreshing = null;
   const fresh = async () => (tok.access && Date.now() < tok.exp) ||
-    (loggedIn() && token({ grant_type: 'refresh_token', refresh_token: tok.refresh, client_id: cid() }));
+    (loggedIn() && (refreshing ??= token({ grant_type: 'refresh_token', refresh_token: tok.refresh, client_id: cid() }).finally(() => { refreshing = null; })));
 
-  function logout() { tok = {}; save(); cur = null; state = {}; say('Signed out'); }
+  function logout() {
+    tok = {}; save(); cur = null; state = {};
+    try { localStorage.removeItem('dock:linked'); } catch (e) {} // signed out = not set up: the setup screen comes back
+    say('Signed out');
+  }
 
   async function api(method, path, body) {
     if (Date.now() < backoff || !(await fresh())) return null;
@@ -69,13 +96,15 @@ const Web = (() => {
     if (!r) return null;
     const rtt = performance.now() - t0;
     if (r.status === 401) { tok.exp = 0; return null; } // refreshes on the next call
-    if (r.status === 429) { backoff = Date.now() + (+r.headers.get('Retry-After') || 5) * 1000; return null; }
+    // Retry-After may be unreadable cross-origin: then back off 10 s, 20 s ... 5 min while it keeps refusing.
+    if (r.status === 429) { backoff = Date.now() + (+r.headers.get('Retry-After') || (wait = Math.min(300, wait * 2))) * 1000; return null; }
+    wait = 5;
     if (r.status === 204) return { status: 204, rtt };
     return { status: r.status, json: await r.json().catch(() => null), rtt };
   }
 
   // ---- playback
-  const info = it => ({ id: it.id, uri: it.uri, title: it.name, artist: (it.artists || []).map(a => a.name).join(', '),
+  const info = it => ({ id: it.id, uri: it.uri, title: it.name, artist: (it.artists || []).map(a => a.name).join(', '), a1: it.artists?.[0]?.name,
     album: it.album?.name, year: (it.album?.release_date || '').slice(0, 4), artistId: it.artists?.[0]?.id, art: [...(it.album?.images || [])].sort((a, b) => b.width - a.width)[0]?.url || null, dur: it.duration_ms });
 
   function direction(id) {
@@ -85,20 +114,25 @@ const Web = (() => {
   }
 
   // Poll every second while playing (3s paused, 5-10s idle). Position = progress + half the round trip.
+  let pollGen = 0;
   async function poll() {
     clearTimeout(timer);
     if (!wanted || !loggedIn()) return;
+    const my = ++pollGen; // a kick() while this one waits starts a newer poll: only the newest re-arms the timer
     let delay = 10000;
     const r = await api('GET', '/me/player');
     const s = r?.json, it = s?.item;
     if (r?.status === 200 && it?.type === 'track') {
-      state = { playing: s.is_playing, device: s.device?.name, volume: s.device?.volume_percent, shuffle: s.shuffle_state, repeat: { off: 0, context: 1, track: 2 }[s.repeat_state] ?? 0 };
+      // iPhones (and some speakers) set their own volume: supports_volume false = no slider (Spotify refuses the change).
+      const vol = s.device?.supports_volume === false ? undefined : s.device?.volume_percent;
+      if (s.device?.id) lastDevice = s.device.id; // to wake it again when Spotify drops it as the active device
+      state = { playing: s.is_playing, device: s.device?.name, volume: vol, shuffle: s.shuffle_state, repeat: { off: 0, context: 1, track: 2 }[s.repeat_state] ?? 0 };
       if (it.id !== cur?.id) newTrack(it);
       out({ type: 'pos', pos: s.progress_ms + (s.is_playing ? r.rtt / 2 : 0), playing: s.is_playing, dur: it.duration_ms,
         liked: cur.liked, volume: state.volume, device: state.device, shuffle: state.shuffle, repeat: state.repeat });
       delay = s.is_playing ? 1000 : 3000;
     } else if (r) { state = { playing: false }; delay = 5000; }
-    if (wanted) timer = setTimeout(poll, delay);
+    if (wanted && my === pollGen) timer = setTimeout(poll, delay);
   }
   const kick = (ms = 0) => { clearTimeout(timer); timer = setTimeout(poll, ms); };
 
@@ -112,31 +146,57 @@ const Web = (() => {
       const img = [...(r?.json?.images || [])].sort((a, b) => b.width - a.width)[0]?.url;
       if (img) out({ type: 'artist', id: t.id, img });
     });
-    // Lyrics: the Spicy API (app.js topUp, if a key is set), else LRCLIB.
-    const l = (Api.enabled() ? await Api.get(t.id) : null) ?? await Lrclib.get(t);
+    // Lyrics (the Spicy API if a key is set, else LRCLIB) and the next song, side by side: a slow lyrics site must not
+    // hold up the preload. The next song's lyrics are fetched now too, so a skip shows them at once.
+    const lyrics = async s => (Api.enabled() ? await Api.get(s.id) : null) ?? await Lrclib.get(s);
+    const [l, q] = await Promise.all([lyrics(t), api('GET', '/me/player/queue')]);
     if (l && cur === t) out({ type: 'track', ...t, lyrics: l });
-    const q = await api('GET', '/me/player/queue');
     const n = q?.json?.queue?.find(x => x?.type === 'track');
-    if (n && cur === t) out({ type: 'preload', ...info(n), lyrics: null });
+    if (!n || cur !== t) return;
+    const ni = info(n);
+    out({ type: 'preload', ...ni, lyrics: null });
+    const nl = await lyrics(ni);
+    if (nl && cur === t) out({ type: 'preload', ...ni, lyrics: nl });
   }
 
   // ---- controls (Premium). Poll right after so the screen follows immediately.
-  async function control(cmd, arg) {
-    if (!loggedIn()) return;
-    if (cmd === 'toggle') await api('PUT', state.playing ? '/me/player/pause' : '/me/player/play');
-    else if (cmd === 'next') await api('POST', '/me/player/next');
-    else if (cmd === 'prev') await api('POST', '/me/player/previous');
-    else if (cmd === 'seek') await api('PUT', `/me/player/seek?position_ms=${Math.max(0, Math.round(arg))}`);
-    else if (cmd === 'volume') await api('PUT', `/me/player/volume?volume_percent=${Math.max(0, Math.min(100, Math.round(arg)))}`);
-    else if (cmd === 'shuffle') await api('PUT', `/me/player/shuffle?state=${!state.shuffle}`);
-    else if (cmd === 'repeat') await api('PUT', `/me/player/repeat?state=${['off', 'context', 'track'][Number.isFinite(arg) ? arg % 3 : ((state.repeat || 0) + 1) % 3]}`);
-    else if (cmd === 'play' && arg?.uri) { if (arg.shuffle) await api('PUT', '/me/player/shuffle?state=true'); await api('PUT', '/me/player/play', /^spotify:(playlist|album|artist|show|collection)/.test(arg.uri) ? { context_uri: arg.uri }
+  // Spotify's refusals used to vanish: a Free account (403 PREMIUM_REQUIRED) or an iPhone's volume looked like dead buttons.
+  // They're shown now, and logged anonymously (command + status + reason, nothing else) for the dashboard.
+  const refusal = r => {
+    const e = r.json?.error || {}, reason = e.reason || '';
+    return reason === 'PREMIUM_REQUIRED' ? 'Spotify only lets Premium accounts be controlled from other apps - this account can be followed, not controlled'
+      : reason === 'NO_ACTIVE_DEVICE' || r.status === 404 ? 'No active Spotify device - press play in Spotify first'
+      : reason === 'VOLUME_CONTROL_DISALLOW' ? 'This device sets its own volume (iPhones do) - change it there'
+      : `Spotify refused that (${r.status}${e.message ? `: ${e.message}` : ''})`;
+  };
+  async function control(cmd, arg, retried) {
+    if (!loggedIn()) return window.notice?.('Not signed in to Spotify - Settings → Playback source');
+    let r = null;
+    if (cmd === 'toggle') r = await api('PUT', state.playing ? '/me/player/pause' : '/me/player/play');
+    else if (cmd === 'next') r = await api('POST', '/me/player/next');
+    else if (cmd === 'prev') r = await api('POST', '/me/player/previous');
+    else if (cmd === 'seek') r = await api('PUT', `/me/player/seek?position_ms=${Math.max(0, Math.round(arg))}`);
+    else if (cmd === 'volume') r = await api('PUT', `/me/player/volume?volume_percent=${Math.max(0, Math.min(100, Math.round(arg)))}`);
+    else if (cmd === 'shuffle') r = await api('PUT', `/me/player/shuffle?state=${!state.shuffle}`);
+    else if (cmd === 'repeat') r = await api('PUT', `/me/player/repeat?state=${['off', 'context', 'track'][Number.isFinite(arg) ? arg % 3 : ((state.repeat || 0) + 1) % 3]}`);
+    else if (cmd === 'play' && arg?.uri) { if (arg.shuffle) await api('PUT', '/me/player/shuffle?state=true'); r = await api('PUT', '/me/player/play', /^spotify:(playlist|album|artist|show|collection)/.test(arg.uri) ? { context_uri: arg.uri }
       : arg.ctx && !/^spotify:collection/.test(arg.ctx) ? { context_uri: arg.ctx, offset: { uri: arg.uri } } : { uris: [arg.uri] }); }
     else if (cmd === 'heart' && cur) {
-      const r = await api(cur.liked ? 'DELETE' : 'PUT', '/me/library?uris=' + encodeURIComponent(cur.uri));
+      r = await api(cur.liked ? 'DELETE' : 'PUT', '/me/library?uris=' + encodeURIComponent(cur.uri));
       if (r && r.status < 300) cur.liked = !cur.liked;
     }
-    kick(250);
+    // An idle iPhone stops being Spotify's active device (404): hand playback back to it once, then try again.
+    if (r?.status === 404 && lastDevice && !retried && cmd !== 'heart') {
+      const t = await api('PUT', '/me/player', { device_ids: [lastDevice] });
+      if (t && t.status < 300) { await new Promise(res => setTimeout(res, 400)); return control(cmd, arg, true); }
+    }
+    const failed = (r && r.status >= 400) || (!r && Date.now() < backoff);
+    if (r && r.status >= 400) {
+      window.notice?.(refusal(r), 6000);
+      window.cloudPing?.('control-fail', `${cmd} ${r.status} ${r.json?.error?.reason || ''}`);
+    } else if (failed) window.notice?.(`Spotify is rate-limiting this app - try again in ${Math.ceil((backoff - Date.now()) / 1000)} s`);
+    if (failed) window.controlFailed?.(); // the screen already showed the change: undo it
+    kick(failed ? 0 : 250);
   }
 
   function setWanted(w) {
@@ -225,27 +285,43 @@ const Web = (() => {
   }
 
   return {
-    login, logout, onAuth, control, setWanted, loggedIn, list, act,
+    login, logout, onAuth, control, setWanted, loggedIn, list, act, redirect: REDIRECT,
+    busy: () => busy || !!pending,
     userId: () => (loggedIn() ? tok.uid ?? null : null),
-    refreshUserId: async () => { if (loggedIn() && !tok.uid) { const r = await api('GET', '/me'); if (r?.json?.id) { tok.uid = r.json.id; save(); } } },
+    refreshUserId: async () => { if (loggedIn() && !tok.name) { const r = await api('GET', '/me'); if (r?.json?.id) { tok.uid = r.json.id; tok.name = r.json.display_name || r.json.id; save(); } } },
     onMessage: f => { out = f; },
-    status: () => status || (loggedIn() ? (state.device ? `Signed in · ${state.device}` : 'Signed in') : 'Not signed in'),
+    // Signed in: who, and where it plays. Otherwise the last sign-in message.
+    status: () => loggedIn() ? `Signed in${tok.name ? ` as ${tok.name}` : ''}${state.device ? ` · playing on ${state.device}` : ''}` : status || 'Not signed in',
   };
 })();
+window.Web = Web; // a top-level const is not a window property: settings.js reads window.Web
 
 // LRCLIB fallback on the phone (same search strategy as the bridge: artist spellings differ between catalogues).
 const Lrclib = (() => {
   const withEnds = lines => lines.map((l, i) => ({ ...l, e: lines[i + 1]?.t ?? l.t + 5000 }));
+  // Spotify titles carry suffixes LRCLIB's don't: "Song - Remastered 2011", "Song (feat. X)", "Song [Live]".
+  const bare = s => String(s || '').replace(/\s*[([][^)\]]*[)\]]/g, '').replace(/\s+-\s+.*$/, '').trim() || String(s || '');
   async function get(t) {
-    const dur = (t.dur || 0) / 1000, first = (t.artist || '').split(',')[0];
-    const search = q => fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`).then(x => x.ok ? x.json() : []).catch(() => []);
-    let hits = await search(`${t.title} ${first}`);
-    if (!hits.length) hits = await search(t.title || '');
-    if (dur) hits = hits.filter(h => Math.abs(h.duration - dur) < 5);
+    // a1: the first artist as Spotify lists it ("Tyler, The Creator" has a comma of its own)
+    const dur = (t.dur || 0) / 1000, first = t.a1 || (t.artist || '').split(',')[0].trim();
+    const json = (u, none) => { const c = new AbortController(), k = setTimeout(() => c.abort(), 6000); // a stuck request gives up
+      return fetch(u, { signal: c.signal }).then(x => x.ok ? x.json() : none).catch(() => none).finally(() => clearTimeout(k)); };
+    const search = q => json(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`, []).then(h => Array.isArray(h) ? h : []);
+    // Exact match first (title + artist + album + length, LRCLIB's own lookup), then searches from strict to loose.
+    const exact = dur ? await json(`https://lrclib.net/api/get?${new URLSearchParams({ track_name: t.title || '', artist_name: first, album_name: t.album || '', duration: Math.round(dur) })}`, null) : null;
+    let hits = exact?.id ? [exact] : await search(`${t.title} ${first}`);
+    if (!hits.length && bare(t.title) !== t.title) hits = await search(`${bare(t.title)} ${first}`);
+    if (!hits.length) hits = await search(bare(t.title));
+    // Synced lyrics must match the length closely; plain text can be a little further off (another edit of the song).
+    if (dur) hits = hits.filter(h => Math.abs(h.duration - dur) < (h.syncedLyrics ? 5 : 8));
     const r = hits.sort((a, b) => !!b.syncedLyrics - !!a.syncedLyrics || Math.abs(a.duration - dur) - Math.abs(b.duration - dur))[0];
+    if (r?.instrumental) return { kind: 'static', lines: [{ s: '♪ Instrumental' }], writers: [], source: 'LRCLIB' };
     if (r?.syncedLyrics) {
-      const lines = r.syncedLyrics.split('\n').map(s => s.match(/^\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)/))
-        .filter(Boolean).map(([, mm, ss, s]) => ({ t: Math.round((+mm * 60 + +ss) * 1000), s }));
+      // A repeated line can carry several times: "[00:12.00][01:30.00]text" is one line at each time.
+      const lines = r.syncedLyrics.split('\n').flatMap(s => {
+        const m = /^((?:\[\d+:\d+(?:\.\d+)?\])+)\s*(.*)/.exec(s);
+        return m ? [...m[1].matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)].map(([, mm, ss]) => ({ t: Math.round((+mm * 60 + +ss) * 1000), s: m[2] })) : [];
+      }).sort((a, b) => a.t - b.t);
       return { kind: 'line', lines: withEnds(lines), writers: [], source: 'LRCLIB' };
     }
     if (r?.plainLyrics) return { kind: 'static', lines: r.plainLyrics.split('\n').map(s => ({ s })), writers: [], source: 'LRCLIB' };

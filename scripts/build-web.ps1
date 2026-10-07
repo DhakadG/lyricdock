@@ -28,15 +28,16 @@ $head = @(
 ) -join "`n"
 $html = Get-Content "$dist\index.html" -Raw
 if ($html -notmatch '</head>' -or $html -notmatch '</body>') { throw 'index.html: no </head> / </body>' }
-$html = $html.Replace('</head>', "$head`n</head>").Replace('</body>', "<script src=`"install.js`"></script>`n</body>")
+$html = $html.Replace('</head>', "$head`n</head>").Replace('</body>', "<script src=`"install.js`"></script><script src=`"mini.js`"></script>`n</body>")
 Set-Content "$dist\index.html" $html -NoNewline
 
 (Get-Content "$dist\shim.js" -Raw).Replace('__VERSION__', $version) | Set-Content "$dist\shim.js" -NoNewline
 # The service worker's cache is named by version + a hash of every file, so any redeploy (even of the same version)
 # reaches open tabs and installed apps.
 $sha = [System.Security.Cryptography.SHA256]::Create()
-$all = Get-ChildItem $dist -Recurse -File | Where-Object Name -ne 'sw.js' | Sort-Object FullName | ForEach-Object { [IO.File]::ReadAllBytes($_.FullName) }
-$hash = -join ($sha.ComputeHash([byte[]]($all | ForEach-Object { $_ })) | Select-Object -First 4 | ForEach-Object { $_.ToString('x2') })
+$all = [IO.MemoryStream]::new() # every file's bytes in order (piping them as [byte[]] went byte by byte: minutes)
+Get-ChildItem $dist -Recurse -File | Where-Object Name -ne 'sw.js' | Sort-Object FullName | ForEach-Object { $b = [IO.File]::ReadAllBytes($_.FullName); $all.Write($b, 0, $b.Length) }
+$hash = -join ($sha.ComputeHash($all.ToArray()) | Select-Object -First 4 | ForEach-Object { $_.ToString('x2') })
 (Get-Content "$dist\sw.js" -Raw).Replace('__VERSION__', "$version-$hash") | Set-Content "$dist\sw.js" -NoNewline
 $files = Get-ChildItem $dist -Recurse -File | Where-Object { $_.Name -notin 'sw.js', '_headers' } |
   ForEach-Object { $_.FullName.Substring($dist.Length + 1).Replace('\', '/') } |

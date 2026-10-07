@@ -41,13 +41,16 @@ function art(url) {
 }
 
 // ---- background
-let kw = null;
+let kw = null, glLost = false;
+// The GPU can drop the WebGL context (driver reset, a laptop waking from sleep): stop drawing, rebuild once it's back.
+$('bgc').addEventListener('webglcontextlost', e => { e.preventDefault(); glLost = true; kw?.stop(); kw = null; kwSrc = null; });
+$('bgc').addEventListener('webglcontextrestored', () => { glLost = false; apply('bg'); });
 // Half the CSS-pixel size (a quarter of the device's): identical under this much blur, and it's what lets the
 // phone's GPU (Adreno 505) hold 60fps - full size ran the whole app at 32-42fps.
 // Settings -> Performance -> Background resolution (default 0.5).
 function sizeBg() { const c = $('bgc'); c.width = Math.round(innerWidth * S.bgRes); c.height = Math.round(innerHeight * S.bgRes); kw?.resize(); }
 function kawarp() {
-  if (kw || !window.Kawarp) return kw;
+  if (kw || !window.Kawarp || glLost) return kw;
   try {
     kw = new Kawarp($('bgc'), { animationSpeed: S.bgSpeed, warpIntensity: S.bgWarp, blurPasses: S.bgBlur, saturation: S.bgSaturation,
       tintIntensity: 0, dithering: 0.008, transitionDuration: S.bgFade, scale: 1 });
@@ -460,6 +463,7 @@ function decideSource() {
   for (const m of [s.track && { ...s.track, dir: 1 }, s.preload, s.pos]) if (m) handle(m);
 }
 setInterval(decideSource, 1000);
+decideSource(); // a saved sign-in starts polling now, not a second in
 
 function handle(m) {
   if (m.type === 'track') onTrack(m);
@@ -470,6 +474,7 @@ function handle(m) {
   else if (m.type === 'audio') onAudio(m);
   else if (m.type === 'hello') { // bridge (re)connected: desktop-side settings + presets
     if (Settings.fresh && !P.gotHello && m.last) Settings.load(m.last);
+    try { localStorage.setItem('dock:pcSeen', '1'); } catch (e) {} // install.js: this screen uses Spotify on a computer
     Settings.setPresets(m.presets);
     P.gotHello = true;
     send({ type: 'schema', schema: Settings.schema(), S, builtins: Settings.BUILTIN, defaults: Settings.defaults }); // lets Spotify's LyricDock panel render these settings
@@ -483,7 +488,7 @@ function handle(m) {
   else if (['list', 'album', 'acted', 'canvas'].includes(m.type)) window.onExtra?.(m);
   else if (m.type === 'browse') window.dockBrowse?.(m.uri);
   else if (m.type === 'wake') window.dockWake?.();
-  else if (m.type === 'update') { P.update = m; Settings.render(); if (m.state === 'installing') notice(`Updating LyricDock to v${m.version}…`, 6000); }
+  else if (m.type === 'update') { P.update = m; Settings.render(); if (m.state === 'installing') notice(`Updating LyricDock${m.version ? ` to v${m.version}` : ''}…`, 6000); }
 }
 
 // ---- automatic pairing by Spotify account: listen while signed in; a desktop asking shows the Allow prompt.
@@ -510,10 +515,10 @@ if (window.lastCrash) {
 // Native call first: a broken settings render must never stop the app from updating (that's how fixes arrive).
 window.checkUpdate = install => { P.update = { state: 'checking' }; try { Dock.setChannel(S.channel); } catch (e) {} try { Dock.checkUpdate(!!install); } catch (e) {} try { Settings.render(); } catch (e) {} };
 window.updateStatus = () => {
-  const u = P.update, v = `v${appVersion || '?'}`;
+  const u = P.update, v = `v${appVersion || '?'}`, nv = u?.version ? `v${u.version}` : 'a new version'; // the web knows no number
   if (!u) return v;
-  return { checking: `${v} · checking…`, current: `${v} · up to date`, available: `${v} · v${u.version} available`,
-    installing: `${v} · installing v${u.version}…`, error: `${v} · update check failed (${u.version})` }[u.state] ?? v;
+  return { checking: `${v} · checking…`, current: `${v} · up to date`, available: `${v} · ${nv} available`,
+    installing: `${v} · installing ${nv}…`, error: `${v} · update check failed (${u.version})` }[u.state] ?? v;
 };
 const autoUpdate = () => S.autoUpdate && checkUpdate(true);
 setTimeout(autoUpdate, 15000);           // shortly after start
@@ -547,7 +552,7 @@ const newer = (a, b) => { const x = String(a).split('.').map(Number), y = String
 async function pollVersion() {
   try {
     const v = await (await fetch(VERSION_URL, { cache: 'no-store' })).json();
-    const want = S.channel === 'beta' && v.beta && newer(v.beta, v.version) ? v.beta : v.version;
+    const want = S.channel === 'beta' && !window.LYRICDOCK_WEB && v.beta && newer(v.beta, v.version) ? v.beta : v.version; // betas aren't deployed to the web
     if (appVersion && want && newer(want, appVersion) && P.update?.state !== 'installing' && Date.now() - lastPing > 60000) { lastPing = Date.now(); checkUpdate(true); }
   } catch (e) {} // offline: next round
 }
@@ -575,14 +580,18 @@ window.showUi = on => {
 // The controls appear on a tap, not on every touch: scrolling the lyrics or swiping must not pop them up. A tap on a lyric line
 // seeks (Settings -> Tap a line to jump to it) instead; the cover handles its own taps (features.js).
 document.addEventListener('click', e => {
-  if (!Gesture.tap() || e.target.closest?.('#settings, #qpanel, #listPanel, #pairAsk, #news, #setup')) return;
-  if (document.body.classList.contains('art-ctl') && e.target.closest?.('#artbox') && !e.target.closest('#ctl')) return;
+  if (!Gesture.tap() || e.target.closest?.('#settings, #qpanel, #listPanel, #pairAsk, #news, #setup, #installChip')) return;
+  // The cover: a finger's tap is swipe.js's (it waits for a double tap); a mouse click toggles the controls here.
+  if (document.body.classList.contains('art-ctl') && e.target.closest?.('#artbox') && !e.target.closest('#ctl, button'))
+    return Gesture.touch() ? undefined : showUi(!document.body.classList.contains('ui'));
   const onLine = S.tapSeek && e.target.closest?.('#lyrics:not(.static) .ln:not(.dots):not(.credits):not(.skel):not(.empty)');
   if (onLine && !document.body.classList.contains('ui')) return;
   showUi(true); // (buttons inside the controls just keep them up)
 }, true);
 // Commands go to whichever source is on screen.
 const control = (c, arg) => P.source === 'web' ? Web.control(c, arg) : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
+// Spotify refused a command (spotify.js): drop the optimistic state so its next answer puts the screen back.
+window.controlFailed = () => { P.skip = null; P.optimistic = 0; P.swipeWait = 0; P.lockUntil = 0; P.seekUntil = 0; P.volLock = 0; };
 const cmd = (c, dir) => { control(c); if (dir) { P.dir = dir; P.dirAt = performance.now(); } };
 // ---- cover swipe (swipe.js): the songs on either side, and committing a swipe of 1-3 songs.
 // Next: the preloaded song, then the queue (fetched on every song change). Previous: what this phone showed before.
@@ -678,7 +687,14 @@ $('heart').onclick = () => {
   control('heart');
 };
 // Volume (both sources report 0-100). Ignore reports for a moment after dragging so it doesn't jump back.
-$('vol').addEventListener('input', () => { P.volLock = performance.now() + 2000; control('volume', +$('vol').value); });
+// A drag fires dozens of inputs a second: send at most one every 300 ms (the last value always goes), or Spotify's
+// rate limit trips and every command after it is dropped.
+let volT = 0, volAt = 0;
+$('vol').addEventListener('input', () => {
+  P.volLock = performance.now() + 2000;
+  clearTimeout(volT);
+  volT = setTimeout(() => { volAt = performance.now(); control('volume', +$('vol').value); }, Math.max(0, volAt + 300 - performance.now()));
+});
 $('gear').onclick = () => Settings.open();
 $('sclose').onclick = () => Settings.close();
 $('settings').addEventListener('click', e => { if (e.target.id === 'settings') Settings.close(); }); // tap outside the sheet
@@ -715,7 +731,8 @@ refreshIp();
 setInterval(refreshIp, 10000);
 setInterval(() => {
   send({ type: 'alive', ip: myIp, code: Rtc.code, name: phoneModel });
-  if (!P.id) $('artist').textContent = `In Spotify: LyricDock button → Devices → Find devices  ·  code ${Rtc.code}`;
+  // The computer-pairing hint, unless this screen follows a Spotify account (then it's just waiting for a song).
+  if (!P.id) $('artist').textContent = S.source === 'web' || Web.loggedIn() ? '' : `In Spotify: LyricDock button → Devices → Find devices  ·  code ${Rtc.code}`;
 }, 1000);
 
 // ---- settings + presets live on the desktop too (Spicetify LocalStorage), so a new phone starts configured.

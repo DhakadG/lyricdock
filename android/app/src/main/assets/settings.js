@@ -4,6 +4,7 @@ const Settings = (() => {
   // Every setting: `desc` is the one-liner under the label, `help` the longer explanation behind the ⓘ button
   // (tap on the phone, hover in Spotify's panel). Defaults here ARE the shipped default config ("Reset all").
   const dyn = s => s.bg === 'dynamic' || s.bg === 'artist';
+  const app = !window.LYRICDOCK_WEB; // the Android app (the web shim sets LYRICDOCK_WEB before this runs): phone-only rows
   const SCHEMA = [
     { group: 'Layout', icon: 'layout', cat: 'View', desc: 'Where the cover, title, controls and lyrics sit, and which gestures work.' },
     { type: 'custom', render: () => window.layoutGrid?.() }, // the layout picker: a sketch of every layout (features.js)
@@ -103,7 +104,7 @@ const Settings = (() => {
       type: 'choice', def: 'smart', opts: [['smart', 'Smart (keep Hindi)'], ['always', 'Always'], ['off', 'Original script']],
       help: 'Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization.' },
     { k: 'size', label: 'Text size', type: 'range', min: 0.6, max: 1.6, step: 0.05, def: 1, unit: '×', help: 'Lyrics size. Layouts scale from this (TV and Cinema are bigger).' },
-    { k: 'font', label: 'Font', type: 'choice', def: 'Inter', opts: [['Inter', 'Inter (Apple-style, default)'], ['system', 'System (Roboto)'], ['Outfit', 'Outfit'], ['Manrope', 'Manrope'], ['DM Sans', 'DM Sans'], ['Plus Jakarta Sans', 'Plus Jakarta Sans'], ['Space Grotesk', 'Space Grotesk'], ['Sora', 'Sora'], ['Lexend', 'Lexend'], ['Poppins', 'Poppins'], ['Playfair Display', 'Playfair Display (serif)'], ['Lora', 'Lora (serif)'], ['JetBrains Mono', 'JetBrains Mono']],
+    { k: 'font', label: 'Font', type: 'choice', def: 'Inter', opts: [['Inter', 'Inter (Apple-style, default)'], ['system', 'System font'], ['Outfit', 'Outfit'], ['Manrope', 'Manrope'], ['DM Sans', 'DM Sans'], ['Plus Jakarta Sans', 'Plus Jakarta Sans'], ['Space Grotesk', 'Space Grotesk'], ['Sora', 'Sora'], ['Lexend', 'Lexend'], ['Poppins', 'Poppins'], ['Playfair Display', 'Playfair Display (serif)'], ['Lora', 'Lora (serif)'], ['JetBrains Mono', 'JetBrains Mono']],
       help: 'Typeface for lyrics and titles. Inter is the closest free match to Apple\'s San Francisco (Apple Music\'s lyrics font, which Apple only licenses for its own devices). Anything but System downloads once from Google Fonts and is then cached; scripts a font lacks (Devanagari, Gurmukhi…) fall back to the system font.' },
     { k: 'weight', label: 'Text weight', type: 'choice', def: '800', opts: [['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extra bold'], ['900', 'Black']],
       help: 'Thickness of the lyrics font.' },
@@ -162,19 +163,19 @@ const Settings = (() => {
     { k: 'nightDim', label: 'Night dimming', type: 'range', min: 0, max: 0.85, step: 0.05, def: 0.5, when: s => s.night, help: 'How much darker everything gets at night.' },
     { k: 'nightWarm', label: 'Night warmth', type: 'range', min: 0, max: 1, step: 0.05, def: 0.4, when: s => s.night, help: 'Amber tint at night (less blue light).' },
     { k: 'burnIn', label: 'Burn-in protection', type: 'toggle', def: true, help: 'AMOLED screens can keep a ghost of things that never move. This shifts the layout by a few pixels every few minutes: invisible, but it spreads the wear.' },
-    { k: 'bright', label: 'Brightness', type: 'choice', def: 'system', opts: [['system', 'Follow Android'], ['fixed', 'Fixed'], ['schedule', 'Day / night schedule']],
+    { k: 'bright', label: 'Brightness', type: 'choice', def: 'system', when: () => app, opts: [['system', 'Follow Android'], ['fixed', 'Fixed'], ['schedule', 'Day / night schedule']],
       help: 'Fixed: always the level below. Day / night: the day level, and the night level between the night hours (Night starts / ends at). Only LyricDock\'s window changes, not the system setting.' },
-    { k: 'brightDay', label: 'Day brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.8, when: s => s.bright !== 'system', help: 'Screen brightness while LyricDock is open (Fixed), or during the day (schedule).' },
-    { k: 'brightNight', label: 'Night brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.15, when: s => s.bright === 'schedule', help: 'Screen brightness between the night hours.' },
-    { k: 'volKeys', label: 'Volume buttons control Spotify', type: 'toggle', def: true, help: 'The phone\'s volume buttons change Spotify\'s volume (5% per press) instead of the phone\'s.' },
-    { k: 'mediaNotif', label: 'Media notification', type: 'toggle', def: true, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
-    { k: 'lockLyric', label: 'Lyrics on the lock screen', desc: 'The line being sung, in the lock-screen player', type: 'toggle', def: true, when: s => s.mediaNotif,
+    { k: 'brightDay', label: 'Day brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.8, when: s => app && s.bright !== 'system', help: 'Screen brightness while LyricDock is open (Fixed), or during the day (schedule).' },
+    { k: 'brightNight', label: 'Night brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.15, when: s => app && s.bright === 'schedule', help: 'Screen brightness between the night hours.' },
+    { k: 'volKeys', label: 'Volume buttons control Spotify', type: 'toggle', def: true, when: () => app, help: 'The phone\'s volume buttons change Spotify\'s volume (5% per press) instead of the phone\'s.' },
+    { k: 'mediaNotif', label: 'Media notification', type: 'toggle', def: true, when: () => app, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
+    { k: 'lockLyric', label: 'Lyrics on the lock screen', desc: 'The line being sung, in the lock-screen player', type: 'toggle', def: true, when: s => app && s.mediaNotif,
       help: 'The lock screen and notification player show the current lyric line under the song title (instead of the artist), line by line.' },
-    { k: 'lockShow', label: 'Show over the lock screen while playing', type: 'toggle', def: false,
+    { k: 'lockShow', label: 'Show over the lock screen while playing', type: 'toggle', def: false, when: () => app,
       help: 'While music plays, LyricDock itself shows over the lock screen with full word-synced lyrics - no unlocking. The lock screen comes back when playback stops.' },
-    { k: 'widgetAccent', label: 'Widget colours from the cover', type: 'toggle', def: true,
+    { k: 'widgetAccent', label: 'Widget colours from the cover', type: 'toggle', def: true, when: () => app,
       help: 'Home-screen widgets tint the sung line with the colour picked from the album art. Off: white. Add widgets from your home screen: long-press -> Widgets -> LyricDock.' },
-    { k: 'battery', label: 'Battery indicator', type: 'toggle', def: false, help: 'Shows the phone\'s battery level and whether it is charging, in a corner (handy for a kiosk dock).' },
+    { k: 'battery', label: 'Battery indicator', type: 'toggle', def: false, when: () => app || !!navigator.getBattery, help: 'Shows the phone\'s battery level and whether it is charging, in a corner (handy for a kiosk dock).' },
     { k: 'battStyle', label: 'Battery style', type: 'choice', def: 'in', when: s => s.battery, opts: [['in', 'Icon with the % inside'], ['out', 'Icon with the % beside it'], ['ring', 'Ring with the % inside'], ['bar', 'Thin bar'], ['text', '% only']],
       help: 'How the battery is drawn. It turns green while charging and red below 20 %.' },
     { k: 'timeStyle', label: 'Time of day', desc: 'Shows the current time in any layout', type: 'choice', def: 'off', opts: [['off', 'Off'], ['small', 'Small text'], ['pill', 'Glass pill'], ['big', 'Big and light']],
@@ -229,7 +230,7 @@ const Settings = (() => {
       help: 'Animated covers saved on the phone (see Now playing -> Keep animated covers). Cleared covers stream again next time.' },
     { label: 'Lyrics', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('lyrics'), info: () => window.dockStorage?.text('lyrics') ?? '',
       help: 'Lyrics of the last 500 songs, so a replay (or no internet) shows them instantly.' },
-    { label: 'Images & web cache', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('web'), info: () => window.dockStorage?.text('web') ?? '',
+    { label: 'Images & web cache', type: 'action', when: () => app, text: () => 'Clear', run: () => window.dockStorage?.clear('web'), info: () => window.dockStorage?.text('web') ?? '',
       help: 'Still covers, artist pictures and other downloads the app keeps (the WebView cache). They download again when needed.' },
     { label: 'Everything', type: 'action', text: () => 'Clear all', run: () => window.dockStorage?.clear('all'), info: () => window.dockStorage?.text('total') ?? '',
       help: 'Clears all of the above. Your settings stay.' },
@@ -239,41 +240,35 @@ const Settings = (() => {
       desc: 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
       opts: [['auto', 'Auto'], ['bridge', 'Desktop (Spicetify)'], ['web', 'Spotify account']],
       help: 'Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify\'s Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise.' },
-    { k: 'spClientId', label: 'Spotify Client ID', type: 'text', def: '', placeholder: '32 hex characters',
-      desc: 'From developer.spotify.com - redirect URI http://127.0.0.1:8976/callback. No client secret needed.',
-      help: 'developer.spotify.com/dashboard → Create app → Web API, redirect URI http://127.0.0.1:8976/callback → copy the Client ID. Development mode allows 5 users; the app owner needs Premium.' },
+    // Signing in goes through the setup screen: the dashboard link, the redirect URI and the errors live there.
     { label: 'Spotify account', type: 'action', text: () => (window.Web?.loggedIn() ? 'Sign out' : 'Sign in'),
-      run: () => {
-        if (Web.loggedIn()) return Web.logout();
-        if (!/^[0-9a-f]{32}$/.test((S.spClientId || '').trim())) {
-          window.notice?.('Add your Spotify Client ID first (tap the i next to it for how)', 5000);
-          const r = document.querySelector('#settings [data-row="spClientId"]');
-          r?.scrollIntoView({ block: 'center', behavior: 'smooth' }); r?.classList.add('flash'); setTimeout(() => r?.classList.remove('flash'), 1600);
-          r?.querySelector('input')?.focus();
-          return;
-        }
-        Web.login();
-      }, info: () => window.Web?.status() ?? '',
-      help: 'Signs in on this phone (you type your password into Spotify\'s own page). Also lets Spotify on your computer find this phone without a code.' },
+      run: () => { if (Web.loggedIn()) return Web.logout(); Settings.close(); window.Setup?.open('web'); },
+      info: () => window.Web?.status() ?? '',
+      help: 'Signs in on this screen (you type your password into Spotify\'s own page). Also lets Spotify on your computer find this screen without a code.' },
+    { k: 'spClientId', label: 'Spotify Client ID', type: 'text', def: '', placeholder: '32 hex characters', when: () => !window.Web?.loggedIn(),
+      desc: `From developer.spotify.com - redirect URI ${window.LYRICDOCK_WEB ? location.origin : 'http://127.0.0.1:8976'}/callback. No client secret needed.`,
+      help: 'developer.spotify.com/dashboard → Create app → Web API, add the redirect URI above → copy the Client ID. Development mode allows 5 users (added by email under User Management); the app owner needs Premium.' },
 
     { group: 'Presets', icon: 'layers', cat: 'Source', desc: 'Built-in looks and your own, saved on the computer so every phone can use them.' },
     { label: 'Export / import', type: 'io', help: 'Export copies all settings (without API keys) as text you can paste into another phone. Import applies settings pasted here. Spotify\'s LyricDock panel can export and import files too.' },
     { label: 'Presets', type: 'presets', help: 'Built-in: Default (the shipped config), Smooth (for slow phones) and Full Spicy (every effect up). Your own presets are stored in Spotify on the computer.' },
 
     { group: 'Updates', icon: 'download', cat: 'Ops', desc: 'Automatic updates, the beta channel and release notes.' },
-    { k: 'channel', label: 'Update channel', type: 'choice', def: 'stable', opts: [['stable', 'Stable'], ['beta', 'Beta (pre-releases)']],
+    { k: 'channel', label: 'Update channel', type: 'choice', def: 'stable', when: () => app, opts: [['stable', 'Stable'], ['beta', 'Beta (pre-releases)']],
       help: 'Beta installs pre-releases as soon as they are published (they may have rough edges). Android cannot install an older version over a newer one, so going back from beta to stable waits for the next stable release.' },
-    { k: 'autoUpdate', label: 'Update automatically', desc: 'New versions from GitHub Releases install on their own', type: 'toggle', def: true,
+    { k: 'autoUpdate', label: 'Update automatically', desc: app ? 'New versions from GitHub Releases install on their own' : 'New versions load on their own', type: 'toggle', def: true,
       help: 'Checks GitHub Releases shortly after start and every 6 hours. In kiosk mode updates install silently; otherwise Android asks once.' },
-    { label: 'Reopen by itself', type: 'action', text: () => { try { return Dock.canReopen() ? 'On' : 'Turn on'; } catch (e) { return 'Turn on'; } },
+    { label: 'Reopen by itself', type: 'action', when: () => app, text: () => { try { return Dock.canReopen() ? 'On' : 'Turn on'; } catch (e) { return 'Turn on'; } },
       run: () => { try { Dock.askReopen(); } catch (e) {} },
       info: () => { try { return Dock.canReopen() ? 'The dock comes back by itself after an update or a crash' : 'Off - after an update you get a "tap to reopen" notification'; } catch (e) { return ''; } },
       help: 'Android does not let an app open itself from the background, so after an update (or a crash) the dock could stay closed. Allowing LyricDock to "display over other apps" lets it come straight back. Opens Android\'s switch for it.' },
     { label: 'Install as an app', type: 'action', text: () => 'Install', run: () => window.lyricdockInstall?.() || window.notice?.('Use your browser menu: Install app / Add to Home Screen'),
       when: () => !!window.LYRICDOCK_WEB && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches,
       help: 'Puts LyricDock in its own window with an icon, like a normal app, and opens it full screen.' },
-    { label: 'Full screen', type: 'action', text: () => 'Go full screen', run: () => window.lyricdockFullscreen?.(), when: () => !!window.LYRICDOCK_WEB && !!document.documentElement.requestFullscreen,
+    { label: 'Full screen', type: 'action', text: () => 'Go full screen', run: () => window.lyricdockFullscreen?.(), when: () => !!window.LYRICDOCK_WEB && !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
       help: 'Hides the browser bars until you press Esc (or swipe on a phone).' },
+    { label: 'Miniplayer', type: 'action', text: () => 'Open', run: () => window.lyricdockMini?.(), when: () => !!window.lyricdockMini?.supported,
+      help: 'A small always-on-top window with the cover, the line being sung and the controls. Also: press M.' },
     { label: 'LyricDock app', type: 'action', text: () => 'Check now', run: () => window.checkUpdate?.(true), info: () => window.updateStatus?.() ?? '',
       help: 'Check for a new version now and install it if there is one.' },
     { label: 'Changelog', type: 'action', text: () => 'What\'s new', run: () => window.showChangelog?.(), help: 'Release notes for this and earlier versions, from GitHub.' },
@@ -281,9 +276,9 @@ const Settings = (() => {
     { group: 'Connection', icon: 'link', cat: 'Ops', desc: 'How the phone and Spotify find each other: pairing, signalling server, TURN, kiosk mode.' },
     { label: 'Status', type: 'custom', render: () => window.connCard?.() },
     { label: 'Setup guide', type: 'action', text: () => 'Open', desc: 'The first-run screen: sign in with Spotify or connect Spotify on your computer.', run: () => { Settings.close(); window.Setup?.open(); } },
-    { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
+    { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', when: () => app, opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
       help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer\'s internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection.' },
-    { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'ntfy.sh (public)'], ['custom', 'My own ntfy server'], ['helper', 'LyricDock Helper on my PC']],
+    { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'ntfy.sh (public)'], ['custom', 'My own ntfy server'], ...(app ? [['helper', 'LyricDock Helper on my PC']] : [])], // an https page can't reach the helper
       help: 'Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). ntfy.sh is free and public. My own ntfy server: any self-hosted ntfy (https address). LyricDock Helper: the helper app runs a tiny relay on your PC and nothing leaves your network - type your PC\'s IP address below. Spotify takes this setting from the phone.' },
     { k: 'relayUrl', label: 'Server address', type: 'text', def: '', placeholder: 'https://ntfy.example.com  or  192.168.1.20', when: s => s.relay !== 'ntfy',
       help: 'My own ntfy server: its https:// address (Spotify only allows https). LyricDock Helper: the IPv4 address of the PC running the helper (shown on its Dashboard).' },

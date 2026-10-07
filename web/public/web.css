@@ -14,3 +14,15 @@
 #installChip button { flex: none; border: 0; border-radius: 10px; font: inherit; cursor: pointer; }
 #installChip .go { padding: 8px 14px; background: rgb(var(--acc, 30, 215, 96)); color: #000; font-weight: 650; }
 #installChip .later { width: 32px; height: 32px; background: rgba(255, 255, 255, .08); color: #fff; }
+
+/* Mouse and trackpad: things that can be clicked say so, and react to hover (touch screens skip this). */
+button, a, summary, label, input[type=range], [data-list], [data-a], #tlhit, #bar, #heart { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  #ctl button:hover, #gear:hover, #lists button:hover { filter: brightness(1.25); }
+  /* Moving the mouse shows the controls (install.js); once they fade, the cursor goes too, like a video player. */
+  body:not(.ui):not(.settings-open):not(.lists-open):not(.qs-open):not(.news-open):not(.pair-ask) { cursor: none; }
+}
+/* Keyboard: a visible ring on whatever has focus (style.css turns outlines off for the phone). */
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, summary:focus-visible {
+  outline: 2px solid rgb(var(--acc, 255, 255, 255)) !important; outline-offset: 2px;
+}

@@ -1,39 +1,35 @@
-// admin.lyricdock.losthusky.qzz.io: dashboard + its JSON API. Locked unless the ADMIN_PASSWORD secret is set.
+// admin.lyricdock.losthusky.qzz.io: dashboard + its JSON API. With ADMIN_SSO "on": the shared Google sign-in
+// (auth.losthusky.qzz.io, ../../auth/sso.js), only for the ADMIN_EMAILS listed in wrangler.jsonc; otherwise ADMIN_PASSWORD.
 // Metrics come from Analytics Engine (needs the CF_API_TOKEN secret), the index and cache from KV + R2.
-// Login sets a signed, HttpOnly cookie valid 7 days.
 
 import { config, setConfig, getAlbum, promote, demote, setPin, maintain, aeQuery, listAll, DEFAULTS } from './store.js';
 import { fetchAlbum } from './apple.js';
+import { AUTH, session, signIn, isAllowed } from '../../auth/sso.js';
 import DASH from './admin.html';
 
 const html = (s, status = 200) => new Response(s, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY' } });
 const json = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 const enc = new TextEncoder();
 
-async function sign(env, msg) {
-  const k = await crypto.subtle.importKey('raw', enc.encode(`ld-session:${env.ADMIN_PASSWORD}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(msg))))).replace(/=+$/, '');
-}
 // Scripts / tests: "Authorization: Bearer <ADMIN_API_TOKEN>" when that optional secret is set.
 const bearer = async (req, env) => !!env.ADMIN_API_TOKEN && await sameSecret((req.headers.get('authorization') || '').replace(/^Bearer /, ''), env.ADMIN_API_TOKEN);
-async function authed(req, env) {
-  if (await bearer(req, env)) return true;
-  const c = /(?:^|;\s*)ld_s=(\d+)\.([\w+/]+)/.exec(req.headers.get('cookie') || '');
-  return !!c && +c[1] > Date.now() && (await sign(env, c[1])) === c[2];
-}
 async function sameSecret(a, b) { // compare digests: constant time regardless of input length
   const [x, y] = await Promise.all([a, b].map(s => crypto.subtle.digest('SHA-256', enc.encode(s))));
   return crypto.subtle.timingSafeEqual(x, y);
 }
 
+// Until the shared sign-in is live (ADMIN_SSO "on" in wrangler.jsonc): the ADMIN_PASSWORD login, a signed HttpOnly
+// cookie valid 7 days.
+async function sign(env, msg) {
+  const k = await crypto.subtle.importKey('raw', enc.encode(`ld-session:${env.ADMIN_PASSWORD}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(msg))))).replace(/=+$/, '');
+}
 const LOGIN = msg => `<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>LyricDock admin</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0d10;color:#eee;font:15px system-ui}form{display:grid;gap:12px;width:min(320px,90vw)}
 input,button{font:inherit;padding:12px;border-radius:10px;border:1px solid #333;background:#18181c;color:#eee}button{background:#1ed760;color:#000;border:0;font-weight:600}p{color:#f77;margin:0}</style>
 <form method=post action=/login><h2>LyricDock admin</h2>${msg ? `<p>${msg}</p>` : ''}<input type=password name=password placeholder=Password autofocus required><button>Sign in</button></form>`;
-
-export async function admin(req, env, ctx, url) {
+async function passwordGate(req, env, p) { // a Response to send, or null = signed in
   if (!env.ADMIN_PASSWORD) return html(LOGIN('Locked: set the ADMIN_PASSWORD secret first (see docs/lyricdock-cloud.md).'), 503);
-  const p = url.pathname;
   if (p === '/login' && req.method === 'POST') {
     const pw = String((await req.formData()).get('password') || '');
     if (!(await sameSecret(pw, env.ADMIN_PASSWORD))) return html(LOGIN('Wrong password.'), 401);
@@ -41,7 +37,21 @@ export async function admin(req, env, ctx, url) {
     return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': `ld_s=${exp}.${await sign(env, exp)}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict` } });
   }
   if (p === '/logout') return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': 'ld_s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict' } });
-  if (!(await authed(req, env))) return p.startsWith('/api/') ? json({ error: 'login required' }, 401) : html(LOGIN(''));
+  if (await bearer(req, env)) return null;
+  const c = /(?:^|;\s*)ld_s=(\d+)\.([\w+/]+)/.exec(req.headers.get('cookie') || '');
+  if (c && +c[1] > Date.now() && (await sign(env, c[1])) === c[2]) return null;
+  return p.startsWith('/api/') ? json({ error: 'login required' }, 401) : html(LOGIN(''));
+}
+
+export async function admin(req, env, ctx, url) {
+  const p = url.pathname;
+  if (env.ADMIN_SSO !== 'on') { const stop = await passwordGate(req, env, p); if (stop) return stop; }
+  else if (p === '/logout') return Response.redirect(`${AUTH}/logout?rd=${encodeURIComponent(url.origin + '/')}`, 303);
+  else if (!(await bearer(req, env))) {
+    const me = await session(req);
+    if (!me) return p.startsWith('/api/') ? json({ error: 'login required' }, 401) : signIn(req);
+    if (!isAllowed(me, env.ADMIN_EMAILS)) return html(`<!doctype html><meta name=viewport content="width=device-width"><body style="font:15px system-ui;background:#0d0d10;color:#eee;display:grid;place-items:center;min-height:90vh"><p>${me.email.replace(/[<>&"]/g, '')} is not an admin. <a style="color:#1ed760" href="/logout">Switch account</a></p>`, 403);
+  }
   if (p === '/') return html(DASH);
   if (!p.startsWith('/api/')) return json({ error: 'not found' }, 404);
   if (req.method === 'POST' && req.headers.get('origin') !== url.origin && !(await bearer(req, env))) return json({ error: 'bad origin' }, 403); // CSRF

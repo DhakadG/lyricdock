@@ -3,7 +3,9 @@
 # Instant path: the self-hosted ntfy, docs/ntfy.md (see "Update ping" in android/app/src/main/assets/app.js). If ntfy refuses (down, or its free
 # daily quota), nothing is lost: docks also read extension/version.json on GitHub every 5 minutes and install from that.
 try {
-    Invoke-RestMethod -Method Post -Uri 'https://ntfy.losthusky.qzz.io/lyricdock-update-ping-v1' -Body 'update' -TimeoutSec 15 | Out-Null
+    # The gated ntfy (ntfy/src) needs its PUBLISH_TOKEN; the one deployed now is still open and takes the ping without it.
+    $h = if ($env:LYRICDOCK_PUBLISH_TOKEN) { @{ Authorization = "Bearer $env:LYRICDOCK_PUBLISH_TOKEN" } } else { @{} }
+    Invoke-RestMethod -Method Post -Uri 'https://ntfy.losthusky.qzz.io/lyricdock-update-ping-v1' -Body 'update' -Headers $h -TimeoutSec 15 | Out-Null
     Write-Host 'Update ping sent - open docks check GitHub now.'
 } catch {
     Write-Warning "ntfy did not take the ping ($($_.Exception.Message.Split("`n")[0])). Open docks still update within ~5-10 min from version.json."

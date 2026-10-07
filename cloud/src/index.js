@@ -10,7 +10,7 @@ import { admin } from './admin.js';
 import SITE from './site.html';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'range', 'Access-Control-Expose-Headers': '*' };
-const EVENTS = new Set(['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error', 'lna-granted', 'lna-denied', 'lna-prompt']);
+const EVENTS = new Set(['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error', 'lna-granted', 'lna-denied', 'lna-prompt', 'control-fail']);
 const json = (body, status = 200, cache = 'no-store') => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json', 'cache-control': cache } });
 
 export default {

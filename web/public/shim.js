@@ -1,6 +1,7 @@
 // LyricDock in a browser: stands in for the Android app's `Dock` bridge (MainActivity.java).
 // The web build (scripts/build-web.ps1) loads it before the app scripts; the phone app never ships it.
-// Every method the app calls exists here - real web APIs where there is one, a harmless answer where there isn't.
+// Real web APIs where there is one, a harmless answer where there isn't. Phone-only calls the app makes through its
+// try/catch wrapper (hasWidgets, nowPlaying, showOverLock) are left out on purpose.
 // Docs: docs/web-app.md.
 (() => {
   if (window.Dock) return;
@@ -43,8 +44,22 @@
     try { await reg.update(); } catch (e) { return toPage({ type: 'update', state: 'error', version: 'offline' }); }
     const next = reg.installing || reg.waiting;
     if (!next) return toPage({ type: 'update', state: 'current' });
-    toPage({ type: 'update', state: install ? 'installing' : 'available', version: 'new' });
-    if (install) window.lyricdockApplyUpdate?.();
+    toPage({ type: 'update', state: install ? 'installing' : 'available' }); // the new version's number isn't known here
+    if (!install) return;
+    // update() resolves while the new worker is still installing: it can only take over once it's waiting.
+    if (next.state === 'installing') await new Promise(res => next.addEventListener('statechange', () => next.state !== 'installing' && res()));
+    if (next.state === 'installed') window.lyricdockApplyUpdate?.();
+    else toPage({ type: 'update', state: 'error', version: 'install failed' });
+  }
+
+  // Optional Spicy Lyrics API (api.js), the phone's LyricsFetch.java in a browser. The browser sends an Origin header,
+  // so the key must allow this site's origin in the Spicy Lyrics developer dashboard.
+  async function fetchLyrics(id, key) {
+    if (!/^[A-Za-z0-9]{22}$/.test(id || '') || !/^sl_pk_[\w-]{8,200}$/.test(key || '')) return;
+    try {
+      const r = await fetch(`https://api.spicylyrics.org/v1/lyrics/${id}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
+      toPage({ type: 'api', id, status: r.status, text: await r.text() });
+    } catch (e) { toPage({ type: 'api', id, status: 0, text: '' }); }
   }
 
   window.Dock = {
@@ -53,6 +68,7 @@
     lastCrash: () => '',
     setChannel() {},
     checkUpdate: install => { checkUpdate(install); },
+    fetchLyrics: (id, key) => { fetchLyrics(id, key); },
     model,
     ip: () => '',
     insets() { // the browser's own safe areas (notch, home bar), read through CSS env() - same shape as the phone's

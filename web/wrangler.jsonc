@@ -1,10 +1,15 @@
-// LyricDock web app: static assets only (no Worker code - requests are free). Build first: ./scripts/build-web.ps1
+// LyricDock web app: static assets behind the shared Google sign-in (src/worker.js runs first on every request). Build first: ./scripts/build-web.ps1
 // Docs: docs/web-app.md
 {
   "$schema": "https://unpkg.com/wrangler/config-schema.json",
   "name": "lyricdock-app",
+  "main": "src/worker.js",
   "compatibility_date": "2026-09-25",
   "workers_dev": false,
   "routes": [{ "pattern": "app.lyricdock.losthusky.qzz.io", "custom_domain": true }],
-  "assets": { "directory": "./dist", "not_found_handling": "single-page-application", "html_handling": "auto-trailing-slash" }
+  // SSO: "on" puts the app behind auth.losthusky.qzz.io - only after that Worker is deployed with its secrets.
+  "vars": { "SSO": "off" },
+  // /turn: at most 10 credential requests per signed-in account per minute (src/worker.js)
+  "ratelimits": [{ "name": "TURN_LIMIT", "namespace_id": "1101", "simple": { "limit": 10, "period": 60 } }],
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true, "not_found_handling": "single-page-application", "html_handling": "auto-trailing-slash" }
 }

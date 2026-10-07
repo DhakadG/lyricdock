@@ -96,7 +96,7 @@
 
   // ---- gestures: double-tap to like, long-press the progress bar to scrub (changing songs by swiping: swipe.js,
   // on the cover / song card only - a sideways drag anywhere else does nothing)
-  const interactive = e => e.target.closest?.('button, input, #settings, #listPanel, #bar, #tl, #qs, #qpanel, #pairAsk, a');
+  const interactive = e => e.target.closest?.('button, input, #settings, #listPanel, #bar, #tl, #qs, #qpanel, #pairAsk, #setup, #news, #installChip, a');
   // Touch events, not pointer events: the WebView fires pointercancel as soon as it takes a drag for a pan.
   let down = null, lastTap = 0;
   // While the clock is up it owns every tap (seconds, double-tap to leave): no double-tap like.
@@ -120,6 +120,12 @@
       else lastTap = now2;
     } else lastTap = 0;
   }, { capture: true, passive: true });
+
+  // Mouse / trackpad: a double-click likes (touch has its own double tap above and in swipe.js).
+  addEventListener('dblclick', e => {
+    if (Gesture.touch() || clockUp() || interactive(e) || !S.doubleTapLike || !S.showLiked || e.target.closest?.('#lyrics .ln')) return;
+    $('heart').click(); heartBurst(e.clientX, e.clientY);
+  });
 
   // ---- four-finger swipe switches layouts (with a notice naming it): up / down in landscape (next / previous),
   // left / right in portrait. Four, not three: many phones take a three-finger swipe for screenshots. While more
@@ -208,6 +214,12 @@
   }, { passive: true });
   $('clockScreen').addEventListener('touchmove', e => { const t = e.touches[0]; if (lp && Math.hypot(t.clientX - lp.x, t.clientY - lp.y) > 12) clearTimeout(lp.timer); }, { passive: true });
   $('clockScreen').addEventListener('touchend', () => clearTimeout(lp?.timer), { passive: true });
+  // Mouse / trackpad: a right-click (two-finger click) swaps the colour, like the long press.
+  $('clockScreen').addEventListener('contextmenu', e => {
+    if (!$('clockScreen').classList.contains('flip')) return;
+    e.preventDefault();
+    window.notice?.(Flip.toggleTheme() === 'light' ? 'Light cards' : 'Dark cards', 1400);
+  });
   $('clockScreen').onclick = () => {
     if (performance.now() - lpAt < 800) return;
     if (S.layout === 'clock') { if (Flip.onTap() === 'dismiss') { clockDismissedAt = Date.now(); Settings.set('layout', layoutBeforeClock); } return; }
@@ -761,7 +773,7 @@
     v?.remove();
     v = Object.assign(document.createElement('video'), { id: 'cv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
     v.dataset.src = want;
-    v.oncanplay = () => v.classList.add('on');
+    v.onplaying = () => v.classList.add('on'); // shown once it really plays (iOS Low Power Mode refuses autoplay: the still cover stays)
     $('bg').after(v);
   }
   setInterval(canvasTick, 1000);
@@ -788,7 +800,8 @@
   // 'bg' (the sharp 'Animated cover' background: tall in portrait, square in landscape, sized to the screen).
   // Size asked = pixels shown x the quality setting; the cloud picks the matching Apple encode.
   const ART_API = 'https://art.lyricdock.losthusky.qzz.io/v1';
-  const HEVC = (() => { try { return MediaSource.isTypeSupported('video/mp4; codecs="hvc1.2.4.L153.B0"'); } catch (e) { return false; } })();
+  // iPhones have no MediaSource (only ManagedMediaSource) but play HEVC: ask the video element too.
+  const HEVC = (() => { try { return window.MediaSource ? MediaSource.isTypeSupported('video/mp4; codecs="hvc1.2.4.L153.B0"') : document.createElement('video').canPlayType('video/mp4; codecs="hvc1"') !== ''; } catch (e) { return false; } })();
   const DEVICE = (() => { try { let d = localStorage.getItem('dock:device'); if (!d) localStorage.setItem('dock:device', d = crypto.randomUUID()); return d; } catch (e) { return ''; } })();
   const who = () => `&hevc=${HEVC ? 1 : 0}&d=${DEVICE}&v=${encodeURIComponent(appVersion)}`;
   const QUALITY = { saver: 0.75, auto: 1, sharp: 1.5, max: 2 };
@@ -890,7 +903,7 @@
     v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
     v.dataset.src = want;
     // Fades in only once the song change has settled (app.js showArt): never pops in mid-transition.
-    v.oncanplay = () => { v.oncanplay = null; setTimeout(() => { if (v.isConnected) { v.classList.add('on'); motionTick(); } }, Math.max(0, (P.settleAt || 0) - performance.now())); };
+    v.onplaying = () => { v.onplaying = null; setTimeout(() => { if (v.isConnected) { v.classList.add('on'); motionTick(); } }, Math.max(0, (P.settleAt || 0) - performance.now())); };
     $('art').prepend(v); // first child: the controls, ripple and heart badge stay on top
   }
   const swapBase = window.afterSwap;
@@ -1004,52 +1017,99 @@
         <div><small>Find it from Spotify</small><b>LyricDock button → Devices → Find devices</b><span>${vis.network ? '✓ Visible on this network' : '… checking the network'}${vis.account ? ' · ✓ your Spotify account' : ' · sign in (Playback source) to be found anywhere'}</span></div>
         <div><small>Or type this pairing code</small><div class="cc-coderow"><b class="cc-code">${esc(Rtc.code)}</b><button class="cc-copy" type="button">Copy</button></div><span>Spotify → LyricDock → Devices → Pairing code</span></div>
       </div>`;
-    card.querySelector('.cc-copy').onclick = e => { e.stopPropagation(); copyText(Rtc.code.replace(/-/g, '')); e.target.textContent = 'Copied'; setTimeout(() => { e.target.textContent = 'Copy'; }, 1500); };
+    card.querySelector('.cc-copy').onclick = e => { e.stopPropagation(); copyText(Rtc.code); e.target.textContent = 'Copied'; setTimeout(() => { e.target.textContent = 'Copy'; }, 1500); };
     return card;
   };
   // Clipboard from a file:// page: the async API may be refused, so fall back to a selected textarea + copy.
-  function copyText(t) {
+  function copyText(t, what = 'Pairing code') {
     const fallback = () => { const a = Object.assign(document.createElement('textarea'), { value: t }); a.style.position = 'fixed'; a.style.opacity = '0'; document.body.append(a); a.select(); try { document.execCommand('copy'); } catch (x) {} a.remove(); };
     try { navigator.clipboard.writeText(t).catch(fallback); } catch (x) { fallback(); }
-    window.notice?.('Pairing code copied', 1500);
+    window.notice?.(`${what} copied`, 1500);
   }
 
-  // First run: until this phone has ever been connected (desktop bridge or a Spotify sign-in), show a setup screen
-  // with the two ways in instead of a bare "waiting for Spotify". Once either works it goes away for good.
+  // Setup screen: shown while nothing feeds this screen and it isn't set up yet - never connected to Spotify on a
+  // computer and not signed in (signing out counts as not set up again). The sign-in is known from storage at once,
+  // so the web shows it immediately; the phone first gives its adb bridge 3 s to say hello. A signed-in screen
+  // never sees it and goes straight to "Waiting for Spotify…" while the first poll runs.
   const setup = (() => {
-    let el = null, view = 'home', skipped = false, forced = false, wasIn = false;
-    const LS = 'dock:linked';
+    let el = null, view = 'home', skipped = false, forced = false, wasIn = false, pcAt = 0, lna = '';
+    const LS = 'dock:linked', web = !!window.LYRICDOCK_WEB;
     const ever = () => { try { return !!localStorage.getItem(LS); } catch (e) { return false; } };
     const mark = () => { try { localStorage.setItem(LS, '1'); } catch (e) {} };
     const back = '<button class="su-back" data-a="home" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>';
+    // The phone's kiosk has no browser to open a link in: there the address is just shown.
+    const link = (url, text) => web ? `<a class="su-link" href="${url}" target="_blank" rel="noopener">${text} ↗</a>` : `<b>${text}</b>`;
+    const btnLink = (url, text) => web ? `<a class="su-go" href="${url}" target="_blank" rel="noopener">${text} ↗</a>` : `<span class="su-note">Open <b>${url.replace('https://', '')}</b> on a computer or phone</span>`;
+    const DASH = 'https://developer.spotify.com/dashboard';
+    // One field of Spotify's "Create app" form, the way it looks there, with the value to put in it.
+    const field = (label, value, { req, hint } = {}) => `<div class="sx-f"><label>${label}${req ? ' <em>*</em>' : ''}</label>
+      <div class="sx-v"><span>${esc(value)}</span><button class="sx-copy" data-a="cp" data-v="${esc(value)}" data-l="${label}">Copy</button></div>${hint ? `<small>${hint}</small>` : ''}</div>`;
+    let wstep = 0; // 0: pick when first shown (straight to the Client ID if one was entered before)
+    const wsteps = {
+      1: () => `<ol class="su-steps">
+            <li>Sign in at ${link(DASH, 'developer.spotify.com')} with your Spotify account. <b>Premium</b> is needed for the account that owns the app.</li>
+            <li>Accept the <b>Developer Terms</b> when asked.</li>
+            <li><b>Verify your email</b>: Spotify sends a link to your account's email. No email? Use the banner at the top of the dashboard to resend it. <b>Create app</b> stays hidden until this is done.</li></ol>
+          <div class="su-row">${btnLink(DASH, 'Open the dashboard')}<button class="su-mini" data-a="w2">Done, next ›</button></div>`,
+      2: () => `<p class="su-hint">In the dashboard click <b>Create app</b>, then fill it in like this:</p>
+          <div class="sx-form">
+            ${field('App name', 'LyricDock', { req: 1 })}
+            ${field('App description', 'Synced lyrics for what I play on Spotify', { req: 1 })}
+            ${field('Website', web ? location.origin : 'https://github.com/DhakadG/lyricdock', { hint: 'Optional' })}
+            ${field('Redirect URIs', Web.redirect, { req: 1, hint: 'Paste it, then click <b>Add</b> next to the box - it must match exactly' })}
+            <div class="sx-f"><label>Which API/SDKs are you planning to use?</label><div class="sx-checks"><span class="on">Web API</span><span>Web Playback SDK</span><span>Android</span><span>iOS</span><span>Ads API</span></div><small>Tick <b>Web API</b> only</small></div>
+            <div class="sx-f"><div class="sx-checks"><span class="on">I understand and agree with Spotify's Developer Terms of Service and Design Guidelines</span></div></div>
+            <div class="sx-save"><b>Save</b><small>at the bottom of the page</small></div>
+          </div>
+          <div class="su-row">${btnLink(`${DASH}/create`, 'Open Create app')}<button class="su-mini" data-a="w3">Saved, next ›</button></div>`,
+      3: () => `<p class="su-hint">Spotify opens your app's <b>Basic Information</b>. Copy the <b>Client ID</b> (the copy icon next to it) and paste it here - not the client secret.</p>
+          <div class="sx-form sx-basic"><div class="sx-f"><label>Client ID</label>
+            <div class="su-field"><input id="suCid" placeholder="32 letters and numbers" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(S.spClientId || '')}">
+              <button class="sx-copy" data-a="paste">Paste</button></div></div></div>
+          <div class="su-row"><button class="su-go" data-a="login">Sign in with Spotify</button>${link(DASH, 'Your apps')}</div>
+          <small class="su-msg" id="suMsg"></small>`,
+    };
+    const FAQ = [
+      ['There is no "Create app" button', 'Verify your email first (step 1) and accept the Developer Terms. If it still doesn\'t show, Spotify isn\'t letting your account make apps: use a friend\'s Client ID instead. They add <b>your</b> Spotify email under <b>User Management</b> in their app.'],
+      ['Do I need Premium?', 'The account that owns the app needs Premium (Spotify\'s rule for apps in development mode). Up to 5 people can use one app.'],
+      ['"INVALID_CLIENT: Invalid redirect URI"', `The Redirect URI must be exactly <code>${esc(Web.redirect)}</code>. Open your app → <b>Edit</b>, paste it, click <b>Add</b>, then <b>Save</b> at the bottom.`],
+      ['"User not registered in the Developer Dashboard"', 'You signed in with a different Spotify account than the app\'s. In the app open <b>User Management</b> and add that account\'s name and email, or sign in with the owner account.'],
+      ['Spotify says "Something went wrong"', 'Wait a minute and try again: new apps can take a moment to activate. Check that <b>Web API</b> is ticked under <b>APIs used</b>.'],
+      ['Do I need the client secret?', 'No. LyricDock signs in without it. Never paste the secret anywhere.'],
+      ['What can LyricDock do with my account?', 'See what is playing and control playback - nothing else. You can remove it any time at spotify.com/account/apps.'],
+    ];
     const views = {
       home: () => `<div class="su-side"><div class="su-logo"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h11M4 17h7"/></svg></div>
           <h1>Set up LyricDock</h1><p>Pick how this screen follows your music. You can change it later in Settings.</p>
           <button class="su-skip" data-a="skip">Skip for now</button></div>
         <div class="su-main">
           <button class="su-opt" data-a="web"><i class="su-ico g"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.5 9.5c3-1 6.5-.7 9 .8M8 12.8c2.5-.7 5.3-.4 7.3.7M8.6 15.8c2-.5 4-.3 5.6.5"/></svg></i>
-            <span><b>Sign in with Spotify</b><small>Follows whatever you play: phone, speaker or web player. Needs your own free Client ID.</small></span><em>›</em></button>
+            <span><b>Sign in with Spotify</b><small>Follows whatever you play: phone, speaker or web player. Needs a free Client ID.</small></span><em>›</em></button>
           <button class="su-opt" data-a="pc"><i class="su-ico b"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></i>
             <span><b>Use Spotify on your computer</b><small>Best lyrics and instant sync. Needs the LyricDock extension in Spotify desktop.</small></span><em>›</em></button>
         </div>`,
-      web: () => `<div class="su-side">${back}<h1>Sign in with Spotify</h1><p>Spotify needs a Client ID from an app you create. It's free and takes a minute. No secret needed.</p></div>
-        <div class="su-main"><ol class="su-steps">
-            <li>Open <b>developer.spotify.com/dashboard</b> → <b>Create app</b></li>
-            <li>Redirect URI <code>http://127.0.0.1:8976/callback</code>, tick <b>Web API</b></li>
-            <li>Copy the <b>Client ID</b> and paste it here</li></ol>
-          <div class="su-field"><input id="suCid" placeholder="Client ID (32 characters)" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(S.spClientId || '')}">
-            <button class="su-go" data-a="login">Sign in</button></div>
-          <small class="su-msg" id="suMsg"></small></div>`,
-      pc: () => `<div class="su-side">${back}<h1>Use Spotify on your computer</h1><p>Install LyricDock on the PC (github.com/DhakadG/lyricdock), then open Spotify.</p></div>
+      // Three steps that mirror Spotify's own pages (developer dashboard -> Create app -> Basic Information), every value
+      // with its own Copy button, and the questions people actually hit underneath.
+      web: () => `<div class="su-side">${back}<h1>Sign in with Spotify</h1><p>Spotify lets LyricDock in only through an app you register. It's free, takes a few minutes, and needs no secret.</p>
+          <div class="su-tabs">${['Account', 'Create app', 'Client ID'].map((t, i) => `<button data-a="w${i + 1}" class="${wstep === i + 1 ? 'on' : ''}"><i>${i + 1}</i>${t}</button>`).join('')}</div></div>
+        <div class="su-main">${wsteps[wstep ||= S.spClientId ? 3 : 1]()}
+          <details class="su-faq"><summary>Questions</summary>${FAQ.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('')}</details></div>`,
+      pc: () => `<div class="su-side">${back}<h1>Use Spotify on your computer</h1><p>Spotify desktop with the LyricDock extension: ${link('https://github.com/DhakadG/lyricdock#readme', 'how to install it')}.</p></div>
         <div class="su-main"><ol class="su-steps">
             <li>In Spotify, click the <b>LyricDock</b> button</li>
             <li><b>Devices</b> → <b>Find devices</b>, then tap <b>Allow</b> here</li></ol>
           <div class="su-code"><small>Or enter this pairing code</small><b>${esc(Rtc.code)}</b><button class="su-go" data-a="copy">Copy</button></div>
+          <div class="su-checks" id="suChecks"></div>
           <small class="su-msg"><i class="su-spin"></i>Looking for Spotify…</small></div>`,
     };
     function draw() {
       el.className = 'su-' + view;
       el.innerHTML = `<div class="su-card">${views[view]()}</div>`;
+      if (view === 'pc') {
+        pcAt = performance.now();
+        if (web) window.lyricdockLna?.ensure?.().then(s => { lna = s; update(); }); // the browser asks now, not after a delay
+      }
+      update();
     }
     function open() {
       if (el) return;
@@ -1058,34 +1118,63 @@
       el.setAttribute('role', 'dialog');
       el.setAttribute('aria-label', 'Set up LyricDock');
       el.addEventListener('click', e => {
-        const a = e.target.closest('[data-a]')?.dataset.a;
+        const b = e.target.closest('[data-a]'), a = b?.dataset.a;
         if (!a) return;
         if (a === 'skip') { skipped = true; close(); }
-        else if (a === 'copy') { copyText(Rtc.code.replace(/-/g, '')); e.target.textContent = 'Copied'; }
+        else if (a === 'copy') { copyText(Rtc.code); b.textContent = 'Copied'; }
+        else if (a === 'cp') { copyText(b.dataset.v, b.dataset.l); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); }
+        else if (a === 'paste') navigator.clipboard?.readText?.().then(t => { el.querySelector('#suCid').value = t.trim(); }).catch(() => el.querySelector('#suCid').focus());
+        else if (/^w\d$/.test(a)) { wstep = +a[1]; draw(); }
+        else if (a === 'lna') window.lyricdockLna?.request().then(update);
         else if (a === 'login') {
           const v = el.querySelector('#suCid').value.trim().toLowerCase(), msg = el.querySelector('#suMsg');
-          if (!/^[0-9a-f]{32}$/.test(v)) { msg.textContent = 'That doesn\'t look like a Client ID: it is 32 letters and numbers (0-9, a-f).'; msg.classList.add('bad'); return; }
+          msg.classList.add('bad', 'local');
+          if (!/^[0-9a-f]{32}$/.test(v)) { msg.textContent = 'That doesn\'t look like a Client ID: it is 32 letters and numbers (0-9, a-f).'; return; }
+          msg.classList.remove('bad', 'local');
           Settings.set('spClientId', v);
-          msg.classList.remove('bad');
           Web.login();
+          update();
         } else { view = a; draw(); }
       });
-      el.addEventListener('touchstart', e => e.stopPropagation(), { passive: true }); // no layout / skip swipes underneath
       draw();
       document.body.append(el);
     }
     function close() { el?.remove(); el = null; view = 'home'; forced = false; }
-    // ponytail: 1 s poll, the same cadence as the "alive" beat; the grace period lets a known bridge reconnect first.
-    setInterval(() => {
-      const bridge = Rtc.open?.() || P.gotHello, linked = bridge || Web.loggedIn() || !!P.id;
-      if (bridge || Web.loggedIn()) mark();
-      if (forced) { if (Web.loggedIn() && !wasIn) return close(); } // opened from Settings: stays until done or skipped
-      else if (linked || ever() || skipped || performance.now() < 3000) return close();
+    // What the open view shows live: the sign-in result, or what is (not) in the way of finding Spotify on the computer.
+    function update() {
+      if (!el) return;
+      const msg = el.querySelector('#suMsg');
+      if (msg && !msg.classList.contains('local')) {
+        const s = Web.status();
+        msg.textContent = s === 'Not signed in' ? '' : s;
+        msg.classList.toggle('bad', /refused|failed|cancel|^Spotify:|first/i.test(s));
+      }
+      const box = el.querySelector('#suChecks');
+      if (!box) return;
+      const vis = Rtc.discoverable?.() ?? {}, rows = [];
+      if (web && lna === 'prompt') rows.push(['!', 'Your browser must allow this page to reach your network.', '<button class="su-mini" data-a="lna">Allow</button>']);
+      else if (web && lna === 'denied') rows.push(['✕', 'Local network is blocked for this site: allow it in the site settings (the icon left of the address), then reload.']);
+      rows.push(vis.network ? ['✓', 'Visible to Spotify on this network'] : ['…', 'Announcing on this network']);
+      rows.push(vis.account ? ['✓', 'Findable through your Spotify account'] : ['·', 'Signing in with Spotify too lets it be found from any network']);
+      if (performance.now() - pcAt > 30000) rows.push(['?', 'Not found yet? Spotify desktop must be open with the LyricDock extension installed, and its LyricDock → Devices list open.']);
+      box.innerHTML = rows.map(([i, t, x = '']) => `<div><i>${i}</i><span>${t}</span>${x}</div>`).join('');
+    }
+    // ponytail: 1 s poll, the same cadence as the "alive" beat.
+    function tick() {
+      const bridge = Rtc.open?.() || P.gotHello, signed = Web.loggedIn();
+      if (bridge || signed) mark();
+      if (forced) { if ((signed && !wasIn) || (bridge && view === 'pc')) return close(); } // opened on purpose: stays until done or closed
+      else if (bridge || signed || P.id || ever() || skipped || Web.busy() || (!web && performance.now() < 3000)) return close();
       else open();
-      const msg = el?.querySelector('#suMsg');
-      if (msg && !msg.classList.contains('bad')) msg.textContent = Web.status() === 'Not signed in' ? '' : Web.status();
-    }, 1000);
-    return { open: () => { forced = true; wasIn = Web.loggedIn(); view = 'home'; open(); }, close };
+      if (web && view === 'pc') window.lyricdockLna?.state().then(s => { lna = s; });
+      update();
+    }
+    setInterval(tick, 1000);
+    setTimeout(tick, 0); // after install.js has run (it hands the sign-in result over on load)
+    return {
+      open: (v = 'home') => { forced = true; wasIn = Web.loggedIn(); view = v; if (el) draw(); else open(); },
+      close, isOpen: () => !!el,
+    };
   })();
   window.Setup = setup;
   let mediaKey = null;

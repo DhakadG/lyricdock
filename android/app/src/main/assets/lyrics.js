@@ -16,6 +16,8 @@ const Gesture = (() => {
     if (g && t && Math.hypot(t.clientX - g.x, t.clientY - g.y) > 10) g.moved = true;
   }, opt);
   addEventListener('touchend', e => { if (g && !e.touches.length) g.end = performance.now(); }, opt);
+  // A mouse or trackpad (an iPad with a Magic Keyboard too) starts fresh: the last finger touch must not decide its clicks.
+  addEventListener('pointerdown', e => { if (e.pointerType && e.pointerType !== 'touch') g = null; }, opt);
   return {
     // true = this handler owns the touch now (or already did); false = someone else has it
     claim: name => !g || (g.owner ?? (g.owner = name)) === name,
@@ -24,6 +26,8 @@ const Gesture = (() => {
     delta: e => { const t = e.touches?.[0] ?? e.changedTouches?.[0] ?? e; return g ? { dx: t.clientX - g.x, dy: t.clientY - g.y } : { dx: 0, dy: 0 }; },
     // The last touch was a plain tap (mouse clicks in the browser preview count too).
     tap: () => !g || (!g.owner && !g.moved && !g.multi && (g.end || performance.now()) - g.t < 450),
+    // A finger was down just now (the click being handled came from a touch, not a mouse or trackpad).
+    touch: () => !!g && performance.now() - (g.end || g.t) < 800,
   };
 })();
 
@@ -311,6 +315,15 @@ const Lyrics = (() => {
     const step = () => { if (Math.abs(v) < 0.4) return release(); setY(curY + v); v *= 0.94; fling = requestAnimationFrame(step); };
     step();
   }, { passive: true });
+  // Mouse wheel / trackpad (web app on a computer): the same free scroll, gliding back the same way.
+  BOX.addEventListener('wheel', e => {
+    if (!synced || e.ctrlKey) return; // ctrl+wheel stays the browser's zoom
+    e.preventDefault();
+    cancelAnimationFrame(fling);
+    free = true; BOX.classList.add('free');
+    setY(curY - e.deltaY * (e.deltaMode === 1 ? 32 : 1)); // deltaMode 1 = lines (Firefox)
+    release();
+  }, { passive: false });
   const isFree = () => free;
 
   function scrollTo(a, instant) {

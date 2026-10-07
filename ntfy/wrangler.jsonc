@@ -9,5 +9,8 @@
   "containers": [{ "class_name": "Ntfy", "image": "docker.io/binwiederhier/ntfy:v2.28.0", "max_instances": 1, "instance_type": "lite" }],
   "durable_objects": { "bindings": [{ "name": "NTFY", "class_name": "Ntfy" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Ntfy"] }],
+  // OWNER_EMAILS: Google accounts (auth.losthusky.qzz.io) allowed the web UI, other topics and publishing the update ping.
+  // Secret PUBLISH_TOKEN: the same for scripts (scripts/ping-update.ps1 reads it from $env:LYRICDOCK_PUBLISH_TOKEN).
+  "vars": { "OWNER_EMAILS": "ghanishth.tes@gmail.com" },
   "observability": { "enabled": true }
 }

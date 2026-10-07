@@ -16,9 +16,13 @@ web/public/                    the web layer
   sw.js                        offline cache of the app shell, one cache per version
   manifest.webmanifest, icons/ install metadata (full screen, icons, maskable icon)
   player.html                  music-video background wrapper (the phone serves it from PageClient.java)
-  web.css                      install chip
+  mini.js                      the miniplayer (Picture-in-Picture)
+  web.css                      install chip, mouse cursors and hover
   _headers                     no-cache for the page, the service worker and the manifest
-web/wrangler.jsonc             assets-only Worker "lyricdock-app" (no Worker code: requests are free)
+web/src/worker.js              runs first on every request: the shared Google sign-in (auth/sso.js) gates the files
+                               (manifest, icons and sw.js stay public); /turn hands signed-in users short-lived TURN
+                               credentials, rate-limited per account (TURN_LIMIT)
+web/wrangler.jsonc             Worker "lyricdock-app" + its static assets (every request runs the Worker)
 scripts/build-web.ps1          builds web/dist and, with -Deploy, publishes it
 ```
 
@@ -44,6 +48,7 @@ The app checks `window.LYRICDOCK_WEB` only where web and phone differ:
 | `vibrate` | `navigator.vibrate` |
 | `checkUpdate` | service worker update. A new version is applied by "Update automatically", or by the user in Settings → Updates |
 | `login` | full-page redirect to Spotify, back to `/callback`. The PKCE state is kept in `localStorage` |
+| `fetchLyrics` | the Spicy Lyrics API straight from the browser (the key must allow this site's origin) |
 | `model` | "Windows browser", "Android browser", … (the name in Spotify's device list) |
 | `version` | stamped at build time |
 | everything else (`brightness`, `media`, `wake`, `kioskOn`, `webCacheBytes`, …) | a harmless no-op / `false` / `0` |
@@ -61,14 +66,28 @@ The app checks `window.LYRICDOCK_WEB` only where web and phone differ:
 
 - **The rule:** browsers (2026) keep public sites away from this PC and the home network until the user allows it.
   Spotify-with-the-extension is there.
-- **When it asks:** 6 s after opening (unless the source is "Spotify account" only), a chip explains it.
-  - **Allow** triggers the browser's own prompt, by knocking on `127.0.0.1` and the router range with
-    `targetAddressSpace`.
-  - It's also under *Settings → Connection → Local network access*.
+- **When it asks:** as soon as LyricDock starts looking for Spotify on the computer, the browser's own prompt appears
+  (`lyricdockLna.ensure()`, once a session, only while the permission is still unanswered):
+  - on opening, unless the source is "Spotify account" only or the setup screen is up;
+  - on the setup screen, when *Use Spotify on your computer* is picked.
+  - The prompt is triggered by knocking on `127.0.0.1` and the router range with `targetAddressSpace`.
+  - If it's dismissed, the setup screen shows an **Allow** row, and it's also under *Settings → Connection → Local
+    network access*.
 - **What's logged:** the result goes to analytics (`lna-granted` / `lna-denied` / `lna-prompt`).
 
 Pairing signals go through the self-hosted ntfy (`docs/ntfy.md`). Both ends also add public STUN servers, because a
 browser hides its local addresses behind random `.local` names.
+
+## Miniplayer and keyboard
+
+- **Miniplayer** (*Settings → Miniplayer*, or press **M**): a small always-on-top window with the cover, the line being
+  sung (swept as it's sung), the next line and the controls. It reads the app's own state and presses its buttons.
+  - **Chrome, Edge, Brave, Opera:** Document Picture-in-Picture, driven by its own frames (the app's tab is usually
+    hidden, and hidden tabs are throttled).
+  - **Safari (Mac, iPad, iPhone):** drawn on a canvas, shown as picture-in-picture video; the system's play/skip
+    buttons go through Media Session.
+  - **Firefox:** no API for either, so the option is hidden.
+- **Keyboard** (computers): Space play/pause, ←/→ previous/next, F full screen. The mouse wheel scrolls the lyrics.
 
 ## Install as an app
 

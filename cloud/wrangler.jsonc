@@ -10,7 +10,9 @@
     { "pattern": "art.lyricdock.losthusky.qzz.io", "custom_domain": true },
     { "pattern": "admin.lyricdock.losthusky.qzz.io", "custom_domain": true }
   ],
-  "vars": { "ACCOUNT_ID": "7264f13407836386c92ab90f874af318" },
+  // ADMIN_SSO "on": admin.lyricdock uses the shared Google sign-in (auth.losthusky.qzz.io) for ADMIN_EMAILS - only once
+  // that Worker is live with its secrets. "off": the ADMIN_PASSWORD login.
+  "vars": { "ACCOUNT_ID": "7264f13407836386c92ab90f874af318", "ADMIN_EMAILS": "ghanishth.tes@gmail.com", "ADMIN_SSO": "off" },
   "kv_namespaces": [{ "binding": "KV", "id": "f93a89cd48b744afab7b6f3d7e226377" }],
   "r2_buckets": [{ "binding": "R2", "bucket_name": "lyricdock-covers" }],
   // Per-IP limit on /v1/* (src/index.js): plenty for a household of docks, stops a scraper looping.
