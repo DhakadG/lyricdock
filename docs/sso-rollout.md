@@ -52,64 +52,28 @@ Any session can continue from the first unchecked box. Never print or paste a se
   - The organisation's policies are Google's secure-by-default set (no service-account keys, uniform bucket access,
     ...). None of them affect a sign-in client.
 - **What the CLI can't do**: create the OAuth consent screen and the Web client for "Sign in with Google". There is no
-  public API for that, so it's console-only (guide A). Projects, APIs, IAM and logs are all CLI/MCP.
+  public API for that, so it's console-only (docs/setup-guide.md part 1). Projects, APIs, IAM and logs are all CLI/MCP.
 - **Already connected in Claude Code**: Gmail, Google Drive, Google Calendar (claude.ai connectors).
-- **Optional**: the Cloudflare plugin's `cloudflare-api` MCP needs a one-time sign-in (`/mcp`). With it, Claude can
-  create the TURN key itself instead of guide B.
+- **TURN keys can't be made by Claude's tools**: wrangler has no TURN command, and none of its OAuth scopes cover
+  Realtime. The Cloudflare plugin's `cloudflare-api` MCP asks for read-only scopes. Hence
+  `scripts/new-turn-key.ps1` (API token with Calls/Realtime Edit) or the dashboard.
 
 ## 1. The secrets
 
-| Secret | Goes to | Who | Status |
+The owner's step-by-step guide (Google console, TURN, browser control) is **docs/setup-guide.md**. This table is the state.
+
+| Secret | Goes to | Source | Status |
 |---|---|---|---|
-| `SSO_PRIVATE_JWK` | auth Worker | done | `secrets/SSO_PRIVATE_JWK.json` (matches `auth/sso.js`, kid `mupbl6zw`) |
-| `PUBLISH_TOKEN` | ntfy Worker + your PC | done | `secrets/PUBLISH_TOKEN.txt` (random) |
-| `GOOGLE_CLIENT_ID` | auth Worker | **you** | guide A |
-| `GOOGLE_CLIENT_SECRET` | auth Worker | **you** | guide A |
-| `TURN_KEY_ID` | web Worker | **you** (or Claude via the Cloudflare MCP) | guide B |
-| `TURN_KEY_TOKEN` | web Worker | **you** (or Claude via the Cloudflare MCP) | guide B |
+| `SSO_PRIVATE_JWK` | auth Worker | `secrets/SSO_PRIVATE_JWK.json` | done (matches `auth/sso.js`, kid `mupbl6zw`) |
+| `PUBLISH_TOKEN` | ntfy Worker + your PC | `secrets/PUBLISH_TOKEN.txt` | done (random) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | auth Worker | `secrets/google-client.json`: the client's downloaded JSON, `.web.client_id` and `.web.client_secret` | **user**, setup-guide part 1 |
+| `TURN_KEY_ID`, `TURN_KEY_TOKEN` | web Worker | `secrets/TURN_KEY_ID.txt`, `secrets/TURN_KEY_TOKEN.txt` | **user**, setup-guide part 2 (dashboard or `scripts/new-turn-key.ps1`) |
 | `ADMIN_PASSWORD`, `CF_API_TOKEN` | cloud Worker | already set | unchanged |
 
-`secrets/` is gitignored. Save each value as a plain text file (only the value, no quotes):
-`secrets/GOOGLE_CLIENT_ID.txt`, `secrets/GOOGLE_CLIENT_SECRET.txt`, `secrets/TURN_KEY_ID.txt`,
-`secrets/TURN_KEY_TOKEN.txt`. Then say "secrets are in". Don't paste them into the chat.
-
-### Guide A - LyricDock's Google sign-in client (about 10 minutes)
-
-The domain is already done: Search Console has the **Domain** property `losthusky.qzz.io` verified, and it covers every
-subdomain. Use **ghanisht.kumawat@gmail.com** in the Cloud console: Google checks that the project's owner verified
-the domain, and that account is both (checked 2026-10-08).
-
-1. **Project**: use the LyricDock one, `YoutubeData - LyricsDockApp` (id `youtubedata-lyricsdockapp`, organisation
-   `ghanisht-kumawat-org`). Optionally rename its display name to `LyricDock` (IAM & Admin → Settings). The id can't
-   change, and nothing depends on it. The `lost-husky` project isn't used for sign-in; it holds apex-wide tooling.
-2. **Consent screen**: https://console.cloud.google.com/auth/overview?project=youtubedata-lyricsdockapp → **Get started**.
-   - App name `LyricDock`, user support email = yours.
-   - Audience **External**. The project sits in an organisation, so **Internal** would only let that organisation's
-     accounts sign in.
-   - Contact email = yours → agree → **Create**.
-   - If it says a consent screen already exists, check that its user type is External and continue with step 3.
-3. **Branding**: https://console.cloud.google.com/auth/branding?project=youtubedata-lyricsdockapp
-   - App home page `https://lyricdock.losthusky.qzz.io/`.
-   - Authorized domains → `losthusky.qzz.io`. That's the registrable domain; the lyricdock subdomains are covered.
-   - No logo: a logo triggers Google's brand review → Save.
-4. **Data access**: nothing to add (`openid email profile` are the defaults).
-5. **Audience**: https://console.cloud.google.com/auth/audience?project=youtubedata-lyricsdockapp → **Publish app** →
-   Confirm ("In production"). With only these basic scopes there is no Google review.
-6. **Client**: https://console.cloud.google.com/auth/clients?project=youtubedata-lyricsdockapp → **Create client**
-   - Application type **Web application**, name `LyricDock sign-in`.
-   - **Authorized redirect URIs** → `https://auth.lyricdock.losthusky.qzz.io/callback` (exactly; no JavaScript origins).
-   - **Create** → copy **Client ID** and **Client secret**. The secret is shown in full only now: **Download JSON** as a
-     backup.
-7. Save them as `secrets/GOOGLE_CLIENT_ID.txt` and `secrets/GOOGLE_CLIENT_SECRET.txt`.
-
-### Guide B - Cloudflare TURN relay (about 3 minutes)
-
-1. https://dash.cloudflare.com → your account → **Realtime** → **TURN Server** → **Create**. If the menu differs,
-   search the dashboard for "TURN".
-2. Name it `lyricdock` → Create → copy the **Turn Token ID** and the **API Token** (the token is shown once).
-3. Save them as `secrets/TURN_KEY_ID.txt` and `secrets/TURN_KEY_TOKEN.txt`.
-4. Usage: only relayed connections count; same-Wi-Fi links are direct. `/turn` is rate-limited to 10 requests a minute
-   per signed-in account. TURN has a free monthly allowance; check the Realtime page for current pricing.
+Google client facts (for checking the user's setup):
+- Project `youtubedata-lyricsdockapp`, consent screen `LyricDock`, **External**, published.
+- Authorized domain `losthusky.qzz.io`, home page `https://lyricdock.losthusky.qzz.io/`.
+- Web client `LyricDock sign-in` with redirect URI `https://auth.lyricdock.losthusky.qzz.io/callback`.
 
 ### Decisions (defaults are fine)
 
@@ -126,12 +90,14 @@ the domain, and that account is both (checked 2026-10-08).
 PowerShell, repo root, branch `web-fixes-apple`.
 
 - [ ] **Files present**:
-  `Test-Path secrets/GOOGLE_CLIENT_ID.txt, secrets/GOOGLE_CLIENT_SECRET.txt, secrets/TURN_KEY_ID.txt, secrets/TURN_KEY_TOKEN.txt, secrets/SSO_PRIVATE_JWK.json, secrets/PUBLISH_TOKEN.txt`
+  `Test-Path secrets/google-client.json, secrets/TURN_KEY_ID.txt, secrets/TURN_KEY_TOKEN.txt, secrets/SSO_PRIVATE_JWK.json, secrets/PUBLISH_TOKEN.txt`
+  - Also check the JSON is the right client: `.web.redirect_uris` contains `https://auth.lyricdock.losthusky.qzz.io/callback`
+    and `.web.project_id` is `youtubedata-lyricsdockapp`. Print only those two fields, never the secret.
 - [ ] **Secrets into Cloudflare**. If auto mode blocks `wrangler secret put`, the user runs these lines:
   ```powershell
   function put($dir, $name, $file) { Push-Location $dir; try { (Get-Content $file -Raw).Trim() | npx wrangler secret put $name } finally { Pop-Location } }
-  put auth GOOGLE_CLIENT_ID     ../secrets/GOOGLE_CLIENT_ID.txt
-  put auth GOOGLE_CLIENT_SECRET ../secrets/GOOGLE_CLIENT_SECRET.txt
+  $g = (Get-Content secrets/google-client.json -Raw | ConvertFrom-Json).web
+  Push-Location auth; try { $g.client_id | npx wrangler secret put GOOGLE_CLIENT_ID; $g.client_secret | npx wrangler secret put GOOGLE_CLIENT_SECRET } finally { Pop-Location }
   put auth SSO_PRIVATE_JWK      ../secrets/SSO_PRIVATE_JWK.json
   put web  TURN_KEY_ID          ../secrets/TURN_KEY_ID.txt
   put web  TURN_KEY_TOKEN       ../secrets/TURN_KEY_TOKEN.txt
