@@ -31,17 +31,26 @@ Any session can continue from the first unchecked box. Never print or paste a se
   - It connects in a Claude Code started from a new terminal. Its startup check is `where.exe gcloud`, which needs
     gcloud on PATH.
   - Check: `claude mcp get gcloud` should say Connected.
-- [ ] **Sign the CLI in** with the Google account that owns the projects and the Search Console property:
-  `gcloud auth login`
-- [ ] **Search Console access** (Application Default Credentials with a read-only Search Console scope):
-  `gcloud auth application-default login --scopes=openid,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/webmasters.readonly`
-  - Then:
-    `gcloud services enable searchconsole.googleapis.com --project <lyricdock project>`
-    `gcloud auth application-default set-quota-project <lyricdock project>`
-  - Read with:
-    `curl -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" https://searchconsole.googleapis.com/webmasters/v3/sites`
-  - If Google answers "This app is blocked" for that scope: create a Desktop OAuth client in the project and run the
-    same login with `--client-id-file=<its json>`.
+- [x] **CLI signed in** as `ghanisht.kumawat@gmail.com` (`gcloud auth login`). That account owns every project and
+  the Search Console properties. Default project: `youtubedata-lyricsdockapp`.
+- [x] **Search Console access**: Application Default Credentials with the read-only scope `webmasters.readonly`
+  (Google allowed it on gcloud's own client).
+  - Quota project: `lost-husky`, with `searchconsole.googleapis.com` enabled. The apex project now holds apex-wide
+    tooling; LyricDock's things live in the LyricDock project.
+  - Properties: `sc-domain:losthusky.qzz.io`, `sc-domain:arth.shop`, `sc-domain:baunafier.qzz.io` (all siteOwner).
+  - Read it with:
+    ```powershell
+    $tok = (gcloud auth application-default print-access-token).Trim()
+    Invoke-RestMethod https://searchconsole.googleapis.com/webmasters/v3/sites -Headers @{ Authorization = "Bearer $tok"; 'x-goog-user-project' = 'lost-husky' }
+    ```
+    Search analytics: `POST .../sites/sc-domain%3Alosthusky.qzz.io/searchAnalytics/query` with
+    `{startDate, endDate, dimensions:['page'|'query'], rowLimit}`.
+- **Google projects** (`gcloud projects list`):
+  - `youtubedata-lyricsdockapp` "YoutubeData - LyricsDockApp": LyricDock. In organisation `ghanisht-kumawat-org`
+    (537814365098, no Workspace directory). Owner ghanisht.kumawat@gmail.com. Only the YouTube Data API is enabled.
+  - `lost-husky` "Lost Husky": no organisation, apex tooling (Search Console quota).
+  - The organisation's policies are Google's secure-by-default set (no service-account keys, uniform bucket access,
+    ...). None of them affect a sign-in client.
 - **What the CLI can't do**: create the OAuth consent screen and the Web client for "Sign in with Google". There is no
   public API for that, so it's console-only (guide A). Projects, APIs, IAM and logs are all CLI/MCP.
 - **Already connected in Claude Code**: Gmail, Google Drive, Google Calendar (claude.ai connectors).
@@ -67,12 +76,12 @@ Any session can continue from the first unchecked box. Never print or paste a se
 ### Guide A - LyricDock's Google sign-in client (about 10 minutes)
 
 The domain is already done: Search Console has the **Domain** property `losthusky.qzz.io` verified, and it covers every
-subdomain. Use the **same Google account** in the Cloud console, because Google checks that the project's owner
-verified the domain.
+subdomain. Use **ghanisht.kumawat@gmail.com** in the Cloud console: Google checks that the project's owner verified
+the domain, and that account is both (checked 2026-10-08).
 
 1. **Project**: use the LyricDock one, `YoutubeData - LyricsDockApp` (id `youtubedata-lyricsdockapp`, organisation
    `ghanisht-kumawat-org`). Optionally rename its display name to `LyricDock` (IAM & Admin → Settings). The id can't
-   change, and nothing depends on it. The "Lost Husky" project isn't needed for this.
+   change, and nothing depends on it. The `lost-husky` project isn't used for sign-in; it holds apex-wide tooling.
 2. **Consent screen**: https://console.cloud.google.com/auth/overview?project=youtubedata-lyricsdockapp → **Get started**.
    - App name `LyricDock`, user support email = yours.
    - Audience **External**. The project sits in an organisation, so **Internal** would only let that organisation's
@@ -106,6 +115,9 @@ verified the domain.
 
 - **Who may sign in** (`auth/wrangler.jsonc` → `ALLOWED_EMAILS`): `""` (default) lets in any Google account with a
   verified email; a comma list lets in only those people.
+- **Who may open admin** (`cloud/wrangler.jsonc` → `ADMIN_EMAILS`): currently only `ghanishth.tes@gmail.com`. The
+  Google account used for Cloud and Search Console is `ghanisht.kumawat@gmail.com`. **Open question for the user**: add
+  it, or switch to it, before `ADMIN_SSO` goes on.
 - **Spicy Lyrics in the browser (optional)**: allow origin `https://app.lyricdock.losthusky.qzz.io` for your key in
   the Spicy Lyrics developer dashboard.
 
