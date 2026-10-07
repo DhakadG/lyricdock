@@ -805,7 +805,8 @@
   const DEVICE = (() => { try { let d = localStorage.getItem('dock:device'); if (!d) localStorage.setItem('dock:device', d = crypto.randomUUID()); return d; } catch (e) { return ''; } })();
   const who = () => `&hevc=${HEVC ? 1 : 0}&d=${DEVICE}&v=${encodeURIComponent(appVersion)}`;
   const QUALITY = { saver: 0.75, auto: 1, sharp: 1.5, max: 2 };
-  const timed = (url, ms) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, { signal: c.signal }).finally(() => clearTimeout(t)); };
+  const timed = (url, ms, headers) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, { signal: c.signal, headers }).finally(() => clearTimeout(t)); };
+  const cloud = (url, ms) => timed(url, ms, window.Account?.headers()); // the cover API answers signed-in apps only (account.js)
   const motion = window.dockMotion = new Map(); // `${slot}:${song id}` -> playable URL, '' = none / looking (exposed for debugging)
   const lookupUrl = (t, slot, warm) => {
     const portrait = innerHeight > innerWidth, q = QUALITY[S.motionQuality] || 1;
@@ -814,7 +815,7 @@
     return [shape, `${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${Math.round(shown * q)}${S.motionQuality === 'max' ? '&q=max' : ''}${warm ? '&warm=1' : ''}${who()}`];
   };
   async function lookup(t, slot, warm) {
-    const [asked, url] = lookupUrl(t, slot, warm), r = await timed(url, 15000), j = r.ok ? await r.json() : null;
+    const [asked, url] = lookupUrl(t, slot, warm), r = await cloud(url, 15000), j = r.ok ? await r.json() : null;
     const shape = j?.shape || asked; // a tall request falls back to square when the album has no tall cover
     return typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video) ? { url: j.video, key: `${j.album.id}/${shape}/${j.variant.n}`, shape } : null;
   }
@@ -841,7 +842,7 @@
     motion.set(k, '');
     try {
       let w = warmed.get(k);
-      if (w) timed(lookupUrl(t, slot)[1], 15000).catch(() => {}); // already known: just count the play
+      if (w) cloud(lookupUrl(t, slot)[1], 15000).catch(() => {}); // already known: just count the play
       else w = await lookup(t, slot);
       if (w) { motion.set(k, await playable(w.url, w.key)); tallOf.set(k, w.shape === 'tall'); }
     } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 60000); } // offline / slow: ask again in a minute

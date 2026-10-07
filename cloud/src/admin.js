@@ -5,7 +5,10 @@
 import { config, setConfig, getAlbum, promote, demote, setPin, maintain, aeQuery, listAll, DEFAULTS } from './store.js';
 import { fetchAlbum } from './apple.js';
 import { AUTH, session, signIn, isAllowed } from '../../auth/sso.js';
-import DASH from './admin.html';
+import { withIcon } from '../../auth/brand.js';
+import ADMIN_HTML from './admin.html';
+
+const DASH = withIcon(ADMIN_HTML);
 
 const html = (s, status = 200) => new Response(s, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY' } });
 const json = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });

@@ -4,7 +4,7 @@
 //   import { session, signIn } from '../../auth/sso.js';
 //   const me = await session(req);              // { email, name, pic, sub, exp } or null
 //   if (!me) return signIn(req);                // 302 to Google sign-in, then straight back to this URL
-// 
+//   const u = await appUser(req);               // API calls from the apps: Bearer app token (or the cookie)
 
 export const AUTH = 'https://auth.lyricdock.losthusky.qzz.io';
 export const COOKIE = '__Secure-ld_sso';
@@ -55,6 +55,12 @@ export async function verify(token, aud = 'session') {
 }
 
 export const session = req => verify(cookie(req, COOKIE));
+
+// The apps' API calls: "Authorization: Bearer <app token>" (auth's /token; the phone has no cookie), else the cookie.
+export async function appUser(req) {
+  const m = /^Bearer ([\w-]+\.[\w-]+\.[\w-]+)$/.exec(req.headers.get('authorization') || '');
+  return (m && await verify(m[1], 'app')) || session(req);
+}
 
 // Send the browser to sign in and bring it back to the page it asked for.
 export function signIn(req) {

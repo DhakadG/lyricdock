@@ -30,24 +30,27 @@ footer { margin-top: 48px; font-size: 14px; }
   <ul>
     <li>LyricDock does not sell, rent or share your data, show ads, or build profiles of you.</li>
     <li>Your Spotify sign-in stays on your device. LyricDock's servers never see it.</li>
-    <li>Google sign-in only tells LyricDock your name, email address and profile picture, to let you into the web app.
+    <li>Google sign-in only tells LyricDock your name, email address and profile picture, to let you into the apps.
       It isn't stored in a database.</li>
     <li>The apps send anonymous usage data (no name, no email, no IP address), deleted after about three months.</li>
   </ul>
 
   <h2>Signing in with Google</h2>
-  <p>The LyricDock web app (<code>app.lyricdock.losthusky.qzz.io</code>) and its admin pages use
-  <strong>Sign in with Google</strong> at <code>auth.lyricdock.losthusky.qzz.io</code>.</p>
+  <p>The LyricDock apps (the Android app and the web app at <code>app.lyricdock.losthusky.qzz.io</code>) and the admin
+  pages use <strong>Sign in with Google</strong> at <code>auth.lyricdock.losthusky.qzz.io</code>. The Android app opens
+  that page in your phone's browser and comes back to the app when you're done.</p>
   <ul>
     <li><strong>What LyricDock receives:</strong> your name, email address, profile picture, Google account ID, and
       whether Google has verified the email address. These are the basic <code>openid</code>, <code>email</code> and
       <code>profile</code> permissions. LyricDock asks for nothing else: no access to Gmail, Drive, Contacts or any other
       Google data.</li>
-    <li><strong>How it's used:</strong> only to let you into the web app, to show who is signed in, and to check that an
-      account is allowed into the admin pages.</li>
+    <li><strong>How it's used:</strong> only to let you into the apps and their album-art service, to show who is
+      signed in, and to check that an account is allowed into the admin pages.</li>
     <li><strong>Where it's kept:</strong> in a signed cookie in your browser (<code>__Secure-ld_sso</code>) that expires
-      after 14 days. LyricDock keeps no database of users. A second cookie (<code>__Host-ld_st</code>) lives for at most
-      10 minutes while you sign in, to protect the sign-in from forgery.</li>
+      14 days after you last used LyricDock, and in a signed sign-in token in the app's storage on your device, which
+      expires 90 days after you last used the app. LyricDock keeps no database of users. A second cookie
+      (<code>__Host-ld_st</code>) lives for at most 10 minutes while you sign in, to protect the sign-in from
+      forgery.</li>
     <li><strong>Sharing:</strong> none. Google user data is never sold, transferred to others, used for advertising, or
       used to train AI models.</li>
   </ul>
@@ -111,7 +114,7 @@ footer { margin-top: 48px; font-size: 14px; }
   </ul>
 
   <h2>Data kept on your device</h2>
-  <p>Your settings, the pairing code, Spotify sign-in tokens, and saved lyrics and animated covers (for offline use and
+  <p>Your settings, the pairing code, your LyricDock and Spotify sign-in tokens, and saved lyrics and animated covers (for offline use and
   fewer downloads) stay in the app's or browser's storage on your device.</p>
   <ul>
     <li>Clear the saved lyrics and covers in <strong>Settings → Storage</strong>.</li>
@@ -121,7 +124,8 @@ footer { margin-top: 48px; font-size: 14px; }
 
   <h2>Your choices</h2>
   <ul>
-    <li>Sign out of the web app at <a href="https://auth.lyricdock.losthusky.qzz.io/">auth.lyricdock.losthusky.qzz.io</a>.</li>
+    <li>Sign out of LyricDock in <strong>Settings → Playback source → LyricDock account</strong>, or in a browser at
+      <a href="https://auth.lyricdock.losthusky.qzz.io/">auth.lyricdock.losthusky.qzz.io</a>.</li>
     <li>Remove LyricDock's access to your Google account at
       <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>.</li>
     <li>For anything else, or to ask what LyricDock knows about you, email

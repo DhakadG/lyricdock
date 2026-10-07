@@ -240,6 +240,9 @@ const Settings = (() => {
       desc: 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
       opts: [['auto', 'Auto'], ['bridge', 'Desktop (Spicetify)'], ['web', 'Spotify account']],
       help: 'Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify\'s Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise.' },
+    { label: 'LyricDock account', type: 'action', text: () => 'Sign out', run: () => window.Account?.signOut(),
+      info: () => { const u = window.Account?.user(); return u ? `${u.name} · ${u.email}` : ''; },
+      help: 'LyricDock needs a sign-in with Google on every screen. Signing out here shows the sign-in screen again on this screen only.' },
     // Signing in goes through the setup screen: the dashboard link, the redirect URI and the errors live there.
     { label: 'Spotify account', type: 'action', text: () => (window.Web?.loggedIn() ? 'Sign out' : 'Sign in'),
       run: () => { if (Web.loggedIn()) return Web.logout(); Settings.close(); window.Setup?.open('web'); },

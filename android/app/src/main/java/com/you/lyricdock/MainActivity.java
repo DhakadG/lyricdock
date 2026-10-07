@@ -71,6 +71,47 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         } catch (Exception ignored) {}
         server = new DockServer(this);
         server.start();
+        signedIn(getIntent()); // started cold by the sign-in link
+    }
+
+    // ---- LyricDock sign-in (account.js). Google won't sign in inside a WebView, so the page opens auth.lyricdock in
+    // the phone's browser; it comes back here as lyricdock://signed-in?code=... (intent filter in AndroidManifest.xml).
+    static final String SIGN_IN = "https://auth.lyricdock.losthusky.qzz.io/login?";
+    volatile String ssoLink;
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        signedIn(i);
+    }
+
+    void signedIn(Intent i) {
+        android.net.Uri u = i == null ? null : i.getData();
+        if (u == null || !"lyricdock".equals(u.getScheme()) || !"signed-in".equals(u.getHost())) return;
+        ssoLink = u.toString(); // the code is only good with the verifier the page kept, so a forged link can't sign in
+        if (web != null) web.evaluateJavascript("window.Account&&Account.check()", null);
+    }
+
+    // The link once (the page also asks on start, in case it arrived before the page was ready).
+    @JavascriptInterface
+    public String ssoResult() { String s = ssoLink; ssoLink = null; return s == null ? "" : s; }
+
+    // Only auth.lyricdock's sign-in page may be opened. false = no browser on the phone.
+    @JavascriptInterface
+    public boolean signIn(String url) {
+        if (url == null || !url.startsWith(SIGN_IN) || url.length() > 300) return false;
+        Intent v = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+        if (v.resolveActivity(getPackageManager()) == null) return false;
+        runOnUiThread(new UiOp(this, UiOp.OPEN_URL, 0, url));
+        return true;
+    }
+
+    void openBrowser(String url) {
+        // Kiosk mode pins the dock (lock task), which would keep the browser from opening: unpin while signing in.
+        // onResume pins it again when the sign-in link brings the dock back.
+        if (isOwner()) try { stopLockTask(); } catch (Exception ignored) {}
+        try { startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+        catch (Exception e) { web.evaluateJavascript("window.Account&&Account.noBrowser()", null); }
     }
 
     void makeWeb() {

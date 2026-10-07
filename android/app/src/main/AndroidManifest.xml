@@ -11,6 +11,14 @@
          dock from the background; without it a full-screen notification reopens it -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Android 11+: lets signIn() see that a browser exists for LyricDock sign-in -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
 
     <application
         android:label="LyricDock"
@@ -28,6 +36,13 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- back from LyricDock sign-in in the browser (auth.lyricdock -> lyricdock://signed-in?code=, account.js) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lyricdock" android:host="signed-in" />
             </intent-filter>
         </activity>
 

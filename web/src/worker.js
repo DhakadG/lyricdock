@@ -3,6 +3,7 @@
 // sw.js stays public too: an installed app keeps running from its cache after the 14-day session ends, and its update
 // check must still work (the page itself goes to sign-in when /turn answers 401, see rtc.js).
 import { session, signIn } from '../../auth/sso.js';
+import { icon } from '../../auth/brand.js';
 
 // Short-lived TURN credentials (Cloudflare Realtime) for rtc.js: signed-in users only, so nobody else relays through
 // our quota. Secrets: TURN_KEY_ID, TURN_KEY_TOKEN (Cloudflare dashboard -> Realtime -> TURN).
@@ -27,6 +28,8 @@ async function turn(req, env) {
 export default {
   async fetch(req, env) {
     const { pathname } = new URL(req.url);
+    const ic = icon(pathname); // /favicon.ico etc. -> /icons/ (public)
+    if (ic) return ic;
     // SSO "on" only once auth.lyricdock.losthusky.qzz.io is deployed with its secrets: until then the gate would lock everyone out.
     if (env.SSO !== 'on') return pathname === '/turn' ? new Response('{"error":"sign-in is off"}', { status: 503, headers: { 'content-type': 'application/json' } }) : env.ASSETS.fetch(req);
     if (pathname === '/turn') return turn(req, env);

@@ -2,24 +2,30 @@
 //   lyricdock.losthusky.qzz.io        public info page
 //   art.lyricdock.losthusky.qzz.io    API (/v1/*) + promoted videos (/m/*)
 //   admin.lyricdock.losthusky.qzz.io  dashboard, password-protected (admin.js)
+// API_SSO "on": /v1/album|track|cover only for signed-in LyricDock apps (Bearer app token from auth.lyricdock, ../../auth/sso.js).
 // Docs: docs/lyricdock-cloud.md
 
 import { still } from './apple.js';
 import { config, resolve, choose, mediaTier, serveR2, maintain, track } from './store.js';
 import { admin } from './admin.js';
+import { appUser } from '../../auth/sso.js';
+import { icon, withIcon } from '../../auth/brand.js';
 import SITE from './site.html';
 import PRIVACY from './privacy.html';
 import TERMS from './terms.html';
 
-const PAGES = { '/': SITE, '/privacy': PRIVACY, '/terms': TERMS }; // the info site (Google's consent screen links /privacy and /terms)
+const PAGES = { '/': withIcon(SITE), '/privacy': withIcon(PRIVACY), '/terms': withIcon(TERMS) }; // the info site (Google's consent screen links /privacy and /terms)
 
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'range', 'Access-Control-Expose-Headers': '*' };
+// Authorization: the apps' sign-in (a header, not a cookie, so '*' stays valid). Max-Age: one preflight a day per URL shape.
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'range, authorization', 'Access-Control-Expose-Headers': '*', 'Access-Control-Max-Age': '86400' };
 const EVENTS = new Set(['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error', 'lna-granted', 'lna-denied', 'lna-prompt', 'control-fail']);
 const json = (body, status = 200, cache = 'no-store') => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json', 'cache-control': cache } });
 
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url), t0 = Date.now(), ev = { kind: 'api', path: url.pathname };
+    const ic = icon(url.pathname);
+    if (ic) return ic;
     if (url.hostname.startsWith('admin.')) return admin(req, env, ctx, url);
     // Scanners probing for /.env, /wp-admin, /config.js...: nothing of ours, so no work and no analytics row.
     if (!/^\/(v1\/[a-z]+|m\/[\w/]+\.mp4|privacy|terms)?$/.test(url.pathname)) return new Response('not found', { status: 404, headers: { 'cache-control': 'public, max-age=86400' } });
@@ -66,6 +72,9 @@ async function publicApi(req, env, ctx, url, ev) {
     ev.detail = (q.get('x') || '').slice(0, 300);
     return json({ ok: true });
   }
+  // Signed-in apps only (old builds without sign-in get no covers; they update themselves). Checked before the edge
+  // cache, so a cached answer isn't a way around it.
+  if (env.API_SSO === 'on' && !(await appUser(req))) return json({ error: 'sign in to LyricDock' }, 401);
 
   // Rung 1: the edge cache. Same question (minus who asks) = same answer, no KV, no Apple.
   const ck = new URL(url); ['d', 'v', 'warm', 'plat', 'scr', 'tz', 'lang'].forEach(k => ck.searchParams.delete(k)); ck.searchParams.sort();

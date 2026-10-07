@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import worker from '../auth/src/index.js';
-import { verify, session, isAllowed, COOKIE } from '../auth/sso.js';
+import { verify, session, appUser, isAllowed, COOKIE } from '../auth/sso.js';
 
 const env = { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', ALLOWED_EMAILS: '', SSO_PRIVATE_JWK: readFileSync(process.env.SSO_KEY_FILE, 'utf8') };
 const get = (path, cookie = '') => worker.fetch(new Request(`https://auth.lyricdock.losthusky.qzz.io${path}`, { headers: { cookie } }), env);
@@ -45,6 +45,44 @@ assert.ok(isAllowed(me, 'ME@gmail.com, b@c.d') && !isAllowed(me, '') && !isAllow
 for (const bad of ['https://evil.com', 'https://losthusky.qzz.io.evil.com/', 'http://app.lyricdock.losthusky.qzz.io/', 'https://a@evil.com', 'javascript:alert(1)', '//evil.com',
   'https://losthusky.qzz.io/', 'https://ntfy.losthusky.qzz.io/', 'https://xlyricdock.losthusky.qzz.io/'])
   assert.equal(new URL((await get(`/login?rd=${encodeURIComponent(bad)}`, `${COOKIE}=${jwt}`)).headers.get('location')).href, 'https://auth.lyricdock.losthusky.qzz.io/', bad);
+
+// phone app: login?app=<challenge> -> Google -> a page that opens lyricdock://signed-in?code=; the code + verifier buy an
+// app token (Bearer for the API), which renews itself; the code is useless without the verifier.
+const post = (body, headers = {}) => worker.fetch(new Request('https://auth.lyricdock.losthusky.qzz.io/token', { method: 'POST', body: new URLSearchParams(body), headers }), env);
+const verifier = 'v'.repeat(64), challenge = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))).toString('base64url');
+r = await get(`/login?app=${challenge}`);
+googleNonce = new URL(r.headers.get('location')).searchParams.get('nonce');
+r = await get(`/callback?state=${new URL(r.headers.get('location')).searchParams.get('state')}&code=c`, setCookies(r)[0].split(';')[0]);
+assert.equal(r.status, 200);
+assert.ok(setCookies(r).some(c => c.startsWith(COOKIE))); // the browser is signed in too: the next app sign-in skips Google
+const code = /lyricdock:\/\/signed-in\?code=([\w.-]+)/.exec(await r.text())[1];
+assert.equal((await post({ code, verifier: 'wrong' })).status, 400);
+r = await post({ code, verifier });
+assert.equal(r.status, 200);
+assert.equal(r.headers.get('access-control-allow-origin'), '*'); // the phone's page is file://
+let tok = (await r.json()).token;
+const api = t => appUser(new Request('https://art.lyricdock.losthusky.qzz.io/v1/cover', { headers: { authorization: `Bearer ${t}` } }));
+assert.equal((await api(tok)).email, 'me@gmail.com');
+assert.equal(await api(code), null); // a code is not a token
+assert.equal(await api(jwt), null); // nor is the cookie's session
+r = await post({ token: tok });
+assert.equal(r.status, 200);
+assert.equal((await api((await r.json()).token)).email, 'me@gmail.com');
+assert.equal((await post({ token: jwt })).status, 401);
+// already signed in on this browser: straight back to the app; a bad challenge is refused
+r = await get(`/login?app=${challenge}`, `${COOKIE}=${jwt}`);
+assert.equal(r.status, 200);
+assert.match(await r.text(), /lyricdock:\/\/signed-in\?code=/);
+assert.equal((await get('/login?app=x"><script>', `${COOKIE}=${jwt}`)).status, 400);
+// web app: the cookie buys a token, CORS with credentials for LyricDock's own sites only
+r = await post({}, { cookie: `${COOKIE}=${jwt}`, origin: 'https://app.lyricdock.losthusky.qzz.io' });
+assert.equal(r.status, 200);
+assert.equal(r.headers.get('access-control-allow-credentials'), 'true');
+r = await post({}, { cookie: `${COOKIE}=${jwt}`, origin: 'https://evil.com' });
+assert.equal(r.headers.get('access-control-allow-credentials'), null);
+assert.equal((await post({})).status, 401);
+// every LyricDock site has the icon
+assert.equal((await get('/favicon.ico')).status, 301);
 
 // login CSRF: a state from another browser (no / wrong state cookie) is refused
 ({ state, st } = await signInFlow('https://auth.lyricdock.losthusky.qzz.io/'));
