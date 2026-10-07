@@ -14,7 +14,7 @@
   // that Worker is live with its secrets. "off": the ADMIN_PASSWORD login.
   // ADMIN_EMAILS: the Google accounts let into admin (comma-separated); the owner of the Google projects + Search Console.
   // API_SSO "on": the cover API answers signed-in LyricDock apps only (app token, auth/sso.js appUser).
-  "vars": { "ACCOUNT_ID": "7264f13407836386c92ab90f874af318", "ADMIN_EMAILS": "ghanisht.kumawat@gmail.com", "ADMIN_SSO": "off", "API_SSO": "off" },
+  "vars": { "ACCOUNT_ID": "7264f13407836386c92ab90f874af318", "ADMIN_EMAILS": "ghanisht.kumawat@gmail.com", "ADMIN_SSO": "on", "API_SSO": "off" },
   "kv_namespaces": [{ "binding": "KV", "id": "f93a89cd48b744afab7b6f3d7e226377" }],
   "r2_buckets": [{ "binding": "R2", "bucket_name": "lyricdock-covers" }],
   // Per-IP limit on /v1/* (src/index.js): plenty for a household of docks, stops a scraper looping.

@@ -110,11 +110,11 @@ PowerShell, repo root, branch `web-fixes-apple`.
   - The user opens https://auth.lyricdock.losthusky.qzz.io/login, signs in, and the auth page shows their name.
   - `/me` returns their email.
   - Errors: `cd auth; npx wrangler tail`.
-- [ ] **Web gate on**: `web/wrangler.jsonc` → `"SSO": "on"`, then `./scripts/build-web.ps1 -Deploy`.
+- [x] **Web gate on** (2026-10-08): `web/wrangler.jsonc` → `"SSO": "on"`, then `./scripts/build-web.ps1 -Deploy`.
   - A private window to https://app.lyricdock.losthusky.qzz.io goes to Google and comes back.
   - `/turn` returns `iceServers` with `turn:` URLs when signed in, 401 when signed out.
   - `/manifest.webmanifest` and `/sw.js` still load signed out.
-- [ ] **Admin gate on**: `cloud/wrangler.jsonc` → `"ADMIN_SSO": "on"`, then `cd cloud; npx wrangler deploy`.
+- [x] **Admin gate on** (2026-10-08): `cloud/wrangler.jsonc` → `"ADMIN_SSO": "on"`, then `cd cloud; npx wrangler deploy`.
   - https://admin.lyricdock.losthusky.qzz.io asks for Google, lets ghanisht.kumawat@gmail.com in and refuses any other
     account.
 - [ ] **ntfy owner gate**: `cd ntfy; npm i; npx wrangler deploy` (Cloudflare Containers; see docs/ntfy.md).
@@ -133,6 +133,26 @@ PowerShell, repo root, branch `web-fixes-apple`.
   - Delete `%TEMP%\lh_sso_priv.json` once the secret is set.
   - Update memory `sso-and-links.md`.
   - Optionally delete `docs/web-fixes-handover.md`.
+
+## 3. Sign-in in every app (2026-10-08)
+
+Every LyricDock screen needs a sign-in, not just the web app.
+- **Phone app** (`assets/account.js`): a sign-in screen covers the app until signed in.
+  - *Sign in with Google* opens `auth.lyricdock.../login?app=<PKCE challenge>` in the phone's browser (Google refuses
+    sign-in inside a WebView). Kiosk mode unpins the dock while the browser is open; `onResume` pins it again.
+  - The browser comes back through `intent://signed-in?code=...;scheme=lyricdock;package=com.you.lyricdock`
+    (`lyricdock://signed-in` elsewhere): `MainActivity.signedIn` -> `Account.check()` -> `POST /token` with the
+    code and the verifier -> a 90-day app token, renewed once a day while the app runs.
+  - Already signed in on that browser: no Google page, the browser bounces straight back (about 2 s).
+- **Web app**: the Worker gate (SSO on) plus `account.js`, whose `POST /token` with the cookie gives the same token
+  and renews the cookie (sliding 14 days). An installed app running from its cache goes to sign-in on a 401.
+- **Cover API** (`cloud`, `API_SSO`): `/v1/album|track|cover` answer `Authorization: Bearer <app token>` only.
+  `/v1/ping` and `/v1/health` stay open, so old builds still show in the dashboard.
+- **Favicon**: `auth/brand.js` links every LyricDock site to `app.lyricdock.../icons/` and redirects `/favicon.ico`.
+- [x] auth, cloud and web deployed; phone round trip tested on the Galaxy M01 (R9ZN905WPLJ, kiosk).
+- [ ] Release v1.8.8 (`scripts/release.ps1`): phones update to the build with the sign-in screen.
+- [ ] `API_SSO` on (`cloud/wrangler.jsonc`), `cd cloud; npx wrangler deploy`: no token = 401, phone token = 200.
+- [ ] ntfy owner gate (section 2).
 
 ## Notes
 
