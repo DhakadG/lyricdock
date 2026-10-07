@@ -364,7 +364,8 @@
   };
   const ago = t => { const m = (Date.now() - t) / 60000; return m < 1 ? 'now' : m < 60 ? `${m | 0} min` : m < 1440 ? `${m / 60 | 0} h` : `${m / 1440 | 0} d`; };
   const artBg = a => a === 'liked' ? ' liked' : '';
-  const artStyle = a => a && a !== 'liked' ? ` style="background-image:url('${esc(a)}')"` : '';
+  // The URL goes inside CSS url('...'): percent-encode what could end it (esc alone is undone by the attribute parser).
+  const artStyle = a => a && a !== 'liked' ? ` style="background-image:url('${esc(String(a).replace(/['"()\\\s]/g, c => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`))}')"` : '';
   // Warm cache: every list / playlist / album / artist view is kept (25 most recent, localStorage) and shown at once
   // on open, then refreshed in the background; the refresh only re-renders when something changed. Cover images
   // come from the WebView's HTTP cache.

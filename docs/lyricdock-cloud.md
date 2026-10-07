@@ -8,7 +8,7 @@ and CDN, and runs on your own Cloudflare account.
 |---|---|
 | `lyricdock.losthusky.qzz.io` | Public info page |
 | `art.lyricdock.losthusky.qzz.io` | The API (`/v1/*`) and videos copied to R2 (`/m/*`) |
-| `admin.lyricdock.losthusky.qzz.io` | Dashboard, password protected |
+| `admin.lyricdock.losthusky.qzz.io` | Dashboard, LyricDock sign-in (`ADMIN_EMAILS` only) |
 
 ## The big picture
 
@@ -206,13 +206,10 @@ All endpoints are `GET` with open CORS.
 
 ## One-time setup (secrets)
 
-Both are needed by the dashboard. The public API works without them.
+The dashboard signs in through LyricDock's Google sign-in (`ADMIN_EMAILS` in `wrangler.jsonc`; see
+`docs/sso-rollout.md`). An old `ADMIN_PASSWORD` secret is no longer used: `npx wrangler secret delete ADMIN_PASSWORD`.
 
-1. **Admin password** (run in `cloud/`):
-   ```
-   npx wrangler secret put ADMIN_PASSWORD
-   ```
-2. **Analytics read token**, which the dashboard and the promotion cron use to query Analytics Engine:
+1. **Analytics read token**, which the dashboard and the promotion cron use to query Analytics Engine:
    1. Cloudflare dashboard → My Profile → API Tokens → Create Token → Custom.
    2. Permission: *Account → Account Analytics → Read*, for your account.
    3. Run `npx wrangler secret put CF_API_TOKEN` and paste the token.

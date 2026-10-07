@@ -2,9 +2,11 @@
 //   /login?rd=<url>     Google (OAuth code + PKCE + nonce, state bound to this browser) -> session cookie -> back to rd
 //   /login?app=<hash>   the phone app (system browser): after Google, back into the app via lyricdock://signed-in?code=,
 //                       a 5-minute code only the app that sent <hash> = base64url(SHA-256(verifier)) can redeem.
-//                       Already signed in on this browser: straight back, no Google round trip. &switch=1: pick another account.
+//                       Already signed in on this browser: one "Continue as ..." tap (POST, our own origin only), no Google
+//                       round trip - never silently, or any app claiming lyricdock:// could collect codes. &switch=1: pick another account.
 //   /token  (POST)      app token (Bearer, 90 days) for the apps' API calls, from: code+verifier (phone), token (renewal),
-//                       or the session cookie (web app; also renews the cookie, so people who use LyricDock stay signed in)
+//                       or the session cookie (web app; also renews the cookie, so people who use LyricDock stay signed in).
+//                       Renewal stops AUTH_MAX after the last real Google sign-in (claim `at`): a stolen token can't live forever.
 //   /logout?rd=<url>    clears the session everywhere (POST; GET shows a confirm button)
 //   /me                 the signed-in user as JSON (CORS for our own subdomains, with credentials)
 // The session is an ES256 JWT in a cookie on lyricdock.losthusky.qzz.io, so every LyricDock subdomain (and none of the
@@ -22,6 +24,7 @@ const SESSION_TTL = 14 * 86400;
 const APP_TTL = 90 * 86400; // renewed by the apps while in use (account.js), so only a dock unused for 90 days signs in again
 const CODE_TTL = 300;
 const STATE_TTL = 600;
+const AUTH_MAX = 365 * 86400; // a Google sign-in at least once a year
 const GOOGLE_ISS = new Set(['accounts.google.com', 'https://accounts.google.com']);
 
 const SEC = {
@@ -29,7 +32,7 @@ const SEC = {
   'strict-transport-security': 'max-age=31536000; includeSubDomains',
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
-  'referrer-policy': 'no-referrer',
+  'referrer-policy': 'same-origin', // nothing leaves for other sites; our own POSTs keep their Origin header (checked below)
   'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src https:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
 };
 const withCookies = (headers, cookies) => { const h = new Headers(headers); cookies.forEach(c => h.append('set-cookie', c)); return h; };
@@ -82,15 +85,24 @@ async function sign(env, claims) {
 const now = () => Math.floor(Date.now() / 1000);
 const sessionCookie = (v, age) => `${COOKIE}=${v}; Domain=${ROOT}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Lax`;
 const stateCookie = (v, age) => `${STATE}=${v}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Lax`;
-const user = me => ({ sub: me.sub, email: me.email, name: me.name, pic: me.pic || '' }); // what moves from one token to the next
+// What moves from one token to the next. `at`: when Google last confirmed this person (tokens from before it existed: their iat).
+const user = me => ({ sub: me.sub, email: me.email, name: me.name, pic: me.pic || '', at: me.at || me.iat });
+const stale = me => now() - (me.at || me.iat) > AUTH_MAX;
+// A POST from one of our own pages (a cross-site form can't make the browser send this Origin).
+const ours = req => req.headers.get('origin') === AUTH;
 const newSession = (env, me) => sign(env, { iss: AUTH, aud: 'session', ...user(me), iat: now(), exp: now() + SESSION_TTL, sid: me.sid || rand(12) });
 
 async function login(req, env, url) {
   const app = url.searchParams.get('app');
   if (app !== null && !/^[\w-]{43}$/.test(app)) return page('<h1>That sign-in link is broken</h1><p>Go back to LyricDock and tap Sign in again.</p>', { status: 400 });
   const rd = safeRd(url.searchParams.get('rd'));
-  const me = url.searchParams.has('switch') ? null : await verify(cookie(req, COOKIE));
-  if (me) return app ? backToApp(req, env, me, app) : redirect(rd); // already signed in on this browser
+  let me = url.searchParams.has('switch') ? null : await verify(cookie(req, COOKIE));
+  if (me && stale(me)) me = null; // time for a real Google sign-in
+  if (me && !app) return redirect(rd); // already signed in on this browser
+  if (me) return req.method === 'POST' && ours(req) ? backToApp(req, env, me, app) : page(`${who(me)}<h1>Continue to LyricDock?</h1>
+<p>Sign the LyricDock app in as<br><b>${esc(me.name)}</b><br>${esc(me.email)}</p>
+<form method=post action="/login?app=${app}" class=acts><button class="b p">Continue as ${esc(me.name.split(' ')[0])}</button></form>
+<p class=s><a href="/login?app=${app}&amp;switch=1">Use another account</a></p>`);
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return page('<h1>Sign-in is not set up yet</h1>', { status: 503 });
   const state = rand(24), nonce = rand(24), cv = rand(48);
   const st = await sign(env, { iss: AUTH, aud: 'state', iat: now(), exp: now() + STATE_TTL, email: '', state, nonce, cv, rd, app: app || '' });
@@ -139,7 +151,7 @@ async function callback(req, env, url) {
   const email = id.email.toLowerCase();
   if (!allowed(env, email)) return fail(`${email} is not allowed here.`);
 
-  const me = { sub: String(id.sub), email, name: String(id.name || email.split('@')[0]).slice(0, 100), pic: /^https:\/\//.test(id.picture || '') ? id.picture.slice(0, 500) : '' };
+  const me = { sub: String(id.sub), email, name: String(id.name || email.split('@')[0]).slice(0, 100), pic: /^https:\/\//.test(id.picture || '') ? id.picture.slice(0, 500) : '', at: now() };
   const cookies = [sessionCookie(await newSession(env, me), SESSION_TTL), clear];
   return st.app ? backToApp(req, env, me, st.app, cookies) : redirect(st.rd, cookies);
 }
@@ -172,6 +184,7 @@ async function token(req, env) {
     if (me.exp - now() < SESSION_TTL / 2) cookies.push(sessionCookie(await newSession(env, me), SESSION_TTL));
   }
   if (!allowed(env, me.email)) return out({ error: `${me.email} is not allowed` }, 403);
+  if (stale(me)) return out({ error: 'Sign in again (once a year).' }, 401);
   const exp = now() + APP_TTL;
   const t = await sign(env, { iss: AUTH, aud: 'app', ...user(me), iat: now(), exp });
   return out({ token: t, ...user(me), exp }, 200, cookies);
@@ -187,10 +200,10 @@ export default {
         case '/login': return await login(req, env, url);
         case '/callback': return await callback(req, env, url);
         case '/token': return await token(req, env);
-        // POST only: a plain link on another site must not be able to sign people out. GET asks first.
+        // POST from our own confirm page only: neither a link nor a form on another site can sign people out. GET asks first.
         case '/logout': {
           const rd = safeRd(url.searchParams.get('rd'));
-          if (req.method === 'POST') return redirect(rd, [sessionCookie('', 0)]);
+          if (req.method === 'POST') return ours(req) ? redirect(rd, [sessionCookie('', 0)]) : new Response('Forbidden', { status: 403, headers: SEC });
           const me = await verify(cookie(req, COOKIE));
           if (!me) return redirect(rd);
           return page(`${who(me)}<h1>Sign out?</h1><p>This signs <b>${esc(me.email)}</b> out of LyricDock in this browser.</p>

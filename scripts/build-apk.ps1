@@ -1,5 +1,7 @@
-# Gradle-free debug APK build: aapt2 + javac + d8 + zipalign + apksigner.
-# Same output as `gradle assembleDebug` (same debug key, so it installs over it), no Gradle daemon needed.
+# Gradle-free APK build: aapt2 + javac + d8 + zipalign + apksigner. No Gradle daemon needed.
+#   ./scripts/build-apk.ps1            development build: debuggable (WebView inspection + the adb link)
+#   ./scripts/build-apk.ps1 -Release   what users get (release.ps1): not debuggable, no adb link
+param([switch]$Release)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "$root\.tools\sdk" }
@@ -43,7 +45,7 @@ Set-Content "$out\AndroidManifest.xml" $manifest
 
 & "$bt\aapt2.exe" compile --dir "$app\res" -o "$out\res.zip"
 & "$bt\aapt2.exe" link -I $jar --manifest "$out\AndroidManifest.xml" -A "$app\assets" --java "$out\gen" `
-    --min-sdk-version 26 --target-sdk-version 34 --debug-mode -o "$out\base.apk" "$out\res.zip"
+    --min-sdk-version 26 --target-sdk-version 34 @(if (-not $Release) { '--debug-mode' }) -o "$out\base.apk" "$out\res.zip"
 if ($LASTEXITCODE) { throw 'aapt2 link failed' }
 
 $src = @(Get-ChildItem "$app\java", "$out\gen" -Recurse -Filter *.java | ForEach-Object FullName)

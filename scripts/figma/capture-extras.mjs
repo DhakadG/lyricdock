@@ -1,6 +1,6 @@
 // Dev tool: the interaction shots for the design file, in the phone's current orientation - the layout picker, and the
 // cover swipe held mid-drag (one song, then +2) with its edge tab. Each drag slides back before letting go, so nothing
-// skips.   node scripts/figma-capture-extras.mjs <dir>     (demo song running: node scripts/demo-phone.mjs start)
+// skips.   node scripts/figma/capture-extras.mjs <dir>     (demo song running: node scripts/demo-phone.mjs start)
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 const dir = process.argv[2] ?? 'android/build/figma2';

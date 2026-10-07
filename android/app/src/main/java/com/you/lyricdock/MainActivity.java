@@ -57,7 +57,10 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         if (Build.VERSION.SDK_INT >= 28) getWindow().getAttributes().layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         CrashLog.install(this); // a crash on any thread is written down (shown on the next start) instead of vanishing
-        WebView.setWebContentsDebuggingEnabled(true); // lets the PC inspect/screenshot the page over adb
+        // Development builds only (scripts/build-apk.ps1 without -Release): page inspection over adb, and the adb
+        // link below. A release build has neither, so adb on the phone can't read the app's tokens or drive the page.
+        boolean dev = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        WebView.setWebContentsDebuggingEnabled(dev);
         root = new FrameLayout(this); // hosts the dock page, and the Spotify login overlay when open
         setContentView(root);
         makeWeb();
@@ -69,8 +72,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
             wifiLock.setReferenceCounted(false);
             wifiLock.acquire();
         } catch (Exception ignored) {}
-        server = new DockServer(this);
-        server.start();
+        if (dev) { server = new DockServer(this); server.start(); }
         signedIn(getIntent()); // started cold by the sign-in link
     }
 
@@ -331,7 +333,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
 
     @Override
     protected void onDestroy() {
-        try { server.stop(500); } catch (Exception ignored) {}
+        try { if (server != null) server.stop(500); } catch (Exception ignored) {}
         if (current == this) current = null;
         try { if (wifiLock != null) wifiLock.release(); } catch (Exception ignored) {}
         super.onDestroy();

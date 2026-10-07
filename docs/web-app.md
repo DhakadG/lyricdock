@@ -2,7 +2,7 @@
 
 **https://app.lyricdock.losthusky.qzz.io** is the same app as the phone, running in any browser (Windows, Mac, Linux,
 Android, and later iPhone). It can be installed as an app with its own window and icon, and works offline once loaded.
-Background and decisions: `docs/web-and-iphone-plan.md`.
+Background and decisions: `docs/archive/web-and-iphone-plan.md`.
 
 ## How it's built
 

@@ -467,4 +467,4 @@ Spicy runs inside Spotify desktop's current Chromium, so it freely uses: the ind
 `backdrop-filter` glass everywhere, a `mask-image` fade over a moving list — are cheap there. On a phone WebView (LyricDock's Galaxy M01 runs
 **Chrome 99** on an entry-level Adreno GPU) the same choices either silently don't apply (`scale`, `:has`, `linear()`) or cost whole frames
 (animated shadows, live blur over a moving background). A faithful port has to keep Spicy's *look and timing* while swapping the mechanisms —
-see lyrics-gap-analysis.md §6 for what was measured and changed.
+see archive/lyrics-gap-analysis.md §6 for what was measured and changed.

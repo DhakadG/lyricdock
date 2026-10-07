@@ -17,7 +17,7 @@ if ([version]$Version -lt [version]$current) { throw "Version must not be older 
 
 $json = if ($Beta) { "{ `"version`": `"$($vj.version)`", `"beta`": `"$Version`" }`n" } else { "{ `"version`": `"$Version`" }`n" }
 Set-Content extension\version.json $json -NoNewline
-& "$PSScriptRoot\build-apk.ps1"
+& "$PSScriptRoot\build-apk.ps1" -Release
 $apk = "$root\android\build\lyricdock-v$Version.apk"
 Copy-Item "$root\android\build\lite\lyricdock.apk" $apk -Force
 # Windows helper (Tauri): same version, attached to the release as a portable exe.
@@ -28,7 +28,9 @@ $helperExe = "$root\android\build\LyricDock-Helper-v$Version.exe"
 Copy-Item "$root\helper\src-tauri\target\release\lyricdock-helper.exe" $helperExe -Force
 
 if (-not $Notes) { $Notes = (git log --pretty='- %s' "v$current..HEAD" 2>$null) -join "`n"; if (-not $Notes) { $Notes = "LyricDock $Version" } }
-git add extension/version.json helper/src-tauri/tauri.conf.json helper/src-tauri/Cargo.toml helper/src-tauri/Cargo.lock
+# The extension's signature (the loader refuses an unsigned build): needs secrets/EXTENSION_SIGNING_JWK.json.
+node "$PSScriptRoot\sign-extension.mjs"; if ($LASTEXITCODE) { throw 'signing dock-bridge.js failed' }
+git add extension/version.json extension/dock-bridge.js.sig helper/src-tauri/tauri.conf.json helper/src-tauri/Cargo.toml helper/src-tauri/Cargo.lock
 git diff --cached --quiet; if ($LASTEXITCODE) { git commit -q -m "Release v$Version" } # first release: version.json already matches
 git tag "v$Version"
 git push -q --atomic origin main "v$Version"

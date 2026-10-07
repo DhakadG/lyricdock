@@ -15,7 +15,9 @@ use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 
 const NO_WINDOW: u32 = 0x0800_0000;
-const REPO_RAW: &str = "https://raw.githubusercontent.com/DhakadG/lyricdock/main";
+// The installer scripts this helper runs come from its own release tag, not from `main`: a push to `main` alone can't
+// change what a released helper executes (tags are made by scripts/release.ps1 together with this version).
+const REPO_RAW: &str = concat!("https://raw.githubusercontent.com/DhakadG/lyricdock/v", env!("CARGO_PKG_VERSION"));
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 const LINK_PS1: &str = include_str!("../../../scripts/link.ps1");
 const FIND_ADB_PS1: &str = include_str!("../../../scripts/find-adb.ps1");

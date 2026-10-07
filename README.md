@@ -30,7 +30,7 @@ It works **with** Spotify on your computer (through a small Spicetify extension)
                  │   · reads lyrics Spicy Lyrics already fetched, else Spotify / LRCLIB │
                  └────────────┬─────────────────────────────────────────────────────────┘
                               │  direct Wi-Fi / LAN (WebRTC data channel, ~7 ms)
-                              │  (setup handshake via an encrypted mailbox on ntfy.sh)
+                              │  (setup handshake via an encrypted mailbox on LyricDock's ntfy)
                               ▼
                      ┌─────────────────┐        Spotify Web API (your own Client ID)
                      │  LyricDock app  │◄────── Standalone mode: follows whatever device
@@ -71,7 +71,7 @@ The display app is the same everywhere; these are independent choices you can mi
 | Connection to the PC | **Wireless** (Wi-Fi/LAN) · Wired (USB tethering) · adb (developers) | automatic; see [guides](#setup-guides) |
 | How the app runs | **Normal app** · **Kiosk** (dedicated dock: full screen, boots into it, silent updates) | Install method; leave kiosk in Settings → Connection |
 | Pairing with the PC | **Pairing code** (once) · **Automatic via your Spotify account** · several phones per PC | Spotify: LyricDock button → Phones |
-| Signalling (connection setup) | **ntfy.sh** · your own ntfy server · the Helper's local relay | Phone: Settings → Connection → Signalling server |
+| Signalling (connection setup) | **LyricDock's own ntfy** (always) · plus your own ntfy server or the Helper's local relay | Phone: Settings → Connection → Signalling server |
 | Lyrics source | Desktop Spicy cache → Spotify → LRCLIB · Spicy Lyrics API (your key) → LRCLIB | automatic; add a key in Settings → Lyrics |
 | Device | Phone · tablet · Android TV box · custom Android build (e.g. Raspberry Pi + LineageOS) | see [What you need](#what-you-need) |
 | Look | 7 layouts × 7 backgrounds (incl. Spotify Canvas and music video) × all settings, or a preset | Settings (phone) or the LyricDock panel in Spotify |
@@ -192,7 +192,7 @@ In Spotify click the **LyricDock** button → **Pair phone** → type the code �
 follows within a second. The dot on the top-bar button is green when connected. From now on it reconnects by itself.
 
 *Automatic pairing instead:* if the phone is signed in to the same Spotify account ([Client ID](#spotify-client-id-standalone-mode)),
-Spotify finds it without the code — both screens show the same 4 digits, tap **Allow** on the phone.
+Spotify finds it without the code — both screens show the same 6 digits: tap **Allow** on the phone and **Same digits** in Spotify.
 
 ### B. Desktop · wired (USB tethering)
 
@@ -279,13 +279,14 @@ In Spotify: LyricDock → **Devices** → **Find devices**, then **Connect** nex
 them follow the same Spotify; each keeps its **own settings** (click *Edit settings* next to a phone), and presets are
 shared. Commands (play, skip, like) from any phone control Spotify.
 
-### I. Signalling without ntfy.sh
+### I. Signalling: an extra relay
 
-The one-time connection setup normally goes through [ntfy.sh](https://ntfy.sh) (encrypted). Two alternatives, set on
-the phone under **Settings → Connection → Signalling server**:
+The one-time connection setup goes through LyricDock's own [ntfy](https://ntfy.sh) server (encrypted). You can add a
+second relay on the phone under **Settings → Connection → Signalling server**:
 
 - **LyricDock Helper on my PC:** Helper → Settings → **Local signalling relay** on; type the address it shows
-  (e.g. `192.168.1.20`) into the phone. Allow the Windows firewall prompt for private networks.
+  (e.g. `192.168.1.20`) into the phone. Allow the Windows firewall prompt for private networks. Pairing then also works
+  without the internet.
 - **My own ntfy server:** any self-hosted [ntfy](https://docs.ntfy.sh/install/) over **https** (Spotify only allows
   secure addresses).
 
@@ -301,7 +302,7 @@ addresses, which is why the product uses WebRTC). See [Development](#development
 
 A small tray app (download `LyricDock-Helper-vX.Y.Z.exe` from [Releases](https://github.com/DhakadG/lyricdock/releases/latest)):
 shows whether the Spotify extension is installed and enabled, installs or repairs it, walks you through the one-time
-kiosk setup (step-by-step wizard), can run a **local signalling relay** (so nothing goes through ntfy.sh), notifies you
+kiosk setup (step-by-step wizard), can run a **local signalling relay** (pairing without the internet), notifies you
 of new versions, has a Help page, starts with Windows if you like, and has an optional Developer page (adb link, live
 phone screen). Nothing needs it day to day.
 
@@ -537,7 +538,7 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 |---|---|---|
 | Status | — |  |
 | Connection path | Auto (fastest) | How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer's internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection. Options: Auto (fastest) / Prefer USB cable / Wi-Fi only. |
-| Signalling server | ntfy.sh (public) | Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). ntfy.sh is free and public. My own ntfy server: any self-hosted ntfy (https address). LyricDock Helper: the helper app runs a tiny relay on your PC and nothing leaves your network - type your PC's IP address below. Spotify takes this setting from the phone. Options: ntfy.sh (public) / My own ntfy server / LyricDock Helper on my PC. |
+| Signalling server | LyricDock (default) | Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). LyricDock's own server is always used. My own ntfy server: any self-hosted ntfy (https address), used as well. LyricDock Helper: the helper app runs a tiny relay on your PC, so pairing also works without the internet - type your PC's IP address below. Spotify takes this setting from the phone. Options: ntfy.sh (public) / My own ntfy server / LyricDock Helper on my PC. |
 | Server address | (empty) | My own ntfy server: its https:// address (Spotify only allows https). LyricDock Helper: the IPv4 address of the PC running the helper (shown on its Dashboard). |
 | STUN / TURN servers (away from home) | (empty) | Only for using LyricDock on a different network from your computer (e.g. phone on mobile data). Add a TURN relay you control as url\|username\|password; several separated by commas. Options: a Metered.ca or Cloudflare TURN account, or coturn on a VPS. Leave empty at home. |
 | Connection log | — | The last connection events on this phone (connected, lost, reconnected), newest first. |
@@ -567,10 +568,13 @@ config ([`config/default-settings.json`](config/default-settings.json)).
 ## Privacy and security
 
 - **Desktop ↔ phone** traffic goes directly over your local network (WebRTC). Setting up that connection needs one
-  small offer/answer exchange; it goes through [ntfy.sh](https://ntfy.sh) (a public message relay), your own ntfy
-  server or the Helper's local relay, **encrypted with AES-GCM** using a key derived from your pairing code — the relay
-  only sees ciphertext. Automatic pairing by account
-  uses an ECDH key exchange plus your confirmation of matching digits on both screens.
+  small offer/answer exchange; it goes through LyricDock's own ntfy server (plus your own ntfy server or the Helper's
+  local relay if you add one), **encrypted with AES-GCM** using a key derived from your pairing code — the relay only
+  sees ciphertext. Automatic pairing uses an ECDH key exchange with a commitment (so nobody in the middle can force the
+  digits to match) plus your confirmation of the same 6 digits on both screens. Settings → Connection → Pairing code
+  makes a new code if yours may have been seen.
+- **Extension updates are signed.** The loader in Spotify only runs a LyricDock build whose signature matches the
+  release key built into it.
 - **Standalone mode** talks to Spotify's Web API with your own Client ID (PKCE, no secret). Tokens stay on the phone.
 - **Keys** (Client ID, Spicy key) are stored only on the phone (and in Spotify's local storage when synced from the
   PC panel; presets never include keys). Nothing is sent anywhere else.

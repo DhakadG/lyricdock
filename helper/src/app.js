@@ -42,9 +42,13 @@ async function refresh() {
   $('ab-ext').textContent = st.extensions_dir || '—'; $('ab-adb').textContent = st.adb || 'not installed (not needed)';
   $('btn-link').textContent = st.link_running ? 'Stop' : 'Start';
   $('dev-link-sub').textContent = st.link_running ? 'Running - Spotify reaches the phone over adb too.' : 'Stopped. Points Spotify\'s localhost:8975 at the phone over adb (development path).';
+  // The newest version: at most every 30 min (refresh() runs every 15 s for the local status).
+  if (Date.now() - latestAt < 30 * 60e3) return;
+  latestAt = Date.now();
   fetch('https://raw.githubusercontent.com/DhakadG/lyricdock/main/extension/version.json', { cache: 'no-store' })
-    .then(r => r.json()).then(j => { $('st-latest').textContent = `v${j.version}`; }).catch(() => { $('st-latest').textContent = 'offline'; });
+    .then(r => r.json()).then(j => { $('st-latest').textContent = `v${j.version}`; }).catch(() => { $('st-latest').textContent = 'offline'; latestAt = 0; });
 }
+let latestAt = 0;
 $('btn-refresh').onclick = () => refresh().then(() => toast('Status updated'));
 $('btn-install').onclick = () => invoke('install_extension').then(() => toast('Installer opened in a PowerShell window')).catch(e => toast(String(e), true));
 $('btn-kiosk').onclick = () => invoke('setup_phone').then(() => toast('Phone setup opened in a PowerShell window')).catch(e => toast(String(e), true));
@@ -81,7 +85,7 @@ async function relayUi(info) {
   $('st-relay').textContent = info.running ? (info.ip ?? 'On') : 'Off';
   $('relay-sub').textContent = info.running
     ? `Running on ${info.ip ?? 'this PC'}:${info.port}. On each phone: Settings → Connection → Signalling server → LyricDock Helper, address ${info.ip ?? '(this PC\'s IP)'}. Windows may ask once to allow it on private networks - click Allow.`
-    : 'Pairing and connection setup stay on your network instead of ntfy.sh. Turn on, then set the phone to use it.';
+    : 'Pairing and connection setup also work on your network when the internet is down. Turn on, then set the phone to use it.';
 }
 $('set-relay').onchange = e => invoke('relay_set', { on: e.target.checked }).then(i => { relayUi(i); toast(i.running ? 'Local relay running' : 'Local relay stopped'); })
   .catch(err => { e.target.checked = false; toast(String(err), true); });
@@ -138,7 +142,7 @@ const FAQ = [
   ['The phone says "Waiting for Spotify"', 'In Spotify: LyricDock → Devices → Find devices → Connect, then Allow on the phone. Both must be on the same network (or set a TURN server for away-from-home use). If your router isolates devices, use USB tethering or the local relay.'],
   ['Can I use several phones?', 'Yes. Pair each one in Spotify → LyricDock → Phones. They all follow the same Spotify, and each keeps its own settings (Edit settings next to its name).'],
   ['Does it work without Spicetify?', 'Yes, in Spotify-account mode: put your own Spotify Client ID in the phone\'s Settings → Playback source and sign in. It follows whatever device your account plays on.'],
-  ['What goes through ntfy.sh?', 'Only the encrypted one-time connection setup (keys derived from the pairing code). Music, lyrics and commands go directly between Spotify and the phone. Turn on the local relay to keep even that at home.'],
+  ['What goes through LyricDock\'s server?', 'Only the encrypted one-time connection setup (keys derived from the pairing code). Music, lyrics and commands go directly between Spotify and the phone. The local relay adds a path that works without the internet.'],
   ['Why no lyrics for some songs?', 'LyricDock uses Spicy Lyrics\' cache on this PC, Spotify\'s lyrics and LRCLIB. Songs none of them have show "No lyrics". A Spicy Lyrics publishable key on the phone fills more gaps.'],
   ['How do I roll back a bad update?', 'Spotify → LyricDock → Update channel and version → pick an older version. Choose Latest again to resume updates.'],
   ['How do I leave kiosk mode?', 'On the phone: Settings → Connection → Kiosk mode → Leave (tap twice).'],

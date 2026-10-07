@@ -30,8 +30,6 @@ export default {
     const { pathname } = new URL(req.url);
     const ic = icon(pathname); // /favicon.ico etc. -> /icons/ (public)
     if (ic) return ic;
-    // SSO "on" only once auth.lyricdock.losthusky.qzz.io is deployed with its secrets: until then the gate would lock everyone out.
-    if (env.SSO !== 'on') return pathname === '/turn' ? new Response('{"error":"sign-in is off"}', { status: 503, headers: { 'content-type': 'application/json' } }) : env.ASSETS.fetch(req);
     if (pathname === '/turn') return turn(req, env);
     if (pathname === '/manifest.webmanifest' || pathname === '/sw.js' || pathname.startsWith('/icons/') || (await session(req))) return env.ASSETS.fetch(req);
     return signIn(req);

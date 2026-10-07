@@ -1,7 +1,7 @@
 // Dev tool: capture what the Figma design file is built from - for every layout, at one moment of the demo song, in the
 // phone's current orientation: a real screenshot (idle, controls, quick settings), every [data-block] rectangle, every visible
 // lyric line (text, state, side, box, font size) and the song details. Output: <dir>/<orient>-<layout>-*.png + data.json.
-//   node scripts/figma-capture.mjs <dir>        (demo song running: node scripts/demo-phone.mjs start)
+//   node scripts/figma/capture.mjs <dir>        (demo song running: node scripts/demo-phone.mjs start)
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 const dir = process.argv[2] ?? 'android/build/figma';

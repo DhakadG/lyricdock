@@ -68,7 +68,7 @@ The owner's step-by-step guide (Google console, TURN, browser control) is **docs
 | `PUBLISH_TOKEN` | ntfy Worker + your PC | `secrets/PUBLISH_TOKEN.txt` | done (random) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | auth Worker | `secrets/google-client.json`: the client's downloaded JSON, `.web.client_id` and `.web.client_secret` | **user**, setup-guide part 1 |
 | `TURN_KEY_ID`, `TURN_KEY_TOKEN` | web Worker | `secrets/TURN_KEY_ID.txt`, `secrets/TURN_KEY_TOKEN.txt` | **user**, setup-guide part 2 (dashboard or `scripts/new-turn-key.ps1`) |
-| `ADMIN_PASSWORD`, `CF_API_TOKEN` | cloud Worker | already set | unchanged |
+| `CF_API_TOKEN` | cloud Worker | already set | unchanged (`ADMIN_PASSWORD` is no longer used: `npx wrangler secret delete ADMIN_PASSWORD`) |
 
 Google client facts (for checking the user's setup):
 - Project `youtubedata-lyricsdockapp`, consent screen `LyricDock`, **External**, published.
@@ -117,6 +117,8 @@ PowerShell, repo root, branch `web-fixes-apple`.
 - [x] **Admin gate on** (2026-10-08): `cloud/wrangler.jsonc` → `"ADMIN_SSO": "on"`, then `cd cloud; npx wrangler deploy`.
   - https://admin.lyricdock.losthusky.qzz.io asks for Google, lets ghanisht.kumawat@gmail.com in and refuses any other
     account.
+- [x] **Switches removed** (security audit, after v1.8.8): the gates are always on now. `SSO`, `ADMIN_SSO` and
+  `API_SSO` and the admin password login are gone from the code, so none can be turned off by a config change.
 - [x] **ntfy owner gate** (2026-10-08): `cd ntfy; npm i; npx wrangler deploy` (Cloudflare Containers; see docs/ntfy.md).
   - `./scripts/ping-update.ps1` says "Update ping sent".
   - A phone and the web app still pair (the `ld*` topics stay open).
@@ -132,7 +134,6 @@ PowerShell, repo root, branch `web-fixes-apple`.
 - [ ] **Clean up**:
   - Delete `%TEMP%\lh_sso_priv.json` once the secret is set.
   - Update memory `sso-and-links.md`.
-  - Optionally delete `docs/web-fixes-handover.md`.
 
 ## 3. Sign-in in every app (2026-10-08)
 
@@ -160,4 +161,4 @@ Every LyricDock screen needs a sign-in, not just the web app.
   web, cloud), then switch the `SSO_PRIVATE_JWK` secret.
 - Sessions last 14 days. When one expires in the installed web app, `rtc.js` sends the page to
   `auth.lyricdock.../login` (on `/turn`'s 401) and back.
-- Web review fixes and the Apple-device audit: `docs/web-fixes-handover.md`.
+- Web review fixes and the Apple-device audit: done; the handover is in git history (`git log -- docs/web-fixes-handover.md`).

@@ -38,7 +38,8 @@ In the ntfy phone app: Settings → Default server → `https://ntfy.losthusky.q
 ## LyricDock
 
 - **Who uses it:** `rtc.js` (phone + web app) and `extension/dock-bridge.js` (Spotify) put it first in their relay
-  list (`LDR`), then the relay chosen in settings, then ntfy.sh as a last fallback.
+  list (`LDR`), then the relay chosen in settings. Not ntfy.sh any more: a third party there could log topic names,
+  which are hashes of pairing codes.
 - **Listening:** displays subscribe on every relay in the list.
 - **Sending:** Spotify rotates its offers across them.
 - **Tested end to end:** a display (the web app) and Spotify's offer code (a test harness running `rtcOpen`'s

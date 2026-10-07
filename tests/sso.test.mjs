@@ -69,10 +69,33 @@ r = await post({ token: tok });
 assert.equal(r.status, 200);
 assert.equal((await api((await r.json()).token)).email, 'me@gmail.com');
 assert.equal((await post({ token: jwt })).status, 401);
-// already signed in on this browser: straight back to the app; a bad challenge is refused
+// already signed in on this browser: one "Continue" tap, never a silent code (an app that grabbed lyricdock:// could
+// otherwise collect codes for its own challenge); the tap must come from our own page; a bad challenge is refused
+const login = (origin) => worker.fetch(new Request(`https://auth.lyricdock.losthusky.qzz.io/login?app=${challenge}`, { method: 'POST', headers: { cookie: `${COOKIE}=${jwt}`, origin } }), env);
 r = await get(`/login?app=${challenge}`, `${COOKIE}=${jwt}`);
 assert.equal(r.status, 200);
-assert.match(await r.text(), /lyricdock:\/\/signed-in\?code=/);
+let body = await r.text();
+assert.match(body, /Continue as Me/);
+assert.doesNotMatch(body, /signed-in\?code=/);
+assert.doesNotMatch(await (await login('https://evil.com')).text(), /signed-in\?code=/);
+assert.doesNotMatch(await (await login('null')).text(), /signed-in\?code=/);
+assert.match(await (await login('https://auth.lyricdock.losthusky.qzz.io')).text(), /lyricdock:\/\/signed-in\?code=/);
+// logout: only our own confirm page can sign people out
+const logout = origin => worker.fetch(new Request('https://auth.lyricdock.losthusky.qzz.io/logout', { method: 'POST', headers: { origin } }), env);
+assert.equal((await logout('https://evil.com')).status, 403);
+r = await logout('https://auth.lyricdock.losthusky.qzz.io');
+assert.equal(r.status, 303);
+assert.ok(setCookies(r).some(c => c.startsWith(`${COOKIE}=;`) && /Max-Age=0/.test(c)));
+// renewal stops a year after the last Google sign-in (claim `at`): a stolen token can't renew itself forever
+const jwk = JSON.parse(env.SSO_PRIVATE_JWK), key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url'), t0 = Math.floor(Date.now() / 1000);
+const mint = async claims => { const m = `${b64({ alg: 'ES256', typ: 'JWT', kid: jwk.kid })}.${b64(claims)}`; return `${m}.${Buffer.from(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(m))).toString('base64url')}`; };
+const appTok = at => mint({ iss: 'https://auth.lyricdock.losthusky.qzz.io', aud: 'app', sub: '1', email: 'me@gmail.com', name: 'Me', at, iat: t0, exp: t0 + 3600 });
+assert.equal((await post({ token: await appTok(t0 - 400 * 86400) })).status, 401);
+r = await post({ token: await appTok(t0 - 300 * 86400) });
+assert.equal(r.status, 200);
+const renewed = (await r.json()).token;
+assert.equal(JSON.parse(Buffer.from(renewed.split('.')[1], 'base64url')).at, t0 - 300 * 86400); // `at` carries over
 assert.equal((await get('/login?app=x"><script>', `${COOKIE}=${jwt}`)).status, 400);
 // web app: the cookie buys a token, CORS with credentials for LyricDock's own sites only
 r = await post({}, { cookie: `${COOKIE}=${jwt}`, origin: 'https://app.lyricdock.losthusky.qzz.io' });

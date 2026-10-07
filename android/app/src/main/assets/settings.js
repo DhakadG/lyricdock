@@ -279,10 +279,16 @@ const Settings = (() => {
     { group: 'Connection', icon: 'link', cat: 'Ops', desc: 'How the phone and Spotify find each other: pairing, signalling server, TURN, kiosk mode.' },
     { label: 'Status', type: 'custom', render: () => window.connCard?.() },
     { label: 'Setup guide', type: 'action', text: () => 'Open', desc: 'The first-run screen: sign in with Spotify or connect Spotify on your computer.', run: () => { Settings.close(); window.Setup?.open(); } },
+    { label: 'Pairing code', type: 'action', text: () => 'New code', desc: 'Unpairs every computer: connect again with Find devices.',
+      run: () => {
+        if (!window.pairArmed) { window.pairArmed = true; setTimeout(() => { window.pairArmed = false; }, 4000); return window.notice?.('Tap New code again: every computer must pair again'); }
+        try { localStorage.removeItem('dock:pair'); } catch (e) {}
+        location.reload(); // rtc.js makes a fresh code on start
+      }, help: 'The code is the key to this screen\'s connection. Make a new one if someone else may have seen it (it was shown on screen, or this phone ran a LyricDock older than v1.8.9 on a shared Wi-Fi).' },
     { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', when: () => app, opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
       help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer\'s internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection.' },
-    { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'ntfy.sh (public)'], ['custom', 'My own ntfy server'], ...(app ? [['helper', 'LyricDock Helper on my PC']] : [])], // an https page can't reach the helper
-      help: 'Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). ntfy.sh is free and public. My own ntfy server: any self-hosted ntfy (https address). LyricDock Helper: the helper app runs a tiny relay on your PC and nothing leaves your network - type your PC\'s IP address below. Spotify takes this setting from the phone.' },
+    { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'LyricDock (default)'], ['custom', 'My own ntfy server'], ...(app ? [['helper', 'LyricDock Helper on my PC']] : [])], // an https page can't reach the helper
+      help: 'Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). LyricDock\'s own server is always used. My own ntfy server: any self-hosted ntfy (https address), used as well. LyricDock Helper: the helper app runs a tiny relay on your PC, so pairing also works without the internet - type your PC\'s IP address below. Spotify takes this setting from the phone.' },
     { k: 'relayUrl', label: 'Server address', type: 'text', def: '', placeholder: 'https://ntfy.example.com  or  192.168.1.20', when: s => s.relay !== 'ntfy',
       help: 'My own ntfy server: its https:// address (Spotify only allows https). LyricDock Helper: the IPv4 address of the PC running the helper (shown on its Dashboard).' },
     { label: 'Local network access', type: 'action', text: () => 'Allow', run: () => window.lyricdockLna?.request(), when: () => !!window.LYRICDOCK_WEB && !!window.lyricdockLna,

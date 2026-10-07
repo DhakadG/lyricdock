@@ -78,7 +78,7 @@ async function ingest(env, cand) {
 }
 
 // artist + album -> indexed album (or null). `src` says which rung answered: 'index' or 'apple'.
-export async function resolve(env, cfg, artist, albumName) {
+export async function resolve(env, cfg, artist, albumName, sub) {
   const key = `l:${norm(artist)}|${norm(albumName)}`.slice(0, 500), now = Date.now();
   const fresh = a => a && (a.has_motion || now - a.fetched_at < cfg.refresh_days * 864e5);
   const lk = await env.KV.get(key, { type: 'json', cacheTtl: 300 });
@@ -86,6 +86,9 @@ export async function resolve(env, cfg, artist, albumName) {
     const a = lk.a ? await getAlbum(env, lk.a) : null;
     if (lk.a ? fresh(a) : now - lk.at < cfg.neg_days * 864e5) return { album: a, src: 'index' };
   }
+  // A miss costs Apple fetches and KV writes: cap them per account (MISS_RL, wrangler.jsonc), so one sign-in can't
+  // burn the daily KV write quota for everyone.
+  if (env.MISS_RL && !(await env.MISS_RL.limit({ key: sub || '' })).success) return { album: null, src: 'limited' };
   let got = null;
   for (const c of (await search(artist, albumName)).slice(0, 2)) { // an edition with motion art beats one without
     const known = await getAlbum(env, c.id);

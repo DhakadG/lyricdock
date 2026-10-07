@@ -1,26 +1,28 @@
 // No-adb link: a WebRTC data channel straight between Spotify (desktop) and this phone (Wi-Fi, USB tethering, or
 // a TURN relay when away). WebRTC is exempt from the "no ws:// from https" rule that blocks a plain LAN WebSocket.
 //
-// Two jobs go through a signalling relay (ntfy.sh, your own ntfy, or the LyricDock Helper's local relay):
+// Two jobs go through a signalling relay (LyricDock's own ntfy, your own ntfy, or the LyricDock Helper's local relay):
 //  1. Connecting a paired Spotify: one offer / answer swap, on a topic + AES-GCM key derived from this phone's
 //     pairing code - the relay only ever sees ciphertext.
 //  2. Being found ("Find devices" in Spotify): the phone listens on lobby topics for its network (derived from the
-//     public IP both devices share, learnt through STUN) and its Spotify account. Spotify asks who is there, the
-//     phone answers with its name and an ECDH key; when you click Connect, both screens show the same 4 digits and
-//     tapping Allow here hands the pairing code over, encrypted with the agreed key.
-// The phone always listens on the chosen relay AND ntfy.sh, so a mismatch between the two ends can't strand it.
+//     public IP both devices share, learnt through STUN) and its Spotify account. Spotify asks who is there with a
+//     commitment to its ECDH key (a hash), the phone answers with its name and its key, and Connect reveals Spotify's
+//     key. Both screens then show the same 6 digits, and tapping Allow here hands the pairing code over, encrypted with
+//     the agreed key. The commitment is what makes the digits mean something: anyone can post on a lobby topic, and
+//     without it a man in the middle could pick keys until both screens showed the same digits.
+// The phone always listens on LyricDock's ntfy AND the chosen relay, so a mismatch between the two ends can't strand it.
+// Not ntfy.sh: topic names are hashes of the pairing code, and a third party that logs them could brute-force the code.
 const Rtc = (() => {
   const CHUNK = 16000;
   // Settings is a top-level const (not a window property): read it by name.
   const SS = () => (typeof Settings !== 'undefined' ? Settings.S : {});
-  const NTFY = 'https://ntfy.sh';
   const relay = () => {
     const S = SS();
     if (S.relay === 'helper' && /^\d+\.\d+\.\d+\.\d+$/.test(S.relayUrl || '')) return `http://${S.relayUrl}:8977`;
     if (S.relay === 'custom' && /^https?:\/\/\S+$/.test(S.relayUrl || '')) return S.relayUrl.replace(/\/+$/, '');
-    return NTFY;
+    return null; // 'ntfy' (the default): LyricDock's own server only
   };
-  // The self-hosted ntfy (ntfy/, docs/ntfy.md) comes first: ntfy.sh's free daily quota runs out for a busy home IP.
+  // LyricDock's self-hosted ntfy (ntfy/, docs/ntfy.md), always.
   const LDR = 'https://ntfy.losthusky.qzz.io';
   // The PC's LyricDock Helper, learned from Spotify's hello (it detects the helper by itself): connection setup keeps
   // working with the internet down or the cloud relays unreachable. Not from the https web app: browsers block plain
@@ -30,7 +32,7 @@ const Rtc = (() => {
     return location.protocol !== 'https:' && /^\d+\.\d+\.\d+\.\d+$/.test(ip || '') ? `http://${ip}:8977` : null;
   };
   // Fallback order for connection setup: all are used at once (the phone listens on every one), so any one is enough.
-  const relays = () => [...new Set([LDR, relay(), helper(), NTFY].filter(Boolean))];
+  const relays = () => [...new Set([LDR, relay(), helper()].filter(Boolean))];
   const wsOf = u => u.replace(/^http/, 'ws');
   // Public STUN always joins the list: browsers hide this device's local addresses (random .local names), so the
   // public-address candidates are what lets two screens behind the same router still find each other.
@@ -177,7 +179,7 @@ const Rtc = (() => {
   // ---- being found: lobby topics for this network (public IP via STUN) and the Spotify account
   const EC = { name: 'ECDH', namedCurve: 'P-256' };
   let uid = null, netIp = null, netAt = 0, asking = false, onAsk = async () => false;
-  const seen = new Map(); // desk -> { kp, deskPub, name }
+  const seen = new Map(); // 'desk commitment' -> { kp, name }
   async function publicIp() {
     if (netIp && Date.now() - netAt < 10 * 60000) return netIp;
     const p = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.l.google.com:19302' }] });
@@ -203,20 +205,25 @@ const Rtc = (() => {
     sync([...relays().map(r => [r, topic, onOffer]), ...relays().flatMap(r => out.map(t => [r, t, onLobby]))]);
   }
   const deviceName = () => { try { return Dock.model() || 'Android phone'; } catch (e) { return 'LyricDock phone'; } };
+  // The commitment: a hash of the key's coordinates (same in dock-bridge.js).
+  const commitOf = async pub => hex(await sha(`${pub?.x}.${pub?.y}`));
   async function onLobby(raw, r, t) {
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     if (typeof m?.desk !== 'string' || m.desk.length > 40) return;
-    if (m.t === 'scan' && m.pub) {
+    if (m.t === 'scan' && /^[0-9a-f]{64}$/.test(m.commit || '')) {
       // A Spotify is looking: say who we are (a fresh key per Spotify, so digits differ every time).
-      let s = seen.get(m.desk);
-      if (!s) { s = { kp: await crypto.subtle.generateKey(EC, false, ['deriveBits']) }; seen.set(m.desk, s); if (seen.size > 20) seen.delete(seen.keys().next().value); }
-      Object.assign(s, { deskPub: m.pub, name: String(m.name || 'Spotify').slice(0, 60) });
+      // Keyed by desk + commitment: someone else's scan with this desk id can't replace the real one.
+      const k = `${m.desk} ${m.commit}`;
+      let s = seen.get(k);
+      if (!s) { s = { kp: await crypto.subtle.generateKey(EC, false, ['deriveBits']) }; seen.set(k, s); if (seen.size > 20) seen.delete(seen.keys().next().value); }
+      s.name = String(m.name || 'Spotify').slice(0, 60);
       post(r, t, JSON.stringify({ t: 'here', desk: m.desk, id: myId, name: deviceName(), pub: await crypto.subtle.exportKey('jwk', s.kp.publicKey), linked: dc?.readyState === 'open' }));
-    } else if (m.t === 'connect' && m.to === myId && seen.has(m.desk) && !asking) {
-      const s = seen.get(m.desk);
-      const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await crypto.subtle.importKey('jwk', s.deskPub, EC, false, []) }, s.kp.privateKey, 256);
+    } else if (m.t === 'connect' && m.to === myId && m.pub && !asking) {
+      const s = seen.get(`${m.desk} ${await commitOf(m.pub)}`); // only the key this Spotify committed to before seeing ours
+      if (!s) return;
+      const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await crypto.subtle.importKey('jwk', m.pub, EC, false, []) }, s.kp.privateKey, 256);
       const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));
-      const digits = String(((h[0] << 16) | (h[1] << 8) | h[2]) % 10000).padStart(4, '0');
+      const digits = String(((h[0] << 16) | (h[1] << 8) | h[2]) % 1000000).padStart(6, '0');
       asking = true;
       const ok = await onAsk(s.name, digits).catch(() => false);
       asking = false;

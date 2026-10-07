@@ -1,8 +1,8 @@
 // LyricDock cloud. One Worker, three hostnames:
 //   lyricdock.losthusky.qzz.io        public info page
 //   art.lyricdock.losthusky.qzz.io    API (/v1/*) + promoted videos (/m/*)
-//   admin.lyricdock.losthusky.qzz.io  dashboard, password-protected (admin.js)
-// API_SSO "on": /v1/album|track|cover only for signed-in LyricDock apps (Bearer app token from auth.lyricdock, ../../auth/sso.js).
+//   admin.lyricdock.losthusky.qzz.io  dashboard, ADMIN_EMAILS only (admin.js)
+// /v1/album|track|cover answer signed-in LyricDock apps only (Bearer app token from auth.lyricdock, ../../auth/sso.js).
 // Docs: docs/lyricdock-cloud.md
 
 import { still } from './apple.js';
@@ -69,12 +69,13 @@ async function publicApi(req, env, ctx, url, ev) {
   if (p === '/v1/ping') { // heartbeat, or an app event (web app: open / install / update / error)
     const e = q.get('e');
     ev.kind = EVENTS.has(e) ? e : 'ping';
-    ev.detail = (q.get('x') || '').slice(0, 300);
+    if (EVENTS.has(e)) ev.detail = (q.get('x') || '').slice(0, 300); // free text only with a known event (it's anyone's to send)
     return json({ ok: true });
   }
   // Signed-in apps only (old builds without sign-in get no covers; they update themselves). Checked before the edge
   // cache, so a cached answer isn't a way around it.
-  if (env.API_SSO === 'on' && !(await appUser(req))) return json({ error: 'sign in to LyricDock' }, 401);
+  const me = await appUser(req);
+  if (!me) return json({ error: 'sign in to LyricDock' }, 401);
 
   // Rung 1: the edge cache. Same question (minus who asks) = same answer, no KV, no Apple.
   const ck = new URL(url); ['d', 'v', 'warm', 'plat', 'scr', 'tz', 'lang'].forEach(k => ck.searchParams.delete(k)); ck.searchParams.sort();
@@ -84,7 +85,7 @@ async function publicApi(req, env, ctx, url, ev) {
     Object.assign(ev, meta, { kind: p === '/v1/cover' ? (q.has('warm') ? 'warm' : 'cover') : 'api', tier: `edge/${meta.mtier || '-'}` });
     return hitRes;
   }
-  const res = await answer(env, cfg, url, ev);
+  const res = await answer(env, cfg, url, ev, me);
   if (res.status === 200 || res.status === 404) {
     const c = res.clone(), h = new Headers(c.headers);
     h.set('cache-control', `public, max-age=${cfg.edge_ttl}`);
@@ -95,11 +96,12 @@ async function publicApi(req, env, ctx, url, ev) {
 }
 
 // Rungs 2 + 3: KV index, else Apple.
-async function answer(env, cfg, url, ev) {
+async function answer(env, cfg, url, ev, me) {
   const p = url.pathname, q = url.searchParams;
   const artist = (q.get('artist') || '').split(/,\s*/)[0].trim(), albumName = (q.get('album') || '').trim();
   if (!artist || !albumName || artist.length > 200 || albumName.length > 300) return json({ error: 'artist and album are required' }, 400);
-  const { album, src } = await resolve(env, cfg, artist, albumName);
+  const { album, src } = await resolve(env, cfg, artist, albumName, me.sub);
+  if (src === 'limited') return json({ error: 'slow down' }, 429); // not cached: only 200/404 are
   Object.assign(ev, { tier: src, album_id: album?.id, album: album?.name, artist: album?.artist });
 
   if (p === '/v1/album') {
@@ -144,7 +146,10 @@ function log(env, req, url, ev, res, ms) {
   const cf = req.cf || {}, q = url.searchParams, ua = req.headers.get('user-agent') || '';
   const model = (/Android [\d.]+; ([^;)]+?)(?: Build|\))/.exec(ua) || [])[1] || (/Windows|Mac OS X|Linux|iPhone|iPad/.exec(ua) || [])[0] || '';
   const clip = k => (q.get(k) || '').slice(0, 40);
-  track(env, { ...ev, status: res.status, ms, device: q.get('d'), version: q.get('v'), model, country: cf.country, city: cf.city, colo: cf.colo,
-    lat: cf.latitude, lon: cf.longitude, px: q.get('px'), hevc: q.has('hevc') ? +(q.get('hevc') === '1') : -1,
+  // Only a well-formed device id is kept: anything else here is attacker text (it's shown in the admin dashboard).
+  // Location rounded to ~10 km: enough for the map, not a home address.
+  const device = /^[0-9a-f-]{36}$/.test(q.get('d') || '') ? q.get('d') : '', round = v => Math.round(+v * 10) / 10 || 0;
+  track(env, { ...ev, status: res.status, ms, device, version: q.get('v'), model, country: cf.country, city: cf.city, colo: cf.colo,
+    lat: round(cf.latitude), lon: round(cf.longitude), px: q.get('px'), hevc: q.has('hevc') ? +(q.get('hevc') === '1') : -1,
     plat: clip('plat'), screen: clip('scr'), tz: clip('tz'), lang: clip('lang') });
 }

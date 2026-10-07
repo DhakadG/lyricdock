@@ -64,4 +64,16 @@ assert.strictEqual(page.tall_m3u8, null);
 assert.deepStrictEqual([page.name, page.artist, page.genre, page.release_date, page.copyright], ['Plastic Beach', 'Gorillaz', 'Pop', '2010-03-03', '℗ 2010 Parlophone']);
 assert.deepStrictEqual([page.tracks.length, page.tracks[0].id, page.tracks[0].composer], [1, '859844930', 'Damon Albarn']);
 assert.strictEqual(parsePage({ x: [{ numberOfSocialBadges: 1, description: '3 March 2010' }] }).release_date, '2010-03-03');
+
+// Admin dashboard: a value inside an inline handler must go through js() (JSON), never '${...}' - HTML-escaping alone
+// is undone by the browser before the handler runs (a device id like x',import('//evil')' ran as script).
+import { readFileSync } from 'node:fs';
+const adminHtml = readFileSync(new URL('../cloud/src/admin.html', import.meta.url), 'utf8');
+const handlers = adminHtml.match(/\son[a-z]+="[^"]*"/g) || [];
+assert.ok(handlers.length > 5);
+for (const h of handlers) assert.ok(!/'\$\{/.test(h), h);
+const line = name => adminHtml.match(new RegExp(`const ${name} = [^\\r\\n]*`))[0]; // the file may be CRLF
+const { esc, js } = new Function(`${line('esc')}\n${line('js')}\nreturn { esc, js };`)();
+const decoded = js("x',alert(1),'").replace(/&#(\d+);/g, (_, c) => String.fromCharCode(c)); // what the handler sees
+assert.strictEqual(JSON.parse(decoded), "x',alert(1),'");
 console.log('cloud ok');

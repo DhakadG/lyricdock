@@ -2,7 +2,7 @@
 // quality to the LyricDock phone app(s), preloads the next track, stores each phone's settings/presets, answers
 // the phone's queue / library / search panel, and takes playback commands back.
 //
-// Transport: a WebRTC data channel per paired phone (signalled through ntfy.sh, a self-hosted ntfy server, or the
+// Transport: a WebRTC data channel per paired phone (signalled through LyricDock's ntfy, a self-hosted ntfy server, or the
 // LyricDock Helper's local relay), plus ws://127.0.0.1:8975 over adb for development.
 (function dockBridge() {
   if (!window.Spicetify?.Player?.addEventListener || !Spicetify.CosmosAsync || !Spicetify.Platform || !Spicetify.LocalStorage)
@@ -77,7 +77,7 @@
   function relayFor(S) {
     if (S.relay === 'helper') return 'http://127.0.0.1:8977'; // the helper's local relay, as seen from this PC
     if (S.relay === 'custom' && /^https:\/\/[^\s]+$/.test(S.relayUrl ?? '')) return S.relayUrl.replace(/\/+$/, '');
-    return 'https://ntfy.sh';
+    return null; // 'ntfy' (the default): LyricDock's own server only
   }
   function iceFor(S) {
     const servers = String(S.ice ?? '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
@@ -166,10 +166,10 @@
     setTimeout(r, 3000);
   });
 
-  // Offers go out on the chosen relay and ntfy.sh in turn (the phone listens on both), so a relay mismatch between
+  // Offers go out on LyricDock's ntfy and the chosen relay in turn (the phone listens on both), so a relay mismatch between
   // the two ends can never strand a paired phone.
-  const NTFY = 'https://ntfy.sh';
-  // The self-hosted ntfy first (ntfy/, docs/ntfy.md): ntfy.sh's free daily quota runs out for a busy home IP.
+  // LyricDock's self-hosted ntfy (ntfy/, docs/ntfy.md), always. Not ntfy.sh: topic names are hashes of the pairing code,
+  // and a third party that logs them could brute-force the code.
   const LDR = 'https://ntfy.losthusky.qzz.io';
   // The LyricDock Helper's local relay, when it runs on this PC (probed, no setting needed): connection setup then
   // also works without the internet, and the phone learns this PC's address from the hello to use it too.
@@ -179,7 +179,7 @@
     .then(j => { helperIp = /^\d+\.\d+\.\d+\.\d+$/.test(j?.ip || '') ? j.ip : null; }, () => { helperIp = null; });
   probeHelper();
   setInterval(probeHelper, 60000);
-  const relaysFor = S => [...new Set([LDR, relayFor(S), ...(helperIp ? [HELPER] : []), NTFY])];
+  const relaysFor = S => [...new Set([LDR, relayFor(S), ...(helperIp ? [HELPER] : [])].filter(Boolean))];
   async function rtcOpen(code, attempt = 0) {
     if (typeof RTCPeerConnection === 'undefined') return null;
     const S = settingsFor(code), rs = relaysFor(S), RELAY = rs[attempt % rs.length];
@@ -250,12 +250,15 @@
   }
 
   // ---- Find devices. Phones listen on lobby topics for their network (derived from the public IP both ends share,
-  // learnt through STUN) and their Spotify account. Spotify asks who is there, each phone answers with its name and
-  // an ECDH key; Connect shows the same 4 digits on both screens and the phone's Allow hands its pairing code over,
-  // encrypted with the agreed key. Mirrors rtc.js on the phone.
+  // learnt through STUN) and their Spotify account. Spotify asks who is there with a commitment (hash) to its ECDH key,
+  // each phone answers with its name and its key, and Connect reveals Spotify's key. Both screens show the same 6 digits;
+  // the phone's Allow hands its pairing code over, encrypted with the agreed key, and the user confirms the digits here
+  // too. Anyone can post on a lobby topic: the commitment stops a man in the middle from choosing keys until the digits
+  // match, and the confirmation here stops a fake "phone" from pairing by just answering. Mirrors rtc.js on the phone.
   const EC = { name: 'ECDH', namedCurve: 'P-256' };
   const hex = u8 => Array.from(u8, b => b.toString(16).padStart(2, '0')).join('');
   const shaHex = async s => hex(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(s))));
+  const commitOf = pub => shaHex(`${pub.x}.${pub.y}`); // same in rtc.js
   async function accountId() {
     return safe(() => Spicetify.Platform.username, null) || (await Spicetify.CosmosAsync.get('https://api.spotify.com/v1/me').catch(() => null))?.id || null;
   }
@@ -285,11 +288,11 @@
     if (scan?.running) return;
     if (typeof RTCPeerConnection === 'undefined') return;
     const kp = await crypto.subtle.generateKey(EC, false, ['deriveBits']);
-    const pub = await crypto.subtle.exportKey('jwk', kp.publicKey), desk = deskId();
+    const pub = await crypto.subtle.exportKey('jwk', kp.publicKey), desk = deskId(), commit = await commitOf(pub);
     const [ip, uid] = await Promise.all([publicIp(), accountId()]);
     const topics = [...(ip ? [['net', 'ldn' + (await shaHex('lyricdock-net:' + ip)).slice(0, 24)]] : []), ...(uid ? [['acct', 'lda' + (await shaHex('lyricdock-account:' + uid)).slice(0, 24)]] : [])];
     const rs = relaysFor(readJson(SETTINGS_KEY, {}));
-    scan = { running: true, found: new Map(), kp, desk, topics, socks: [], ip: !!ip, account: !!uid, startedAt: Date.now() };
+    scan = { running: true, found: new Map(), kp, pub, desk, topics, socks: [], ip: !!ip, account: !!uid, startedAt: Date.now() };
     const s = scan;
     for (const r of rs) for (const [how, t] of topics) {
       const ws = new WebSocket(`${wsUrl(r)}/${t}/ws`);
@@ -306,7 +309,7 @@
         else if (m.t === 'deny') { const d = s.found.get(m.from); if (d) { d.state = 'denied'; renderPanel(); } }
       };
     }
-    const ask = () => { for (const r of rs) for (const [, t] of topics) fetch(`${r}/${t}`, { method: 'POST', body: JSON.stringify({ t: 'scan', desk, name: deskName(), pub }), headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {}); };
+    const ask = () => { for (const r of rs) for (const [, t] of topics) fetch(`${r}/${t}`, { method: 'POST', body: JSON.stringify({ t: 'scan', desk, name: deskName(), commit }), headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {}); };
     setTimeout(ask, 800); setTimeout(ask, 4000); setTimeout(ask, 9000);
     renderPanel();
     // Stop listening after 90s unless a phone is mid-pairing.
@@ -320,17 +323,27 @@
     if (!d) return;
     const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await crypto.subtle.importKey('jwk', d.pub, EC, false, []) }, s.kp.privateKey, 256);
     d.hk = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));
-    d.digits = String(((d.hk[0] << 16) | (d.hk[1] << 8) | d.hk[2]) % 10000).padStart(4, '0');
-    d.state = 'asking';
+    d.digits = String(((d.hk[0] << 16) | (d.hk[1] << 8) | d.hk[2]) % 1000000).padStart(6, '0');
+    d.state = 'asking'; d.ok = false; d.code = null;
     renderPanel();
-    fetch(`${d.relay}/${d.topic}`, { method: 'POST', body: JSON.stringify({ t: 'connect', desk: s.desk, to: id }), headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
+    fetch(`${d.relay}/${d.topic}`, { method: 'POST', body: JSON.stringify({ t: 'connect', desk: s.desk, to: id, pub: s.pub }), headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
   }
+  // The phone's Allow (its code, sealed with the agreed key) and the user's "Same digits" here, in either order.
   async function accepted(s, m) {
     const d = s.found.get(m.from);
-    if (!d?.hk || d.state === 'paired') return;
+    if (!d?.hk || d.state !== 'asking') return;
     const aes = await crypto.subtle.importKey('raw', d.hk, 'AES-GCM', false, ['decrypt']);
     const c = cleanCode((await unseal(aes, m.box))?.code);
     if (c.length !== 10) return;
+    d.code = c;
+    if (d.ok) paired(d); else renderPanel();
+  }
+  function confirmDigits(d) {
+    d.ok = true;
+    if (d.code) paired(d); else renderPanel();
+  }
+  function paired(d) {
+    const c = d.code;
     addPair(c, d.name);
     d.state = 'paired'; d.code = c;
     dial.delete(c);
@@ -1169,17 +1182,24 @@
       .filter(r => /^v\d+\.\d+\.\d+$/.test(r?.tag_name ?? '')).map(r => ({ v: r.tag_name.slice(1), pre: r.prerelease }));
     return releases;
   }
-  // The loader keeps the build it replaces, so a release that fails to parse can be rolled back. Older loaders just get the plain write.
+  // The loader runs whatever build is stored here on the next start.
   function saveBuild(v, code) {
-    if (window.__lyricdock?.save) return window.__lyricdock.save(v, code);
     localStorage.setItem('lyricdock:build', code);
     localStorage.setItem('lyricdock:build-version', v);
   }
+  // A release build, only if signed with the release key (scripts/sign-extension.mjs; same key as the loader's).
+  const SIGN_KEY = { kty: 'EC', crv: 'P-256', x: '5Jt4no0pL1EAzLRkZTz_qTWC6wW3BVZIS7jE0J12umI', y: 'EZC3pygg0nHSsSTbCBcTYPh0FVb_fpH6znz1AdoK1_8' };
+  async function fetchBuild(v) {
+    const at = `https://cdn.jsdelivr.net/gh/DhakadG/lyricdock@v${v}/extension/dock-bridge.js`;
+    const [r, s] = await Promise.all([fetch(at), fetch(`${at}.sig`)]);
+    if (!r.ok || !s.ok) throw new Error('download failed');
+    const buf = await r.arrayBuffer(), sig = Uint8Array.from(atob((await s.text()).trim().replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    const k = await crypto.subtle.importKey('jwk', SIGN_KEY, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    if (!(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, k, sig, buf))) throw new Error('signature check failed');
+    return new TextDecoder().decode(buf);
+  }
   async function useBuild(v) {
-    const r = await fetch(`https://cdn.jsdelivr.net/gh/DhakadG/lyricdock@v${v}/extension/dock-bridge.js`);
-    const code = await r.text();
-    if (!r.ok || !code.includes('function dockBridge')) throw new Error('download failed');
-    saveBuild(v, code);
+    saveBuild(v, await fetchBuild(v));
     location.reload();
   }
 
@@ -1272,8 +1292,11 @@
     } else {
       for (const d of found) {
         const known = ps.some(p => p.name === d.name) && d.state === 'found';
-        const where = [d.how.has('net') ? 'On this network' : '', d.how.has('acct') ? 'Signed in to your Spotify' : ''].filter(Boolean).join(' · ');
-        const right = d.state === 'asking' ? h('div', { className: 'ldx-digits' }, h('small', {}, 'Tap Allow on the phone if it shows'), h('span', {}, d.digits))
+        // Two answers with one name: one may be a stranger posing as your phone (the lobby is open) - say so.
+        const twin = found.filter(x => x.name === d.name).length > 1;
+        const where = [d.how.has('net') ? 'On this network' : '', d.how.has('acct') ? 'Signed in to your Spotify' : '', twin ? 'Another device uses this name: check the digits' : ''].filter(Boolean).join(' · ');
+        const right = d.state === 'asking' ? h('div', { className: 'ldx-digits' }, h('small', {}, d.ok ? 'Waiting for Allow on the phone…' : d.code ? 'The phone allowed it. Same digits there?' : 'Same digits on the phone? Tap Allow there'),
+            h('span', {}, d.digits), ...(d.ok ? [] : [btn('Same digits', () => confirmDigits(d), true)]))
           : d.state === 'paired' ? h('span', { className: 'ldx-ok' }, 'Connected')
           : d.state === 'denied' ? btn('Try again', () => connectDevice(d.id))
           : btn(known ? 'Connect again' : 'Connect', () => connectDevice(d.id), true);
@@ -1321,7 +1344,7 @@
       h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'LyricDock in a browser'),
         h('small', {}, 'Open app.lyricdock.losthusky.qzz.io on any screen and pair it like a phone. Chrome / Edge ask to allow the "local network" - allow it, or the screen cannot reach Spotify here.'))),
       h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'How devices find each other'),
-        h('small', {}, `Connection setup goes through ${r === NTFY ? 'ntfy.sh' : r.includes('127.0.0.1') ? 'the LyricDock Helper on this PC' : r} (always encrypted), with ntfy.sh as the fallback. Music and lyrics then flow directly between Spotify and the phone. Change it on the phone: Settings → Connection.`)), '')));
+        h('small', {}, `Connection setup goes through LyricDock's server${!r ? '' : r.includes('127.0.0.1') ? ' and the LyricDock Helper on this PC' : ` and ${r}`} (always encrypted). Music and lyrics then flow directly between Spotify and the phone. Change it on the phone: Settings → Connection.`)), '')));
     return kids;
   }
 
@@ -1442,10 +1465,7 @@
       const v = await wanted();
       if (!/^\d+\.\d+\.\d+$/.test(v) || v === VERSION) { say('Up to date'); setTimeout(() => say('Check for updates'), 3000); return; }
       say('Downloading…');
-      const r = await fetch(`https://cdn.jsdelivr.net/gh/DhakadG/lyricdock@v${v}/extension/dock-bridge.js`);
-      const code = await r.text();
-      if (!r.ok || !code.includes('function dockBridge')) throw new Error('download failed');
-      saveBuild(v, code);
+      saveBuild(v, await fetchBuild(v));
       window.__lyricdock.latest = v;
       dispatchEvent(new Event('lyricdock:update'));
     } catch (e) { say('Check failed - retry'); }

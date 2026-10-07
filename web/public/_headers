@@ -1,7 +1,10 @@
+# script-src 'self': the Spotify sign-in and the LyricDock app token live in localStorage, so no injected script may run.
+# connect-src stays open to https/wss: lyrics sources, Piped instances and a custom ntfy server are chosen at run time.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: screen-wake-lock=(self), fullscreen=(self), autoplay=*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://www.youtube-nocookie.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'
 
 /
   Cache-Control: no-cache

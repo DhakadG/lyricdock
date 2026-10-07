@@ -1,6 +1,6 @@
 # Widgets and lock-screen lyrics: scope and plan
 
-Status: proposal (October 2026). Nothing here is built yet. Android ships first. The iOS sections only fix the
+Status: Android widgets and lock-screen lyrics are built (NowPlaying.java, features.js); iOS not started. Android ships first. The iOS sections only fix the
 data shape now, so the iPhone version can reuse it later.
 
 

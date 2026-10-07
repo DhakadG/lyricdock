@@ -1,6 +1,6 @@
 # Spicy Lyrics vs LyricDock — gap analysis and the polish plan
 
-Companion to [spicy-lyrics-internals.md](spicy-lyrics-internals.md) (what Spicy does) and [lyricdock-lyrics-internals.md](lyricdock-lyrics-internals.md) (what we did before this pass).
+Companion to [spicy-lyrics-internals.md](../spicy-lyrics-internals.md) (what Spicy does) and [lyricdock-lyrics-internals.md](../lyricdock-lyrics-internals.md) (what we did before this pass).
 Status column: ✅ done in this pass · 🟡 partly · ⬜ not done (reason given).
 
 ## 1. Why the lyrics "feel" less polished — root causes found in our code
@@ -78,7 +78,7 @@ arrangement, flip animation, sound, size, dim). The rows are the same components
 **D. Tags, battery, time** — Now playing holds song information only. The lyrics-source tag sits bottom-right (with the controls, or always, dimmed). Audio quality has no tag: Lossless shows as a small accent waveform beside the song length (alternatives: status corner, cover glow, cover light). Rejected on the way: a chip, a label over the bar, a tick-style bar, a rim around the cover.
 New **status cluster** (`#stat`): battery styles *Icon + % outside*, *% inside the icon*, *Ring*, *Thin bar*, *% only*; time styles *Small*, *Pill*, *Big-light*, off; four corner positions; works in every layout.
 
-**E. Naming** — [layout-map.md](layout-map.md) names every layout and block; each block also carries a `data-block` attribute, and **Settings → Layout → Show block names** overlays the names on the phone.
+**E. Naming** — [layout-map.md](../layout-map.md) names every layout and block; each block also carries a `data-block` attribute, and **Settings → Layout → Show block names** overlays the names on the phone.
 
 **F. Figma** — the same names, wireframes, hi-fi screens (invented demo song with duet, background vocals, held notes, split words, Hindi/Punjabi/Urdu lines), components and settings screens.
 

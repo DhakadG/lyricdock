@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LyricDock admin</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb" crossorigin="anonymous" referrerpolicy="no-referrer">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
 :root { --bg: #0d0d10; --card: #16161b; --line: #26262d; --text: #e9e9ee; --dim: #8b8b96; --acc: #1ed760; --warn: #ffb547; --bad: #ff6b6b; }
 * { box-sizing: border-box; }
@@ -109,6 +109,9 @@ img.th { width: 36px; height: 36px; border-radius: 6px; vertical-align: middle; 
 const $ = id => document.getElementById(id);
 const TABS = [['overview', 'Overview'], ['mapTab', 'Map'], ['live', 'Live'], ['albums', 'Albums'], ['cache', 'Cache'], ['devices', 'Devices'], ['settings', 'Settings']];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+// A value inside an inline handler (onclick="f(...)"): JSON makes it a JS literal, esc keeps it inside the attribute. HTML-escaping
+// alone is not enough there: the browser decodes &#39; back to ' before running the handler.
+const js = v => esc(JSON.stringify(v ?? null));
 const fmtB = b => !b ? '0 B' : b < 1024 ** 2 ? `${(b / 1024).toFixed(0)} KB` : b < 1024 ** 3 ? `${(b / 1024 ** 2).toFixed(1)} MB` : `${(b / 1024 ** 3).toFixed(2)} GB`;
 const ago = t => { if (!t) return '–'; const s = (Date.now() - t) / 1000; return s < 60 ? `${s | 0}s ago` : s < 3600 ? `${s / 60 | 0}m ago` : s < 86400 ? `${s / 3600 | 0}h ago` : `${s / 86400 | 0}d ago`; };
 const n = x => (+x || 0).toLocaleString();
@@ -157,7 +160,7 @@ async function overview() {
   chart('cReq', { type: 'bar', data: { labels: lbl, datasets: kinds.map((k, i) => ({ label: k, backgroundColor: COLORS[i % 7], data: ts.map(t => o.series.find(r => r.t === t && r.kind === k)?.n || 0) })) }, options: { scales: { x: { stacked: true }, y: { stacked: true } } } });
   chart('cMs', { type: 'line', data: { labels: lbl, datasets: kinds.map((k, i) => ({ label: k, borderColor: COLORS[i % 7], tension: .3, pointRadius: 0, data: ts.map(t => o.series.find(r => r.t === t && r.kind === k)?.ms ?? null) })) } });
   chart('cTier', { type: 'doughnut', data: { labels: o.tiers.map(r => r.tier || '–'), datasets: [{ data: o.tiers.map(r => r.n), backgroundColor: COLORS, borderWidth: 0 }] }, options: { plugins: { legend: { position: 'right' } } } });
-  $('topAlbums').innerHTML = '<tr><th>Album</th><th>Artist</th><th>Plays</th></tr>' + o.topAlbums.map(a => `<tr class="click" onclick="album('${a.id}')"><td>${esc(a.name)}</td><td>${esc(a.artist)}</td><td>${n(a.n)}</td></tr>`).join('');
+  $('topAlbums').innerHTML = '<tr><th>Album</th><th>Artist</th><th>Plays</th></tr>' + o.topAlbums.map(a => `<tr class="click" onclick="album(${js(a.id)})"><td>${esc(a.name)}</td><td>${esc(a.artist)}</td><td>${n(a.n)}</td></tr>`).join('');
   const evk = ['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error', 'control-fail'];
   $('platforms').innerHTML = '<tr><th>Platform</th><th>Devices</th><th>Requests</th></tr>' + (o.platforms || []).map(p => `<tr><td>${esc(p.plat)}</td><td>${n(p.devices)}</td><td>${n(p.n)}</td></tr>`).join('')
     + o.kinds.filter(k => evk.includes(k.kind)).map(k => `<tr><td class="muted">event: ${esc(k.kind)}</td><td></td><td>${n(k.n)}</td></tr>`).join('');
@@ -185,7 +188,7 @@ async function events() {
   clearTimeout(liveT);
   const k = $('kindF').value, ev = (await api('events?limit=200')).filter(e => !k || e.kind === k);
   $('events').innerHTML = '<tr><th>When</th><th>Kind</th><th>Path</th><th>Status</th><th>ms</th><th>Ladder</th><th>Album</th><th>Device</th><th>Where</th><th>Bytes</th></tr>' + ev.map(e =>
-    `<tr${e.album_id ? ` class="click" onclick="album('${e.album_id}')"` : ''}><td title="${new Date(e.ts).toLocaleString()}">${ago(e.ts)}</td><td>${esc(e.kind)}</td><td class="mono">${esc(e.path)}</td><td>${e.status >= 400 ? `<span class="pill bad">${e.status}</span>` : e.status}</td><td>${e.ms}</td><td>${e.tier ? pill(e.tier) : ''}</td><td>${esc(e.album || '')}${e.artist ? ` <span class="muted">· ${esc(e.artist)}</span>` : ''}</td><td class="mono">${esc((e.device || '').slice(0, 8))}</td><td>${esc([e.city, e.country].filter(Boolean).join(', '))} <span class="muted">${esc(e.colo || '')}</span></td><td>${e.bytes ? fmtB(e.bytes) : ''}</td></tr>`).join('');
+    `<tr${e.album_id ? ` class="click" onclick="album(${js(e.album_id)})"` : ''}><td title="${new Date(e.ts).toLocaleString()}">${ago(e.ts)}</td><td>${esc(e.kind)}</td><td class="mono">${esc(e.path)}</td><td>${e.status >= 400 ? `<span class="pill bad">${e.status}</span>` : e.status}</td><td>${e.ms}</td><td>${e.tier ? pill(e.tier) : ''}</td><td>${esc(e.album || '')}${e.artist ? ` <span class="muted">· ${esc(e.artist)}</span>` : ''}</td><td class="mono">${esc((e.device || '').slice(0, 8))}</td><td>${esc([e.city, e.country].filter(Boolean).join(', '))} <span class="muted">${esc(e.colo || '')}</span></td><td>${e.bytes ? fmtB(e.bytes) : ''}</td></tr>`).join('');
   if (tab === 'live' && $('follow').checked) liveT = setTimeout(events, 5000);
 }
 $('kindF').onchange = events; $('follow').onchange = events;
@@ -195,7 +198,7 @@ async function loadAlbums() {
   const rows = (await api('albums')).filter(a => (!s || `${a.name} ${a.artist}`.toLowerCase().includes(s)) && (!mo || +!!a.has_motion === +mo))
     .sort((a, b) => so === 'hits' ? b.hits - a.hits : so === 'fetched' ? b.fetched_at - a.fetched_at : so === 'name' ? String(a.name).localeCompare(b.name) : (b.last_hit || 0) - (a.last_hit || 0));
   $('albumT').innerHTML = '<tr><th></th><th>Album</th><th>Artist</th><th>Genre</th><th>Released</th><th>Tracks</th><th>Motion</th><th>Plays</th><th>Last played</th><th>Indexed</th></tr>' + rows.map(a =>
-    `<tr class="click" onclick="album('${a.id}')"><td>${thumb(a.art_url)}</td><td>${esc(a.name)}</td><td>${esc(a.artist)}</td><td>${esc(a.genre)}</td><td>${esc((a.release_date || '').slice(0, 10))}</td><td>${n(a.track_count)}</td><td>${a.has_motion ? pill('motion') : '<span class="muted">still</span>'}</td><td>${n(a.hits)}</td><td>${ago(a.last_hit)}</td><td>${ago(a.fetched_at)}</td></tr>`).join('');
+    `<tr class="click" onclick="album(${js(a.id)})"><td>${thumb(a.art_url)}</td><td>${esc(a.name)}</td><td>${esc(a.artist)}</td><td>${esc(a.genre)}</td><td>${esc((a.release_date || '').slice(0, 10))}</td><td>${n(a.track_count)}</td><td>${a.has_motion ? pill('motion') : '<span class="muted">still</span>'}</td><td>${n(a.hits)}</td><td>${ago(a.last_hit)}</td><td>${ago(a.fetched_at)}</td></tr>`).join('');
 }
 
 async function album(id) {
@@ -203,14 +206,14 @@ async function album(id) {
   const sq = (a.square_variants || []).sort((x, y) => x.w - y.w || x.bw - y.bw)[0], tl = (a.tall_variants || []).sort((x, y) => x.w - y.w || x.bw - y.bw)[0];
   const vrow = (shape, v) => { const m = d.media.find(m => m.key === `${a.id}/${shape}/${v.n}`);
     return `<tr><td>${shape}</td><td class="mono">${esc(v.n)}</td><td>${v.codec}</td><td>${v.w}×${v.h}</td><td>${(v.bw / 1e6).toFixed(1)} Mb/s</td><td>${m ? pill(m.tier) : '<span class="muted">never asked</span>'}</td><td>${m ? n(m.hits) : ''}</td><td>${m ? ago(m.last_hit) : ''}</td><td>${m?.bytes ? fmtB(m.bytes) : ''}</td>
-      <td>${m ? `<button onclick="mAct('${m.key}','${m.pin ? 'unpin' : 'pin'}','${a.id}')">${m.pin ? '📌 unpin' : 'pin'}</button> ${m.tier === 'r2' ? `<button class="danger" onclick="mAct('${m.key}','evict','${a.id}')">evict</button>` : `<button onclick="mAct('${m.key}','promote','${a.id}')">copy to R2</button>`}` : ''} <a href="${esc(v.url)}" target="_blank">▶</a></td></tr>`; };
+      <td>${m ? `<button onclick="mAct(${js(m.key)},${js(m.pin ? 'unpin' : 'pin')},${js(a.id)})">${m.pin ? '📌 unpin' : 'pin'}</button> ${m.tier === 'r2' ? `<button class="danger" onclick="mAct(${js(m.key)},'evict',${js(a.id)})">evict</button>` : `<button onclick="mAct(${js(m.key)},'promote',${js(a.id)})">copy to R2</button>`}` : ''} <a href="${esc(v.url)}" target="_blank">▶</a></td></tr>`; };
   $('dlgIn').innerHTML = `<div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(a.name)} <span class="muted">· ${esc(a.artist)}</span></h2><button onclick="dlg.close()">✕</button></div>
     <div class="media-prev">${a.art_url ? `<a href="${esc(a.art_url.replace('{w}', a.art_w).replace('{h}', a.art_h).replace('{f}', 'jpg'))}" target="_blank"><img src="${esc(a.art_url.replace('{w}', 440).replace('{h}', 440).replace('{f}', 'jpg'))}" title="open ${a.art_w}px original"></a>` : ''}
       ${sq ? `<video src="${esc(sq.url)}" autoplay muted loop playsinline></video>` : ''}${tl ? `<video src="${esc(tl.url)}" autoplay muted loop playsinline></video>` : ''}</div>
     <p class="muted">${esc(a.genre)} · ${esc((a.release_date || '').slice(0, 10))} · ${a.track_count} tracks · still up to ${a.art_w}px · ${esc(a.copyright || '')}<br>
       Apple id <span class="mono">${a.id}</span> · <a href="${esc(a.url)}" target="_blank">Apple Music</a> · plays ${n(a.hits)} · indexed ${ago(a.fetched_at)} · badges ${esc(Object.entries(a.badges || {}).filter(([, v]) => v).map(([k]) => k).join(', ') || '–')}</p>
     ${a.notes ? `<p>${esc(a.notes)}</p>` : ''}
-    <div class="row"><button onclick="aAct('${a.id}','refresh')">Re-fetch from Apple</button><button class="danger" onclick="confirm('Remove this album from the index (and its R2 files)?') && aAct('${a.id}','delete')">Delete from index</button></div>
+    <div class="row"><button onclick="aAct(${js(a.id)},'refresh')">Re-fetch from Apple</button><button class="danger" onclick="confirm('Remove this album from the index (and its R2 files)?') && aAct(${js(a.id)},'delete')">Delete from index</button></div>
     <h3>Video variants (${(a.square_variants || []).length + (a.tall_variants || []).length})</h3><div class="scroll"><table><tr><th>Shape</th><th>Variant</th><th>Codec</th><th>Size</th><th>Bitrate</th><th>Tier</th><th>Plays</th><th>Last</th><th>Stored</th><th></th></tr>
     ${(a.square_variants || []).map(v => vrow('square', v)).join('')}${(a.tall_variants || []).map(v => vrow('tall', v)).join('')}</table></div>
     <h3 style="margin-top:14px">Tracks</h3><div class="scroll"><table><tr><th>#</th><th>Title</th><th>Artist</th><th>Length</th><th>Preview</th></tr>${d.tracks.map(t => `<tr><td>${t.disc > 1 ? t.disc + '-' : ''}${t.number}</td><td>${esc(t.name)}</td><td>${esc(t.artist)}</td><td>${Math.floor(t.duration_ms / 60000)}:${String(Math.floor(t.duration_ms / 1000) % 60).padStart(2, '0')}</td><td>${t.preview_url ? `<a href="${esc(t.preview_url)}" target="_blank">▶</a>` : ''}</td></tr>`).join('')}</table></div>
@@ -233,14 +236,14 @@ async function loadCache() {
 async function loadMedia() {
   const { rows, promote_hits } = await api('media' + ($('mt').value ? '?tier=' + $('mt').value : ''));
   $('mediaT').innerHTML = '<tr><th>Album</th><th>Shape</th><th>Variant</th><th>Tier</th><th>Plays (90 d)</th><th>In promo window</th><th>First</th><th>Last</th><th>Stored</th><th>Size</th><th></th></tr>' + rows.map(m => { const [aid, shape, variant] = m.key.split('/');
-    return `<tr><td class="click" onclick="album('${aid}')">${esc(m.album || aid)} <span class="muted">· ${esc(m.artist || '')}</span></td><td>${shape}</td><td class="mono">${esc(variant)}</td><td>${pill(m.tier)}${m.pin ? ' 📌' : ''}</td><td>${n(m.hits)}</td><td>${n(m.recent)} / ${promote_hits}</td><td>${ago(m.first_hit)}</td><td>${ago(m.last_hit)}</td><td>${ago(m.at)}</td><td>${m.bytes ? fmtB(m.bytes) : ''}</td>
-    <td><button onclick="mAct2('${m.key}','${m.pin ? 'unpin' : 'pin'}')">${m.pin ? 'unpin' : 'pin'}</button> ${m.tier === 'r2' ? `<button class="danger" onclick="mAct2('${m.key}','evict')">evict</button>` : `<button onclick="mAct2('${m.key}','promote')">copy</button>`}</td></tr>`; }).join('');
+    return `<tr><td class="click" onclick="album(${js(aid)})">${esc(m.album || aid)} <span class="muted">· ${esc(m.artist || '')}</span></td><td>${shape}</td><td class="mono">${esc(variant)}</td><td>${pill(m.tier)}${m.pin ? ' 📌' : ''}</td><td>${n(m.hits)}</td><td>${n(m.recent)} / ${promote_hits}</td><td>${ago(m.first_hit)}</td><td>${ago(m.last_hit)}</td><td>${ago(m.at)}</td><td>${m.bytes ? fmtB(m.bytes) : ''}</td>
+    <td><button onclick="mAct2(${js(m.key)},${js(m.pin ? 'unpin' : 'pin')})">${m.pin ? 'unpin' : 'pin'}</button> ${m.tier === 'r2' ? `<button class="danger" onclick="mAct2(${js(m.key)},'evict')">evict</button>` : `<button onclick="mAct2(${js(m.key)},'promote')">copy</button>`}</td></tr>`; }).join('');
 }
 async function mAct2(key, action) { await api('media/action', { key, action }); loadMedia(); }
 async function loadLookups() {
   const rows = await api(`lookups?q=${encodeURIComponent($('lq').value)}&negative=${$('lneg').checked ? 1 : 0}`);
   $('lookT').innerHTML = '<tr><th>Key (normalised artist|album)</th><th>Resolved to</th><th>Checked</th></tr>' + rows.map(l =>
-    `<tr${l.album_id ? ` class="click" onclick="album('${l.album_id}')"` : ''}><td class="mono">${esc(l.key)}</td><td>${l.album_id ? esc(l.name) : '<span class="pill bad">Apple has nothing</span>'}</td><td>${ago(l.at)}</td></tr>`).join('');
+    `<tr${l.album_id ? ` class="click" onclick="album(${js(l.album_id)})"` : ''}><td class="mono">${esc(l.key)}</td><td>${l.album_id ? esc(l.name) : '<span class="pill bad">Apple has nothing</span>'}</td><td>${ago(l.at)}</td></tr>`).join('');
 }
 async function loadR2() {
   const r = await api('r2'); $('r2box').hidden = false;
@@ -251,7 +254,7 @@ async function devices() {
   const rows = await api('devices');
   $('devT').innerHTML = '<tr><th>Device</th><th>Platform</th><th>Model</th><th>Screen</th><th>App</th><th>Where</th><th>HEVC</th><th>Cover px</th><th>Calls</th><th>First seen</th><th>Last seen</th><th></th></tr>' + rows.map(d =>
     `<tr><td class="mono">${esc(d.id.slice(0, 12))}${Date.now() - d.last_seen < 9e5 ? ' <span class="pill r2">online</span>' : ''}</td><td>${esc(d.plat || '–')}</td><td>${esc(d.model)}</td><td class="mono">${esc(d.screen || '')}</td><td>${esc(d.version)}</td><td>${esc([d.city, d.country].filter(Boolean).join(', '))}</td><td>${d.hevc == null ? '?' : d.hevc ? 'yes' : 'no'}</td><td>${d.px || ''}</td><td>${n(d.calls)}</td><td>${ago(d.first_seen)}</td><td>${ago(d.last_seen)}</td>
-    <td><button class="${d.blocked ? 'ok' : 'danger'}" onclick="devAct('${esc(d.id)}',${!d.blocked})">${d.blocked ? 'unblock' : 'block'}</button> <button onclick="confirm('Forget this device?') && devAct('${esc(d.id)}',0,1)">forget</button></td></tr>`).join('');
+    <td><button class="${d.blocked ? 'ok' : 'danger'}" onclick="devAct(${js(d.id)},${!d.blocked})">${d.blocked ? 'unblock' : 'block'}</button> <button onclick="confirm('Forget this device?') && devAct(${js(d.id)},0,1)">forget</button></td></tr>`).join('');
 }
 async function devAct(id, blocked, del) { await api('device', { id, blocked, delete: !!del }); devices(); }
 
