@@ -117,7 +117,7 @@ PowerShell, repo root, branch `web-fixes-apple`.
 - [x] **Admin gate on** (2026-10-08): `cloud/wrangler.jsonc` → `"ADMIN_SSO": "on"`, then `cd cloud; npx wrangler deploy`.
   - https://admin.lyricdock.losthusky.qzz.io asks for Google, lets ghanisht.kumawat@gmail.com in and refuses any other
     account.
-- [ ] **ntfy owner gate**: `cd ntfy; npm i; npx wrangler deploy` (Cloudflare Containers; see docs/ntfy.md).
+- [x] **ntfy owner gate** (2026-10-08): `cd ntfy; npm i; npx wrangler deploy` (Cloudflare Containers; see docs/ntfy.md).
   - `./scripts/ping-update.ps1` says "Update ping sent".
   - A phone and the web app still pair (the `ld*` topics stay open).
   - https://ntfy.losthusky.qzz.io/ asks for a password (the token).
@@ -152,7 +152,7 @@ Every LyricDock screen needs a sign-in, not just the web app.
 - [x] auth, cloud and web deployed; phone round trip tested on the Galaxy M01 (R9ZN905WPLJ, kiosk).
 - [x] Released v1.8.8 (2026-10-08) (`scripts/release.ps1`): phones update to the build with the sign-in screen.
 - [x] `API_SSO` on (2026-10-08) (`cloud/wrangler.jsonc`), `cd cloud; npx wrangler deploy`: no token = 401, phone token = 200.
-- [ ] ntfy owner gate (section 2): the owner runs the `PUBLISH_TOKEN` secret line (auto mode blocks secret writes), then Claude deploys.
+- [x] ntfy owner gate (2026-10-08): other topics and the web UI 401 without the token, `ld*` topics open, ping sent.
 
 ## Notes
 
