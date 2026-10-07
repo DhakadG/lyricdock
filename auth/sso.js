@@ -1,13 +1,13 @@
-// Single sign-on check for every *.losthusky.qzz.io Worker. auth.losthusky.qzz.io (auth/src/index.js) signs a
-// session cookie with its private key; this file only holds the PUBLIC key, so a leaked or compromised app Worker
-// can read sessions but never mint one. Usage:
+// LyricDock's sign-in check for its Workers (app., admin. ... .lyricdock.losthusky.qzz.io). auth.lyricdock.losthusky.qzz.io
+// (auth/src/index.js) signs a session cookie scoped to lyricdock.losthusky.qzz.io with its private key; this file only
+// holds the PUBLIC key, so a leaked or compromised app Worker can read sessions but never mint one. Usage:
 //   import { session, signIn } from '../../auth/sso.js';
 //   const me = await session(req);              // { email, name, pic, sub, exp } or null
 //   if (!me) return signIn(req);                // 302 to Google sign-in, then straight back to this URL
 // 
 
-export const AUTH = 'https://auth.losthusky.qzz.io';
-export const COOKIE = '__Secure-lh_sso';
+export const AUTH = 'https://auth.lyricdock.losthusky.qzz.io';
+export const COOKIE = '__Secure-ld_sso';
 // Rotating the key: add the new one here, deploy every app, then switch auth's SSO_PRIVATE_JWK.
 const KEYS = {
   mupbl6zw: { kty: 'EC', crv: 'P-256', x: 'N3QT-RrKM0k9I-D28CR-gSTNBtfh8OsYrdQlsTbQ5J8', y: '_L91gMUJR2anKrfACItzn6XIDYURac5cROMlGfWN8m4' },

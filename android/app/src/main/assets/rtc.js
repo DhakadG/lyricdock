@@ -41,7 +41,7 @@ const Rtc = (() => {
   let turn = [];
   // A 401 means the sign-in expired while the installed app kept running from its cache: sign in again, back to here.
   const fetchTurn = () => location.protocol === 'https:' && fetch('/turn', { credentials: 'same-origin' }).then(r => {
-    if (r.status === 401 && window.LYRICDOCK_WEB) location.assign(`https://auth.losthusky.qzz.io/login?rd=${encodeURIComponent(location.href)}`);
+    if (r.status === 401 && window.LYRICDOCK_WEB) location.assign(`https://auth.lyricdock.losthusky.qzz.io/login?rd=${encodeURIComponent(location.href)}`);
     return r.ok ? r.json() : null;
   })
     .then(j => { if (Array.isArray(j?.iceServers)) turn = j.iceServers; }).catch(() => {});

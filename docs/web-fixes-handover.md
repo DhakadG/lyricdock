@@ -4,7 +4,7 @@ Started from a full web-app review. If this session ran out, pick up the uncheck
 After the code is done: `node --check` the edited JS, `node tests/sso.test.mjs` (needs `SSO_KEY_FILE`), `./scripts/build-web.ps1`.
 
 ## Review fixes
-- [x] 1 Expired SSO strands installed users: `web/src/worker.js` serves `/sw.js` without a session; `rtc.js` fetchTurn: a 401 on the web sends the page to `auth.losthusky.qzz.io/login?rd=<page>`.
+- [x] 1 Expired SSO strands installed users: `web/src/worker.js` serves `/sw.js` without a session; `rtc.js` fetchTurn: a 401 on the web sends the page to `auth.lyricdock.losthusky.qzz.io/login?rd=<page>`.
 - [x] 2 First visit reloads (clients.claim fires controllerchange): `web/public/install.js` reloads only when a controller existed before.
 - [x] 3 `/turn` mints TURN creds for any Google account: rate limit per email (`ratelimits` binding `TURN_LIMIT` in `web/wrangler.jsonc`), TTL 6 h.
 - [x] 4 Spicy API dead on web: `shim.js` gets `fetchLyrics` (fetch `https://api.spicylyrics.org/v1/lyrics/<id>`, Bearer key) answering `dock({type:'api', id, status, text})`. The key's allowed origins must include the web app's origin.

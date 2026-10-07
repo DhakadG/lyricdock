@@ -5,7 +5,7 @@ import worker from '../auth/src/index.js';
 import { verify, session, isAllowed, COOKIE } from '../auth/sso.js';
 
 const env = { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', ALLOWED_EMAILS: '', SSO_PRIVATE_JWK: readFileSync(process.env.SSO_KEY_FILE, 'utf8') };
-const get = (path, cookie = '') => worker.fetch(new Request(`https://auth.losthusky.qzz.io${path}`, { headers: { cookie } }), env);
+const get = (path, cookie = '') => worker.fetch(new Request(`https://auth.lyricdock.losthusky.qzz.io${path}`, { headers: { cookie } }), env);
 const setCookies = r => r.headers.getSetCookie();
 
 let googleNonce, googleSays = {};
@@ -28,36 +28,38 @@ async function signInFlow(rd) {
   return { state: g.searchParams.get('state'), st };
 }
 
-// happy path: back to the page asked for, cookie on the parent domain, verifiable with the public key only
+// happy path: back to the page asked for, cookie on LyricDock's domain (not the apex), verifiable with the public key only
 let { state, st } = await signInFlow('https://app.lyricdock.losthusky.qzz.io/x?y=1');
 let r = await get(`/callback?state=${state}&code=c`, st);
 assert.equal(r.status, 303);
 assert.equal(r.headers.get('location'), 'https://app.lyricdock.losthusky.qzz.io/x?y=1');
 const sc = setCookies(r).find(c => c.startsWith(COOKIE));
-assert.match(sc, /Domain=losthusky\.qzz\.io; .*HttpOnly; Secure; SameSite=Lax/);
+assert.match(sc, /Domain=lyricdock\.losthusky\.qzz\.io; .*HttpOnly; Secure; SameSite=Lax/);
 const jwt = sc.split(';')[0].split('=')[1];
 const me = await session(new Request('https://x', { headers: { cookie: `${COOKIE}=${jwt}` } }));
 assert.equal(me.email, 'me@gmail.com');
 assert.ok(isAllowed(me, 'ME@gmail.com, b@c.d') && !isAllowed(me, '') && !isAllowed(null, 'me@gmail.com'));
 
-// open redirect: foreign / look-alike / http targets fall back to the auth home page
-for (const bad of ['https://evil.com', 'https://losthusky.qzz.io.evil.com/', 'http://app.losthusky.qzz.io/', 'https://a@evil.com', 'javascript:alert(1)', '//evil.com'])
-  assert.equal(new URL((await get(`/login?rd=${encodeURIComponent(bad)}`, `${COOKIE}=${jwt}`)).headers.get('location')).href, 'https://auth.losthusky.qzz.io/');
+// open redirect: foreign / look-alike / http targets, and the other losthusky.qzz.io sites (not LyricDock's), fall back
+// to the auth home page
+for (const bad of ['https://evil.com', 'https://losthusky.qzz.io.evil.com/', 'http://app.lyricdock.losthusky.qzz.io/', 'https://a@evil.com', 'javascript:alert(1)', '//evil.com',
+  'https://losthusky.qzz.io/', 'https://ntfy.losthusky.qzz.io/', 'https://xlyricdock.losthusky.qzz.io/'])
+  assert.equal(new URL((await get(`/login?rd=${encodeURIComponent(bad)}`, `${COOKIE}=${jwt}`)).headers.get('location')).href, 'https://auth.lyricdock.losthusky.qzz.io/', bad);
 
 // login CSRF: a state from another browser (no / wrong state cookie) is refused
-({ state, st } = await signInFlow('https://auth.losthusky.qzz.io/'));
+({ state, st } = await signInFlow('https://auth.lyricdock.losthusky.qzz.io/'));
 assert.equal((await get(`/callback?state=${state}&code=c`)).status, 400);
 assert.equal((await get(`/callback?state=WRONG&code=c`, st)).status, 400);
 // Google answers that must be refused: wrong audience, replayed nonce, unverified email
 for (const bad of [{ aud: 'other' }, { nonce: 'replay' }, { email_verified: false }, { iss: 'https://evil.com' }]) {
-  ({ state, st } = await signInFlow('https://auth.losthusky.qzz.io/'));
+  ({ state, st } = await signInFlow('https://auth.lyricdock.losthusky.qzz.io/'));
   googleSays = bad;
   assert.equal((await get(`/callback?state=${state}&code=c`, st)).status, 400, JSON.stringify(bad));
 }
 googleSays = {};
 // allowlist
 env.ALLOWED_EMAILS = 'someone@else.com';
-({ state, st } = await signInFlow('https://auth.losthusky.qzz.io/'));
+({ state, st } = await signInFlow('https://auth.lyricdock.losthusky.qzz.io/'));
 assert.equal((await get(`/callback?state=${state}&code=c`, st)).status, 400);
 
 // forged tokens: tampered payload, alg none, the state token used as a session

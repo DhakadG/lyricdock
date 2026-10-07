@@ -2,7 +2,6 @@
 // in a Cloudflare Container, with this Worker in front. Usable by any app (curl, the ntfy Android/iOS apps, the web
 // app at the root). LyricDock uses it for pairing signals. Docs: docs/ntfy.md
 import { Container, getContainer } from '@cloudflare/containers';
-import { session, signIn, isAllowed } from '../../auth/sso.js';
 
 export class Ntfy extends Container {
   defaultPort = 80;
@@ -19,8 +18,9 @@ export class Ntfy extends Container {
   };
 }
 
-// Who may use what. Not a public ntfy: anything that isn't LyricDock's own traffic needs the shared Google sign-in
-// (auth.losthusky.qzz.io) as one of OWNER_EMAILS, or "Authorization: Bearer <PUBLISH_TOKEN>" for scripts.
+// Who may use what. Not a public ntfy: anything that isn't LyricDock's own traffic needs the owner token (secret
+// PUBLISH_TOKEN): "Authorization: Bearer <token>" from scripts, or in a browser the password prompt (any user name,
+// the token as password). ntfy sits on the apex domain, so it doesn't use LyricDock's sign-in (auth.lyricdock...).
 //  - Pairing / lobby topics (ld, ldn, lda + 24 hex: hashes of a pairing code / network / account, see rtc.js): open,
 //    because Spotify and the phone must reach them before anyone signs in. Unguessable, and every message is
 //    AES-GCM sealed with a key from the pairing code, so the server only relays noise.
@@ -37,9 +37,10 @@ async function sameSecret(a, b) {
   return crypto.subtle.timingSafeEqual(x, y);
 }
 async function owner(req, env) {
-  const tok = (req.headers.get('authorization') || '').replace(/^Bearer /, '');
-  if (env.PUBLISH_TOKEN && tok && await sameSecret(tok, env.PUBLISH_TOKEN)) return true;
-  return isAllowed(await session(req), env.OWNER_EMAILS);
+  const [kind, value = ''] = (req.headers.get('authorization') || '').split(' ');
+  let tok = kind === 'Bearer' ? value : '';
+  if (kind === 'Basic') try { tok = atob(value).split(':').slice(1).join(':'); } catch (e) {} // user:token, the user name ignored
+  return !!env.PUBLISH_TOKEN && !!tok && await sameSecret(tok, env.PUBLISH_TOKEN);
 }
 async function allowed(req, env, path) {
   let m = APP_TOPIC.exec(path);
@@ -52,7 +53,8 @@ async function allowed(req, env, path) {
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-    if (!(await allowed(req, env, new URL(req.url).pathname))) return (await session(req)) ? new Response('Not allowed', { status: 403 }) : signIn(req);
+    if (!(await allowed(req, env, new URL(req.url).pathname)))
+      return new Response('Owner only', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="ntfy owner", charset="UTF-8"', 'cache-control': 'no-store' } });
     const fwd = new Request(req);
     fwd.headers.delete('authorization'); // ours, not ntfy's (ntfy would reject an unknown token)
     fwd.headers.set('X-Forwarded-For', req.headers.get('CF-Connecting-IP') || '');

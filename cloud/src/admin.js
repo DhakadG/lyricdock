@@ -1,5 +1,5 @@
 // admin.lyricdock.losthusky.qzz.io: dashboard + its JSON API. With ADMIN_SSO "on": the shared Google sign-in
-// (auth.losthusky.qzz.io, ../../auth/sso.js), only for the ADMIN_EMAILS listed in wrangler.jsonc; otherwise ADMIN_PASSWORD.
+// (auth.lyricdock.losthusky.qzz.io, ../../auth/sso.js), only for the ADMIN_EMAILS listed in wrangler.jsonc; otherwise ADMIN_PASSWORD.
 // Metrics come from Analytics Engine (needs the CF_API_TOKEN secret), the index and cache from KV + R2.
 
 import { config, setConfig, getAlbum, promote, demote, setPin, maintain, aeQuery, listAll, DEFAULTS } from './store.js';

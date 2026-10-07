@@ -7,7 +7,7 @@
   "compatibility_date": "2026-09-25",
   "workers_dev": false,
   "routes": [{ "pattern": "app.lyricdock.losthusky.qzz.io", "custom_domain": true }],
-  // SSO: "on" puts the app behind auth.losthusky.qzz.io - only after that Worker is deployed with its secrets.
+  // SSO: "on" puts the app behind auth.lyricdock.losthusky.qzz.io - only after that Worker is deployed with its secrets.
   "vars": { "SSO": "off" },
   // /turn: at most 10 credential requests per signed-in account per minute (src/worker.js)
   "ratelimits": [{ "name": "TURN_LIMIT", "namespace_id": "1101", "simple": { "limit": 10, "period": 60 } }],

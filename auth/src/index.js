@@ -1,13 +1,14 @@
-// auth.losthusky.qzz.io: one Google sign-in for every *.losthusky.qzz.io app. 
+// auth.lyricdock.losthusky.qzz.io: LyricDock's Google sign-in, for its apps on *.lyricdock.losthusky.qzz.io.
 //   /login?rd=<url>    Google (OAuth code + PKCE + nonce, state bound to this browser) -> session cookie -> back to rd
 //   /logout?rd=<url>   clears the session everywhere (POST; GET shows a confirm button)
 //   /me                the signed-in user as JSON (CORS for our own subdomains, with credentials)
-// The session is an ES256 JWT in a cookie on the parent domain, so every subdomain receives it and checks it with
+// The session is an ES256 JWT in a cookie on lyricdock.losthusky.qzz.io, so every LyricDock subdomain (and none of the
+// other losthusky.qzz.io sites) receives it and checks it with
 // the public key in ../sso.js. Only this Worker holds the private key (secret SSO_PRIVATE_JWK).
 import { AUTH, COOKIE, b64u, cookie, verify } from '../sso.js';
 
-const ROOT = 'losthusky.qzz.io';
-const STATE = '__Host-lh_st'; // host-only, so another subdomain can't plant or read it
+const ROOT = 'lyricdock.losthusky.qzz.io'; // the session cookie's domain, and the only sites sign-in returns to
+const STATE = '__Host-ld_st'; // host-only, so another subdomain can't plant or read it
 const SESSION_TTL = 14 * 86400;
 const STATE_TTL = 600;
 const GOOGLE_ISS = new Set(['accounts.google.com', 'https://accounts.google.com']);
@@ -26,7 +27,7 @@ const redirect = (location, cookies = []) => {
   return new Response(null, { status: 303, headers: h });
 };
 const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-const page = (body, status = 200) => new Response(`<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Lost Husky sign-in</title>
+const page = (body, status = 200) => new Response(`<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>LyricDock sign-in</title>
 <style>body{font:16px system-ui,sans-serif;background:#0d0d0f;color:#eee;display:grid;place-items:center;min-height:100vh;margin:0}main{max-width:340px;padding:24px;text-align:center}
 .b{border:0;font:inherit;cursor:pointer}a.b,.b{display:inline-block;margin-top:16px;padding:12px 20px;border-radius:10px;background:#fff;color:#111;text-decoration:none;font-weight:600}img{width:56px;height:56px;border-radius:50%}p{color:#aaa}</style>
 <main>${body}</main>`, { status, headers: { ...SEC, 'content-type': 'text/html; charset=utf-8' } });
@@ -123,7 +124,7 @@ export default {
         case '/callback': return await callback(req, env, url);
         // POST only: a plain link on another site must not be able to sign people out. GET asks first.
         case '/logout': return req.method === 'POST' ? redirect(safeRd(url.searchParams.get('rd')), [sessionCookie('', 0)])
-          : page(`<h2>Sign out?</h2><p>This signs you out of every Lost Husky app.</p><form method=post action="/logout?rd=${encodeURIComponent(safeRd(url.searchParams.get('rd')))}"><button class=b>Sign out</button></form>`);
+          : page(`<h2>Sign out?</h2><p>This signs you out of LyricDock on this browser.</p><form method=post action="/logout?rd=${encodeURIComponent(safeRd(url.searchParams.get('rd')))}"><button class=b>Sign out</button></form>`);
         case '/me': {
           const me = await verify(cookie(req, COOKIE));
           return new Response(JSON.stringify(me ? { email: me.email, name: me.name, pic: me.pic, exp: me.exp } : null),
@@ -133,7 +134,7 @@ export default {
           const me = await verify(cookie(req, COOKIE));
           return page(me
             ? `${me.pic ? `<img src="${esc(me.pic)}" alt="">` : ''}<h2>${esc(me.name)}</h2><p>${esc(me.email)}</p><a class=b href="/logout">Sign out</a>`
-            : '<h2>Lost Husky</h2><p>One sign-in for LyricDock and the other apps.</p><a class=b href="/login">Sign in with Google</a>');
+            : '<h2>LyricDock</h2><p>Sign in to use the LyricDock web app.</p><a class=b href="/login">Sign in with Google</a>');
         }
         default: return new Response('Not found', { status: 404, headers: SEC });
       }

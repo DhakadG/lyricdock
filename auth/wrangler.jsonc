@@ -1,13 +1,13 @@
-// auth.losthusky.qzz.io: Google sign-in shared by every *.losthusky.qzz.io app. 
+// auth.lyricdock.losthusky.qzz.io: LyricDock's Google sign-in (cookie on lyricdock.losthusky.qzz.io). Guide: docs/sso-rollout.md
 // Secrets (npx wrangler secret put <NAME>): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SSO_PRIVATE_JWK.
-// Google Cloud Console -> that OAuth client -> Authorized redirect URIs: https://auth.losthusky.qzz.io/callback
+// Google Cloud Console -> that OAuth client -> Authorized redirect URIs: https://auth.lyricdock.losthusky.qzz.io/callback
 {
   "$schema": "https://unpkg.com/wrangler/config-schema.json",
-  "name": "losthusky-auth",
+  "name": "lyricdock-auth",
   "main": "src/index.js",
   "compatibility_date": "2026-09-25",
   "workers_dev": false,
-  "routes": [{ "pattern": "auth.losthusky.qzz.io", "custom_domain": true }],
+  "routes": [{ "pattern": "auth.lyricdock.losthusky.qzz.io", "custom_domain": true }],
   // Who may sign in at all ("" = any Google account with a verified email). Admin pages add their own list.
   "vars": { "ALLOWED_EMAILS": "" },
   "observability": { "enabled": true }

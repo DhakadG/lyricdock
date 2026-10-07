@@ -1,5 +1,5 @@
 // app.lyricdock.losthusky.qzz.io: the web app's files, only for someone signed in with the shared Google sign-in
-// (auth.losthusky.qzz.io, ../../auth/sso.js). The manifest and icons stay public: browsers fetch them without cookies.
+// (auth.lyricdock.losthusky.qzz.io, ../../auth/sso.js). The manifest and icons stay public: browsers fetch them without cookies.
 // sw.js stays public too: an installed app keeps running from its cache after the 14-day session ends, and its update
 // check must still work (the page itself goes to sign-in when /turn answers 401, see rtc.js).
 import { session, signIn } from '../../auth/sso.js';
@@ -27,7 +27,7 @@ async function turn(req, env) {
 export default {
   async fetch(req, env) {
     const { pathname } = new URL(req.url);
-    // SSO "on" only once auth.losthusky.qzz.io is deployed with its secrets: until then the gate would lock everyone out.
+    // SSO "on" only once auth.lyricdock.losthusky.qzz.io is deployed with its secrets: until then the gate would lock everyone out.
     if (env.SSO !== 'on') return pathname === '/turn' ? new Response('{"error":"sign-in is off"}', { status: 503, headers: { 'content-type': 'application/json' } }) : env.ASSETS.fetch(req);
     if (pathname === '/turn') return turn(req, env);
     if (pathname === '/manifest.webmanifest' || pathname === '/sw.js' || pathname.startsWith('/icons/') || (await session(req))) return env.ASSETS.fetch(req);
