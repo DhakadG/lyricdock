@@ -115,11 +115,9 @@ the domain, and that account is both (checked 2026-10-08).
 
 - **Who may sign in** (`auth/wrangler.jsonc` → `ALLOWED_EMAILS`): `""` (default) lets in any Google account with a
   verified email; a comma list lets in only those people.
-- **Who may open admin** (`cloud/wrangler.jsonc` → `ADMIN_EMAILS`, decided 2026-10-08):
-  - `ghanisht.kumawat@gmail.com` is the admin.
-  - `ghanishth.tes@gmail.com` is kept as a backup. It's the email of the Claude account Claude Code is logged in with:
-    the 2026-10-01 session took it from Claude Code's "user's email" and used it as the admin address. Don't use it for
-    new allowlists.
+- **Who may open admin** (`cloud/wrangler.jsonc` → `ADMIN_EMAILS`, decided 2026-10-08): only
+  `ghanisht.kumawat@gmail.com`. The Claude account's email (which an earlier session had put there) was removed; never
+  take an address from Claude Code's "user's email" for config.
 - **Spicy Lyrics in the browser (optional)**: allow origin `https://app.lyricdock.losthusky.qzz.io` for your key in
   the Spicy Lyrics developer dashboard.
 
@@ -151,8 +149,8 @@ PowerShell, repo root, branch `web-fixes-apple`.
   - `/turn` returns `iceServers` with `turn:` URLs when signed in, 401 when signed out.
   - `/manifest.webmanifest` and `/sw.js` still load signed out.
 - [ ] **Admin gate on**: `cloud/wrangler.jsonc` → `"ADMIN_SSO": "on"`, then `cd cloud; npx wrangler deploy`.
-  - https://admin.lyricdock.losthusky.qzz.io asks for Google, lets ghanisht.kumawat@gmail.com in (and the backup
-    ghanishth.tes@gmail.com), and refuses any other account.
+  - https://admin.lyricdock.losthusky.qzz.io asks for Google, lets ghanisht.kumawat@gmail.com in and refuses any other
+    account.
 - [ ] **ntfy owner gate**: `cd ntfy; npm i; npx wrangler deploy` (Cloudflare Containers; see docs/ntfy.md).
   - `./scripts/ping-update.ps1` says "Update ping sent".
   - A phone and the web app still pair (the `ld*` topics stay open).

@@ -46,7 +46,8 @@ After the code is done: `node --check` the edited JS, `node tests/sso.test.mjs` 
   `control-fail` event (e.g. `next 403 PREMIUM_REQUIRED`).
 
 ## Deployed 2026-10-07
-- cloud (lyricdock-cloud), auth (losthusky-auth), web (lyricdock-app) are live with all of the above.
+- cloud (lyricdock-cloud), auth (then losthusky-auth; moved to lyricdock-auth on auth.lyricdock 2026-10-08, see
+  docs/sso-rollout.md), web (lyricdock-app) are live with all of the above.
 - The SSO gates are OFF by switch, because the auth Worker has no secrets / Google client yet:
   `web/wrangler.jsonc` vars.SSO = "off" (app public, /turn answers 503), `cloud/wrangler.jsonc` vars.ADMIN_SSO = "off"
   (admin keeps the ADMIN_PASSWORD login). Turn on: set the auth secrets (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
