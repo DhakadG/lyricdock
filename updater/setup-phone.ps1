@@ -15,6 +15,42 @@ function Step($n, $t) { Write-Host "     [*] ($n/$Steps) $t" -ForegroundColor Wh
 function Ok($t) { Write-Host "             $t" -ForegroundColor Green }
 function Info($t) { Write-Host "             $t" -ForegroundColor Gray }
 function Warn($t) { Write-Host "             $t" -ForegroundColor Yellow }
+# Downloads: every source is tried with PowerShell, then with curl.exe (built into Windows 10+; it doesn't share
+# PowerShell 5.1's slow first connect, proxy auto-detect or old TLS defaults), then the next mirror; two rounds.
+# A fresh PC has none of the things LyricDock needs, so nothing here may depend on a single host answering once.
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+$script:Curl = (Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+function Get-Url([string[]]$Urls, [string]$OutFile) {
+    $last = 'no source'
+    for ($round = 1; $round -le 2; $round++) {
+        foreach ($u in $Urls) {
+            try {
+                if ($OutFile) { Invoke-WebRequest -UseBasicParsing $u -OutFile $OutFile -TimeoutSec 300; return }
+                return [string](Invoke-WebRequest -UseBasicParsing $u -TimeoutSec 60).Content
+            } catch { $last = "$u - $($_.Exception.Message)" }
+            if ($script:Curl) {
+                $to = $OutFile; if (-not $to) { $to = [IO.Path]::GetTempFileName() }
+                $ErrorActionPreference = 'Continue'
+                & $script:Curl -fsSL --connect-timeout 30 --max-time 600 -o $to $u 2>&1 | Out-Null
+                $code = $LASTEXITCODE; $ErrorActionPreference = 'Stop'
+                if ($code -eq 0) { if ($OutFile) { return }; $c = [IO.File]::ReadAllText($to); Remove-Item $to; return $c }
+                if (-not $OutFile) { Remove-Item $to -ErrorAction SilentlyContinue }
+                $last = "$u - curl exit $code"
+            }
+        }
+        if ($round -eq 1) { Start-Sleep -Seconds 3 }
+    }
+    throw $last
+}
+# The newest release tag of a GitHub repo: the API (rate-limited per IP), else where /releases/latest redirects to.
+function Get-LatestTag([string]$Repo) {
+    try { return (Get-Url @("https://api.github.com/repos/$Repo/releases/latest") | ConvertFrom-Json).tag_name } catch {}
+    $u = ''
+    try { $r = Invoke-WebRequest -UseBasicParsing "https://github.com/$Repo/releases/latest" -TimeoutSec 60; $u = "$($r.BaseResponse.ResponseUri)$($r.BaseResponse.RequestMessage.RequestUri)" } catch {}
+    if (-not $u -and $script:Curl) { $ErrorActionPreference = 'Continue'; $u = & $script:Curl -fsSL -o NUL -w '%{url_effective}' "https://github.com/$Repo/releases/latest" 2>$null; $ErrorActionPreference = 'Stop' }
+    if ("$u" -match '/releases/tag/([^/?#]+)') { return $Matches[1] }
+    throw "can't find the latest $Repo release"
+}
 $script:TempTools = $null
 function Cleanup {
     if ($script:TempTools) {
@@ -52,7 +88,7 @@ if ($script:Adb) { Ok "Using your adb: $script:Adb" }
 else {
     $script:TempTools = Join-Path $env:TEMP "lyricdock-setup-$([guid]::NewGuid().ToString('n').Substring(0, 8))"
     try {
-        Invoke-WebRequest -UseBasicParsing 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile "$script:TempTools.zip"
+        Get-Url @('https://dl.google.com/android/repository/platform-tools-latest-windows.zip') "$script:TempTools.zip"
         Expand-Archive "$script:TempTools.zip" $script:TempTools -Force
         Remove-Item "$script:TempTools.zip"
     } catch { Fail "Couldn't download Android platform-tools from Google: $($_.Exception.Message)" }
@@ -75,20 +111,36 @@ Ok "Found $model"
 
 Section 'INSTALLING'
 Step 3 'Downloading the latest LyricDock app...'
+# Every release attaches lyricdock-vX.Y.Z.apk, so the tag is all we need (API, or the /releases/latest redirect).
 try {
-    $rel = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 60
-    $asset = $rel.assets | Where-Object name -like '*.apk' | Select-Object -First 1
-    if (-not $asset) { throw 'the latest release has no APK' }
-    $apk = Join-Path $env:TEMP $asset.name
-    Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $apk
+    $tag = Get-LatestTag $Repo
+    $apk = Join-Path $env:TEMP "lyricdock-$tag.apk"
+    Get-Url @("https://github.com/$Repo/releases/download/$tag/lyricdock-$tag.apk") $apk
 } catch { Fail "Couldn't download the app: $($_.Exception.Message)" }
-Ok "$($rel.tag_name) downloaded"
+Ok "$tag downloaded"
 
 Step 4 'Installing on the phone...'
-$out = & $script:Adb -s $serial install -r -t $apk 2>&1
+$out = (& $script:Adb -s $serial install -r -t $apk 2>&1) -join ' '
+if ($out -match 'INSTALL_FAILED_VERSION_DOWNGRADE') { Ok 'A newer LyricDock is already installed - kept'; $out = 'Success' }
+elseif ($out -match 'UPDATE_INCOMPATIBLE|signatures do not match') {
+    # An APK from another build (a developer copy, an old test version): it can't be updated, only replaced.
+    Warn 'The LyricDock already on the phone comes from a different build and cannot be updated in place.'
+    $a = Read-Host '             Remove it and install the official one? Its settings and pairing are reset [Y/n]'
+    if ($a -match '^[nN]') { Remove-Item $apk -ErrorAction SilentlyContinue; Fail 'Left the existing app alone.' }
+    $gone = (& $script:Adb -s $serial uninstall $Pkg 2>&1) -join ' '
+    # A kiosk (device-owner) app can't be removed from outside: the old app's Settings > Kiosk mode > Leave first.
+    if ($gone -notmatch 'Success') { Remove-Item $apk -ErrorAction SilentlyContinue; Fail "Couldn't remove it ($gone). If it runs in kiosk mode: on the phone open its Settings > Kiosk mode > Leave, then run this again." }
+    $out = (& $script:Adb -s $serial install -t $apk 2>&1) -join ' '
+}
 Remove-Item $apk -ErrorAction SilentlyContinue
-if ($LASTEXITCODE) { Fail "Install failed: $($out -join ' ')" }
+if ($out -notmatch 'Success') { Fail "Install failed: $out" }
 Ok 'Installed'
+# What the app would otherwise ask for one by one: notifications (Android 13+: the lock-screen player), reopening
+# itself after an update or a crash, and not being put to sleep by battery optimisation.
+& $script:Adb -s $serial shell pm grant $Pkg android.permission.POST_NOTIFICATIONS 2>&1 | Out-Null
+& $script:Adb -s $serial shell appops set $Pkg SYSTEM_ALERT_WINDOW allow 2>&1 | Out-Null
+& $script:Adb -s $serial shell dumpsys deviceidle whitelist +$Pkg 2>&1 | Out-Null
+Ok 'Permissions set (notifications, reopen after updates, no battery sleep)'
 
 Section 'CONFIGURING'
 Step 5 'Kiosk mode (full screen, starts on boot, silent updates)...'
@@ -115,9 +167,9 @@ Write-Host ''
 Write-Host '  Done. Next:' -ForegroundColor Green
 Write-Host '    - USB debugging can be switched off now (Settings > Developer options); LyricDock does not need it.'
 Write-Host '    - On the PC, if not done yet:  iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex'
-Write-Host '    - Pair: the phone shows a code (like K7QX-9MP-2F2). In Spotify on the PC click the LyricDock button in'
-Write-Host '      the top bar, type the code under "Pair phone" and click Pair. Once per phone - it reconnects by itself.'
-Write-Host '      (If the phone is signed in to your Spotify account - Settings > Playback source - Spotify finds it'
-Write-Host '      without the code: just tap Allow on the phone when both show the same 4 digits.)'
+Write-Host '    - On the phone: sign in to LyricDock when it asks (your browser opens once).'
+Write-Host '    - Pair: in Spotify on the PC click the LyricDock button in the top bar > Devices > Find devices > Connect.'
+Write-Host '      Both screens show the same 6 digits: tap Allow on the phone and Same digits in Spotify.'
+Write-Host '      (Or type the code the phone shows, like K7QX-9MP-2F2, under "Pair phone".) Once per phone.'
 Write-Host ''
 [void](Read-Host '  Press Enter to close')

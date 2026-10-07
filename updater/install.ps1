@@ -29,10 +29,48 @@ function Warn($t) { Write-Host "             $t" -ForegroundColor Yellow }
 # NativeCommandError. Run it with errors as plain text and keep the exit code.
 function Spice {
     $ErrorActionPreference = 'Continue'
-    $o = '' | & $script:spicetify @args 2>&1 | ForEach-Object { "$_" }
+    $extra = @(); if ($script:Admin) { $extra = @('--bypass-admin') } # Spicetify refuses an admin window otherwise
+    $o = '' | & $script:spicetify @args @extra 2>&1 | ForEach-Object { "$_" }
     $script:SpiceCode = $LASTEXITCODE
     $o
 }
+# Downloads: every source is tried with PowerShell, then with curl.exe (built into Windows 10+; it doesn't share
+# PowerShell 5.1's slow first connect, proxy auto-detect or old TLS defaults), then the next mirror; two rounds.
+# A fresh PC has none of the things LyricDock needs, so nothing here may depend on a single host answering once.
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+$script:Curl = (Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+function Get-Url([string[]]$Urls, [string]$OutFile) {
+    $last = 'no source'
+    for ($round = 1; $round -le 2; $round++) {
+        foreach ($u in $Urls) {
+            try {
+                if ($OutFile) { Invoke-WebRequest -UseBasicParsing $u -OutFile $OutFile -TimeoutSec 300; return }
+                return [string](Invoke-WebRequest -UseBasicParsing $u -TimeoutSec 60).Content
+            } catch { $last = "$u - $($_.Exception.Message)" }
+            if ($script:Curl) {
+                $to = $OutFile; if (-not $to) { $to = [IO.Path]::GetTempFileName() }
+                $ErrorActionPreference = 'Continue'
+                & $script:Curl -fsSL --connect-timeout 30 --max-time 600 -o $to $u 2>&1 | Out-Null
+                $code = $LASTEXITCODE; $ErrorActionPreference = 'Stop'
+                if ($code -eq 0) { if ($OutFile) { return }; $c = [IO.File]::ReadAllText($to); Remove-Item $to; return $c }
+                if (-not $OutFile) { Remove-Item $to -ErrorAction SilentlyContinue }
+                $last = "$u - curl exit $code"
+            }
+        }
+        if ($round -eq 1) { Start-Sleep -Seconds 3 }
+    }
+    throw $last
+}
+# The newest release tag of a GitHub repo: the API (rate-limited per IP), else where /releases/latest redirects to.
+function Get-LatestTag([string]$Repo) {
+    try { return (Get-Url @("https://api.github.com/repos/$Repo/releases/latest") | ConvertFrom-Json).tag_name } catch {}
+    $u = ''
+    try { $r = Invoke-WebRequest -UseBasicParsing "https://github.com/$Repo/releases/latest" -TimeoutSec 60; $u = "$($r.BaseResponse.ResponseUri)$($r.BaseResponse.RequestMessage.RequestUri)" } catch {}
+    if (-not $u -and $script:Curl) { $ErrorActionPreference = 'Continue'; $u = & $script:Curl -fsSL -o NUL -w '%{url_effective}' "https://github.com/$Repo/releases/latest" 2>$null; $ErrorActionPreference = 'Stop' }
+    if ("$u" -match '/releases/tag/([^/?#]+)') { return $Matches[1] }
+    throw "can't find the latest $Repo release"
+}
+$script:Admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 function Fail($t) {
     Write-Host ''
     Write-Host "  [!] $t" -ForegroundColor Red
@@ -46,8 +84,9 @@ Banner
 Section 'CHECKING REQUIREMENTS'
 
 Step 1 'Checking network connectivity...'
-try { $latest = (Invoke-RestMethod "$Raw/extension/version.json?t=$([DateTime]::UtcNow.Ticks)" -TimeoutSec 60).version } # 60: Windows PowerShell 5.1 can spend ~21 s on a first connect that then works
-catch { Fail "Can't reach GitHub ($($_.Exception.Message)). Check your connection and run this again." }
+# GitHub first; jsDelivr's copy of main as the fallback (it can lag a few hours behind, which is fine for an install).
+try { $latest = (Get-Url @("$Raw/extension/version.json?t=$([DateTime]::UtcNow.Ticks)", "https://cdn.jsdelivr.net/gh/$Repo@main/extension/version.json") | ConvertFrom-Json).version }
+catch { Fail "Can't reach GitHub or jsDelivr ($($_.Exception.Message)). Check your internet connection and run this again." }
 if ($latest -notmatch '^\d+\.\d+\.\d+$') { Fail "GitHub returned an unexpected version ('$latest')." }
 Ok 'Network connected'
 
@@ -56,12 +95,19 @@ Step 2 'Checking Spicetify installation...'
 # Spicetify, and its folder changes with every Store update) is swapped for it; no Spotify at all -> installed.
 $desk = "$env:APPDATA\Spotify"
 function Install-SpotifyDesktop {
+    # Spotify's installer refuses to run as administrator (it installs per user).
+    if ($script:Admin) { Fail 'Spotify cannot be installed from an administrator window. Open a normal PowerShell (not "Run as administrator") and run this again.' }
     Info 'Downloading Spotify from spotify.com...'
     $setup = Join-Path $env:TEMP 'SpotifySetup.exe'
-    try { Invoke-WebRequest -UseBasicParsing 'https://download.scdn.co/SpotifySetup.exe' -OutFile $setup }
-    catch { Fail "Couldn't download Spotify ($($_.Exception.Message)). Install it from https://www.spotify.com/download, then run this again." }
-    Start-Process $setup '/silent' -Wait
+    try { Get-Url @('https://download.scdn.co/SpotifySetup.exe') $setup; Start-Process $setup '/silent' -Wait } catch { Warn "Download failed ($($_.Exception.Message))" }
     Remove-Item $setup -ErrorAction SilentlyContinue
+    # Fallback: winget (Windows 10 1809+ / 11), the same per-user desktop app.
+    if (-not (Test-Path "$desk\Spotify.exe") -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Info 'Trying winget...'
+        $ErrorActionPreference = 'Continue'
+        winget install --id Spotify.Spotify -e --scope user --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+        $ErrorActionPreference = 'Stop'
+    }
     if (-not (Test-Path "$desk\Spotify.exe")) { Fail 'Spotify did not install. Install it from https://www.spotify.com/download, then run this again.' }
     if (-not (Get-Process Spotify -ErrorAction SilentlyContinue)) { Start-Process "$desk\Spotify.exe" }
     Ok 'Spotify installed'
@@ -89,7 +135,8 @@ if ($appx) {
 if (-not (Test-Path "$desk\prefs")) {
     Info 'Starting Spotify once so it writes its settings...'
     Start-Process "$desk\Spotify.exe"
-    for ($i = 0; $i -lt 60 -and -not (Test-Path "$desk\prefs"); $i++) { Start-Sleep 1 }
+    for ($i = 0; $i -lt 90 -and -not (Test-Path "$desk\prefs"); $i++) { Start-Sleep 1 }
+    if (-not (Test-Path "$desk\prefs")) { Fail 'Spotify has not finished its first start. Sign in to Spotify, close it, then run this again.' }
 }
 $spicetify = (Get-Command spicetify -ErrorAction SilentlyContinue).Source
 if (-not $spicetify -and (Test-Path "$env:LOCALAPPDATA\spicetify\spicetify.exe")) { $spicetify = "$env:LOCALAPPDATA\spicetify\spicetify.exe" }
@@ -99,11 +146,13 @@ if (-not $spicetify) {
     Info 'Spicetify is not installed - installing it...'
     $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } elseif ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x32' }
     try {
-        $rel = Invoke-RestMethod 'https://api.github.com/repos/spicetify/cli/releases/latest' -TimeoutSec 60
-        $asset = $rel.assets | Where-Object { $_.name -like "*windows-$arch.zip" } | Select-Object -First 1
-        if (-not $asset) { throw "no Windows $arch build in $($rel.tag_name)" }
-        $zip = Join-Path $env:TEMP $asset.name
-        Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $zip
+        # Release files follow one name pattern (spicetify-2.x.y-windows-x64.zip), so the tag is all we need - from
+        # the API, or from the /releases/latest redirect when the API is rate-limited.
+        $tag = Get-LatestTag 'spicetify/cli'
+        $name = "spicetify-$($tag.TrimStart('v'))-windows-$arch.zip"
+        $zip = Join-Path $env:TEMP $name
+        Get-Url @("https://github.com/spicetify/cli/releases/download/$tag/$name") $zip
+        $rel = @{ tag_name = $tag }
         $dir = "$env:LOCALAPPDATA\spicetify"
         New-Item -ItemType Directory -Force $dir | Out-Null
         Expand-Archive $zip $dir -Force
@@ -145,8 +194,10 @@ Section 'DOWNLOADING'
 Step 5 'Downloading the LyricDock loader...'
 # The loader is the only file Spicetify keeps; it fetches the matching LyricDock build itself (and caches it).
 $tmp = Join-Path $env:TEMP 'lyricdock.js'
-try { Invoke-WebRequest -UseBasicParsing "https://cdn.jsdelivr.net/gh/$Repo@v$latest/extension/lyricdock.js" -OutFile $tmp }
-catch { Invoke-WebRequest -UseBasicParsing "$Raw/extension/lyricdock.js" -OutFile $tmp } # tag not on the CDN yet
+# The tagged loader: jsDelivr, else GitHub's raw copy of the tag, else the release's own attachment.
+try { Get-Url @("https://cdn.jsdelivr.net/gh/$Repo@v$latest/extension/lyricdock.js", "https://raw.githubusercontent.com/$Repo/v$latest/extension/lyricdock.js",
+    "https://github.com/$Repo/releases/download/v$latest/lyricdock.js") $tmp }
+catch { Fail "Couldn't download the LyricDock loader ($($_.Exception.Message)). Check your connection and run this again." }
 if (-not (Select-String -Path $tmp -Pattern 'lyricdockLoader' -Quiet)) { Fail 'The download looks wrong (not the LyricDock loader). Try again in a minute.' }
 Copy-Item $tmp (Join-Path $ext 'lyricdock.js') -Force
 Remove-Item $tmp -ErrorAction SilentlyContinue
