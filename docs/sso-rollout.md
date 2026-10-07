@@ -4,7 +4,7 @@ Any session can continue from the first unchecked box. Never print or paste a se
 
 ## State (2026-10-08)
 
-- **Branch** `web-fixes-apple`, not merged, not pushed.
+- **Branch** `web-fixes-apple` merged into `main` and pushed (2026-10-08). Gates still off.
 - **Sign-in belongs to LyricDock, not the apex domain.**
   - It runs at `auth.lyricdock.losthusky.qzz.io` (Worker `lyricdock-auth`).
   - The session cookie `__Secure-ld_sso` is scoped to `lyricdock.losthusky.qzz.io`, so only `app.`, `admin.` and `art.`
@@ -105,7 +105,7 @@ PowerShell, repo root, branch `web-fixes-apple`.
   [Environment]::SetEnvironmentVariable('LYRICDOCK_PUBLISH_TOKEN', (Get-Content secrets/PUBLISH_TOKEN.txt -Raw).Trim(), 'User')
   ```
   Check with `npx wrangler secret list` in each folder: auth 3 names, web 2, ntfy 1 (names only).
-- [ ] **Sign-in works on its own**:
+- [x] **Sign-in works on its own** (2026-10-08, owner signed in with Google):
   - `$env:SSO_KEY_FILE='secrets/SSO_PRIVATE_JWK.json'; node tests/sso.test.mjs` prints `sso ok`.
   - The user opens https://auth.lyricdock.losthusky.qzz.io/login, signs in, and the auth page shows their name.
   - `/me` returns their email.
@@ -123,7 +123,7 @@ PowerShell, repo root, branch `web-fixes-apple`.
   - https://ntfy.losthusky.qzz.io/ asks for a password (the token).
 - [ ] **Rollback if anyone is locked out**: set the switch back to `"off"` and redeploy that Worker
   (ntfy: `npx wrangler rollback`).
-- [ ] **Merge and sync**:
+- [x] **Merge and sync** (2026-10-08, before the gates, so the owner can test sign-in from main):
   ```powershell
   git checkout main; git merge --ff-only web-fixes-apple   # if main moved: git merge web-fixes-apple
   git push origin main; git branch -d web-fixes-apple
