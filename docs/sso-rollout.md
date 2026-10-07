@@ -150,9 +150,9 @@ Every LyricDock screen needs a sign-in, not just the web app.
   `/v1/ping` and `/v1/health` stay open, so old builds still show in the dashboard.
 - **Favicon**: `auth/brand.js` links every LyricDock site to `app.lyricdock.../icons/` and redirects `/favicon.ico`.
 - [x] auth, cloud and web deployed; phone round trip tested on the Galaxy M01 (R9ZN905WPLJ, kiosk).
-- [ ] Release v1.8.8 (`scripts/release.ps1`): phones update to the build with the sign-in screen.
-- [ ] `API_SSO` on (`cloud/wrangler.jsonc`), `cd cloud; npx wrangler deploy`: no token = 401, phone token = 200.
-- [ ] ntfy owner gate (section 2).
+- [x] Released v1.8.8 (2026-10-08) (`scripts/release.ps1`): phones update to the build with the sign-in screen.
+- [x] `API_SSO` on (2026-10-08) (`cloud/wrangler.jsonc`), `cd cloud; npx wrangler deploy`: no token = 401, phone token = 200.
+- [ ] ntfy owner gate (section 2): the owner runs the `PUBLISH_TOKEN` secret line (auto mode blocks secret writes), then Claude deploys.
 
 ## Notes
 
