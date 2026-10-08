@@ -9,7 +9,8 @@
 // - Firefox has neither API, so Settings hides the option.
 (() => {
   // ---- inside the miniplayer: fed by the main copy. Only the lyrics pane (and the background behind it) is the app's
-  // own; around it sits a trimmed-down player: cover, song and like on top, timeline and controls at the bottom.
+  // own; around it sits a trimmed-down player: cover, song and like on top; at the bottom, shown while the pointer is
+  // in the window (or paused), the timeline, the controls and a few extras beside them (text size, volume, top bar).
   const mini = window.LYRICDOCK_MINI;
   if (mini) {
     const ch = new BroadcastChannel(`lyricdock-mini-${mini}`);
@@ -17,59 +18,100 @@
     ch.onmessage = e => { if (e.data?.src) route(e.data.src, e.data.m); };
     miniHost({ hello: 1 });
     setInterval(() => miniHost({ beat: 1 }), 1000);
-    // The look comes from the screen's settings (settings.js); the screen's furniture stays off in here.
-    const off = { layout: 'lyrics', clock: 'off', qsEnabled: false, nextChip: false, progress: 'off', times: false, timeStyle: 'off', battery: false, showBlocks: false, sourceBadge: false };
+    const keep = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    // The look comes from the screen's settings (settings.js), made readable for a small window over any cover (white
+    // lines, Spicy Lyrics' 0.5 for the others, a darker background); the screen's furniture stays off in here.
+    const off = { layout: 'lyrics', clock: 'off', qsEnabled: false, nextChip: false, progress: 'off', times: false, timeStyle: 'off', battery: false, showBlocks: false, sourceBadge: false,
+      lineColor: 'white', duetColors: false, lineOpacity: 0.5, blurLines: false, outline: true, bgDim: Math.max(S.bgDim, 0.45), size: +(keep('dock:miniSize') || S.size) };
     for (const [k, v] of Object.entries(off)) if (S[k] !== v) Settings.set(k, v, false);
     const svg = id => $(id).querySelector('svg').outerHTML;
+    const icon = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
     const st = document.createElement('style');
     st.textContent = `body.mini #left,body.mini #ctl,body.mini #gear,body.mini #qs,body.mini #qpanel,body.mini #stat,body.mini #nextChip,body.mini #bar,body.mini #times,body.mini #clockPane,body.mini #signin{display:none!important}
-body.mini #wrap{padding:var(--mh) 16px var(--mb)!important}
+body.mini #wrap{padding:var(--mh) 16px 14px!important}
+body.mini #lines{filter:drop-shadow(0 1px 5px rgba(0,0,0,.45))}
 #mh,#mb{position:fixed;left:0;right:0;z-index:50;display:flex;align-items:center;gap:10px;padding:10px 14px;color:#fff;font:14px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif}
-#mh{top:0;background:linear-gradient(rgba(0,0,0,.45),transparent)}
-#mb{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding-top:6px;background:linear-gradient(transparent,rgba(0,0,0,.55))}
+#mh{top:0;background:linear-gradient(rgba(0,0,0,.5),transparent)}
+#mb{bottom:0;flex-direction:column;align-items:stretch;gap:2px;padding:28px 12px 8px;background:linear-gradient(transparent,rgba(0,0,0,.75) 45%);
+  opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .25s,transform .25s}
+body.mini.bar #mb{opacity:1;transform:none;pointer-events:auto}
 #mArt{width:44px;height:44px;flex:none;border-radius:8px;object-fit:cover;background:#222;box-shadow:0 2px 10px rgba(0,0,0,.4)}#mArt:not([src]){visibility:hidden}
 #mh div{display:grid;min-width:0;flex:1}#mT,#mA{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#mT{font-weight:700}#mA{font-size:.85em;opacity:.7}
 #mTl{display:flex;align-items:center;gap:8px;font-size:11px;opacity:.85;font-variant-numeric:tabular-nums}
-#mPr{flex:1;min-width:0;height:4px;accent-color:rgb(var(--acc,255,255,255));cursor:pointer}
-#mNav{display:flex;justify-content:center;align-items:center;gap:6px}
-#mini button{position:relative;width:34px;height:34px;flex:none;display:grid;place-items:center;border:0;border-radius:50%;color:#fff;background:none;cursor:pointer;padding:0}
+#mPr{flex:1;min-width:0;height:4px;accent-color:#fff;cursor:pointer}
+#mNav{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:4px}
+#mNav .main,#mNav .side{display:flex;align-items:center;gap:4px}#mNav .l{justify-content:flex-start}#mNav .r{justify-content:flex-end}
+#mini button{position:relative;width:34px;height:34px;flex:none;display:grid;place-items:center;border:0;border-radius:50%;color:#fff;background:none;cursor:pointer;padding:0;font:700 13px system-ui,sans-serif}
 #mini button:hover{background:rgba(255,255,255,.14)}#mini button:focus-visible{outline:2px solid #fff}
 #mini svg{width:18px;height:18px;fill:currentColor}
-#mini .s{opacity:.55}#mini .s.on{opacity:1;color:rgb(var(--acc,255,255,255))}#mini .one::after{content:"1";position:absolute;top:4px;right:5px;font:700 9px system-ui}
+#mini .s,#mini .side button{opacity:.6}#mini .side button:hover{opacity:1}#mini .s.on{opacity:1;color:rgb(var(--acc,255,255,255))}#mini .one::after{content:"1";position:absolute;top:4px;right:5px;font:700 9px system-ui}
 #mini [data-k=pp]{width:40px;height:40px;background:#fff;color:#000}#mini [data-k=pp]:hover{background:#ddd}
-#mLike path:last-child{display:block}#mLike path.fill{opacity:0}#mLike.on path.fill{opacity:1;color:rgb(var(--acc,30,215,96))}
-body.mini.short #mh{display:none}body.mini.narrow #mini .s{display:none}`;
+#mVol.muted{opacity:.35}#mHead.on{opacity:1}
+#mLike path.fill{opacity:0}#mLike.on path.fill{opacity:1;color:rgb(var(--acc,30,215,96))}
+body.mini.short #mh,body.mini.nohead #mh{display:none}body.mini.narrow #mini .s{display:none}
+body.mini.slim #mNav{grid-template-columns:auto}body.mini.slim #mNav .side{display:none}`;
     document.head.append(st);
     const ui = document.createElement('div');
     ui.id = 'mini';
     ui.innerHTML = `<header id="mh"><img id="mArt" alt=""><div><b id="mT"></b><span id="mA"></span></div><button id="mLike" data-k="heart" aria-label="Like">${svg('heart')}</button></header>
 <footer id="mb"><div id="mTl"><span id="mCur">0:00</span><input id="mPr" type="range" min="0" max="1" value="0" aria-label="Seek"><span id="mDur">0:00</span></div>
-<nav id="mNav"><button class="s" data-k="shuf" aria-label="Shuffle">${svg('shuf')}</button><button data-k="prev" aria-label="Previous">${svg('prev')}</button><button data-k="pp" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path/></svg></button><button data-k="next" aria-label="Next">${svg('next')}</button><button class="s" data-k="rep" aria-label="Repeat">${svg('rep')}</button></nav></footer>`;
+<nav id="mNav"><div class="side l"><button data-x="smaller" aria-label="Smaller lyrics" title="Smaller lyrics">A−</button><button data-x="bigger" aria-label="Bigger lyrics" title="Bigger lyrics">A+</button></div>
+<div class="main"><button class="s" data-k="shuf" aria-label="Shuffle">${svg('shuf')}</button><button data-k="prev" aria-label="Previous">${svg('prev')}</button><button data-k="pp" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path/></svg></button><button data-k="next" aria-label="Next">${svg('next')}</button><button class="s" data-k="rep" aria-label="Repeat">${svg('rep')}</button></div>
+<div class="side r"><button id="mVol" data-x="mute" aria-label="Mute (scroll for volume)">${svg('volUp')}</button><button id="mHead" data-x="head" aria-label="Show or hide the song bar" title="Song bar">${icon('M4 4h16v5H4zm0 7h16v2H4zm0 4h16v2H4zm0 4h10v2H4z')}</button></div></nav></footer>`;
     document.body.append(ui);
     document.body.classList.add('mini');
-    ui.onclick = e => { const k = e.target.closest('[data-k]')?.dataset.k; if (k) { e.stopPropagation(); $(k).click(); } }; // the app's own buttons
-    const q = id => document.getElementById(id), pr = q('mPr'), last = {};
+    document.body.classList.toggle('nohead', keep('dock:miniHead') === 'off');
+    const q = id => document.getElementById(id), pr = q('mPr'), vol = $('vol'), last = {};
+    // Volume goes through the app's own slider (throttled, app.js); a mute remembers where it was.
+    const setVol = v => { vol.value = Math.max(0, Math.min(100, Math.round(v))); vol.dispatchEvent(new Event('input')); q('mVol').title = `Volume ${vol.value}%`; };
+    let unmute = 50;
+    const extra = {
+      smaller: () => { Settings.set('size', Math.max(0.6, +(S.size - 0.1).toFixed(2)), false); keep('dock:miniSize', S.size); },
+      bigger: () => { Settings.set('size', Math.min(1.6, +(S.size + 0.1).toFixed(2)), false); keep('dock:miniSize', S.size); },
+      mute: () => { if (+vol.value > 0) { unmute = +vol.value; setVol(0); } else setVol(unmute); },
+      head: () => { keep('dock:miniHead', document.body.classList.toggle('nohead') ? 'off' : 'on'); fit(); },
+    };
+    ui.onclick = e => {
+      const b = e.target.closest('[data-k], [data-x]');
+      if (!b) return;
+      e.stopPropagation();
+      if (b.dataset.k) $(b.dataset.k).click(); // the app's own buttons
+      else extra[b.dataset.x]();
+    };
+    q('mVol').addEventListener('wheel', e => { e.preventDefault(); setVol(+vol.value + (e.deltaY < 0 ? 5 : -5)); }, { passive: false });
     let drag = false;
     pr.onpointerdown = () => { drag = true; };
     pr.onchange = () => { drag = false; seek(+pr.value); };
+    // The bottom bar: up while the pointer moves in the window or rests on the bar, while dragging, and while paused.
+    let barT = 0, overBar = false;
+    const wake = () => { document.body.classList.add('bar'); clearTimeout(barT); barT = setTimeout(() => { if (!overBar && !drag && P.playing) document.body.classList.remove('bar'); }, 2500); };
+    for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) addEventListener(ev, wake, { passive: true });
+    q('mb').onpointerenter = () => { overBar = true; wake(); };
+    q('mb').onpointerleave = () => { overBar = false; wake(); };
+    document.documentElement.addEventListener('pointerleave', () => { overBar = false; clearTimeout(barT); barT = setTimeout(() => P.playing && !drag && document.body.classList.remove('bar'), 600); });
     const fit = () => {
-      document.body.classList.toggle('short', innerHeight < 160);
+      const short = innerHeight < 160;
+      document.body.classList.toggle('short', short);
       document.body.classList.toggle('narrow', innerWidth < 300);
-      document.body.style.setProperty('--mh', `${innerHeight < 160 ? 8 : q('mh').offsetHeight}px`);
-      document.body.style.setProperty('--mb', `${q('mb').offsetHeight}px`);
+      document.body.classList.toggle('slim', innerWidth < 440 || innerHeight > innerWidth); // no room beside the controls
+      document.body.style.setProperty('--mh', `${short || document.body.classList.contains('nohead') ? 12 : q('mh').offsetHeight}px`);
     };
     addEventListener('resize', fit);
     fit();
+    wake();
     (function frame() {
       const t = $('title').textContent, a = $('artist').textContent, real = pos();
       if (t !== last.t) q('mT').textContent = last.t = t;
       if (a !== last.a) q('mA').textContent = last.a = a;
       if (P.art !== last.art) { last.art = P.art; if (P.art) q('mArt').src = P.art; else q('mArt').removeAttribute('src'); }
-      if (P.playing !== last.pl) { last.pl = P.playing; ui.querySelector('[data-k="pp"] path').setAttribute('d', P.playing ? PAUSE : PLAY); }
+      if (P.playing !== last.pl) { last.pl = P.playing; ui.querySelector('[data-k="pp"] path').setAttribute('d', P.playing ? PAUSE : PLAY); if (!P.playing) document.body.classList.add('bar'); else wake(); }
       for (const k of ['heart', 'shuf', 'rep']) {
         const b = ui.querySelector(`[data-k="${k}"]`), c = $(k).classList;
         b.classList.toggle('on', c.contains('on')); b.classList.toggle('one', c.contains('one'));
       }
+      q('mVol').hidden = !$('ctl').classList.contains('has-vol'); // Spotify reports no volume for some devices
+      q('mVol').classList.toggle('muted', +vol.value === 0);
+      q('mHead').classList.toggle('on', !document.body.classList.contains('nohead'));
       if (P.dur !== last.dur) { pr.max = last.dur = P.dur || 1; q('mDur').textContent = clock(P.dur); }
       if (!drag) pr.value = real;
       q('mCur').textContent = clock(drag ? +pr.value : real);

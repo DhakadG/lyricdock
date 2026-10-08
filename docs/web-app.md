@@ -83,8 +83,10 @@ browser hides its local addresses behind random `.local` names.
 - **Miniplayer** (*Settings → Miniplayer*, or press **M**): a small always-on-top window.
   - **Chrome, Edge, Brave, Opera (Windows, Mac, Linux):** Document Picture-in-Picture holding a second copy of the app
     (`/?mini=<channel>`, `window.LYRICDOCK_MINI`), so the lyrics are LyricDock's own (word effects, background, the
-    screen's look). Around them `mini.js` draws a trimmed-down player: cover, song and like on top; timeline, shuffle,
-    previous, play/pause, next and repeat at the bottom. The app's own controls, settings button, quick bar, clock and
+    screen's look). Around them `mini.js` draws a trimmed-down player: cover, song and like on top; at the bottom, shown while the
+    pointer is in the window (and while paused), the timeline, shuffle / previous / play-pause / next / repeat, and extras
+    beside them (lyrics A−/A+, volume: click mutes, scroll sets it; show/hide the song bar). Lyrics are forced readable:
+    white, others at 0.5, background dimmed. The app's own controls, settings button, quick bar, clock and
     cover column are hidden. Short window (< 160 px): the top bar goes. Narrow (< 300 px): shuffle and repeat go.
     - It never connects to Spotify. The main copy hands it every message it hears (`app.js route` → `miniFeed`, over a
       BroadcastChannel) and carries out its commands (`send` / `control` → `miniHost`). Its own heartbeat, settings and
