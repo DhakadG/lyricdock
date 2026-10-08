@@ -11,6 +11,9 @@ const Settings = (() => {
     { k: 'layout', label: 'Layout', type: 'choice', def: 'split', opts: [
       ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['clocksplit', 'Cover + clock'], ['clock', 'Flip clock']],
       help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds, double-tap to go back to the layout before).' },
+    { k: 'miniLayout', label: 'Miniplayer layout', type: 'choice', def: 'auto', when: () => !!window.LYRICDOCK_MINI,
+      opts: [['auto', 'Fit the window'], ['lyrics', 'Lyrics only'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['compact', 'Compact'], ['player', 'Player card'], ['split', 'Cover + lyrics']],
+      help: 'Fit the window: the layout changes as you resize the miniplayer - cover and lyrics side by side when wide, lyrics only when narrow, big centred lyrics when short.' },
     { k: 'artSide', label: 'Cover side', type: 'choice', def: 'left', opts: [['left', 'Cover left, lyrics right'], ['right', 'Lyrics left, cover right']],
       when: s => ['split', 'tv', 'clocksplit'].includes(s.layout), help: 'Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top.' },
     { k: 'progress', label: 'Progress bar', type: 'choice', def: 'art', opts: [['art', 'Under the cover'], ['bottom', 'Bottom edge'], ['top', 'Top edge'], ['off', 'Off']],
@@ -168,8 +171,9 @@ const Settings = (() => {
     { k: 'brightDay', label: 'Day brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.8, when: s => app && s.bright !== 'system', help: 'Screen brightness while LyricDock is open (Fixed), or during the day (schedule).' },
     { k: 'brightNight', label: 'Night brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.15, when: s => app && s.bright === 'schedule', help: 'Screen brightness between the night hours.' },
     { k: 'volKeys', label: 'Volume buttons control Spotify', type: 'toggle', def: true, when: () => app, help: 'The phone\'s volume buttons change Spotify\'s volume (5% per press) instead of the phone\'s.' },
-    { k: 'mediaNotif', label: 'Media notification', type: 'toggle', def: true, when: () => app, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
-    { k: 'lockLyric', label: 'Lyrics on the lock screen', desc: 'The line being sung, in the lock-screen player', type: 'toggle', def: true, when: s => app && s.mediaNotif,
+    { k: 'mediaNotif', label: window.LYRICDOCK_WEB ? 'System media controls' : 'Media notification', type: 'toggle', def: true, when: () => app || (!!window.LYRICDOCK_WEB && !!navigator.mediaSession && !window.LYRICDOCK_MINI),
+      desc: window.LYRICDOCK_WEB ? 'The song in your computer\'s media controls and keyboard play / next / previous keys' : undefined, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
+    { k: 'lockLyric', label: 'Lyrics on the lock screen', desc: 'The line being sung, in the lock-screen player', type: 'toggle', def: true, when: s => (app || (!!window.LYRICDOCK_WEB && !window.LYRICDOCK_MINI)) && s.mediaNotif,
       help: 'The lock screen and notification player show the current lyric line under the song title (instead of the artist), line by line.' },
     { k: 'lockShow', label: 'Show over the lock screen while playing', type: 'toggle', def: false, when: () => app,
       help: 'While music plays, LyricDock itself shows over the lock screen with full word-synced lyrics - no unlocking. The lock screen comes back when playback stops.' },
@@ -243,6 +247,10 @@ const Settings = (() => {
     { label: 'LyricDock account', type: 'action', text: () => 'Sign out', run: () => window.Account?.signOut(),
       info: () => { const u = window.Account?.user(); return u ? `${u.name} · ${u.email}` : ''; },
       help: 'LyricDock needs a sign-in with Google on every screen. Signing out here shows the sign-in screen again on this screen only.' },
+    { k: 'syncScope', label: 'Sync with your LyricDock account', type: 'choice', def: 'all',
+      opts: [['all', 'Settings, keys and Spotify sign-in'], ['keys', 'Only keys and Spotify sign-in'], ['off', 'Off (this screen only)']],
+      desc: 'Every screen you sign in to with this Google account starts with the same setup',
+      help: 'Settings, keys and Spotify sign-in: your look, lyrics and clock settings, the Spicy Lyrics and YouTube keys, the Spotify Client ID and your Spotify sign-in follow you to every phone and browser you sign in on. Screen, performance and storage settings always stay on this device. Only keys and Spotify sign-in: each screen keeps its own look. Stored encrypted in LyricDock\'s cloud, readable only with your sign-in.' },
     // Signing in goes through the setup screen: the dashboard link, the redirect URI and the errors live there.
     { label: 'Spotify account', type: 'action', text: () => (window.Web?.loggedIn() ? 'Sign out' : 'Sign in'),
       run: () => { if (Web.loggedIn()) return Web.logout(); Settings.close(); window.Setup?.open('web'); },
@@ -332,10 +340,10 @@ const Settings = (() => {
   // Icon tile colours (Apple's system palette, dark mode): each section reads at a glance, like System Settings.
   const TINTS = { layout: '#0A84FF', note: '#FF375F', image: '#BF5AF2', text: '#FF9F0A', spark: '#64D2FF', phone: '#8E8E93', clock: '#5E5CE6',
     gauge: '#30D158', disk: '#64D2FF', source: '#FF453A', layers: '#FFD60A', download: '#0A84FF', link: '#30D158' };
-  const KEY = 'dock:settings';
+  const KEY = window.LYRICDOCK_MINI ? 'dock:settings:mini' : 'dock:settings'; // the miniplayer's own look (mini.js)
   const defaults = Object.fromEntries(SCHEMA.filter(x => x.k).map(x => [x.k, x.def]));
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+  try { saved = JSON.parse(localStorage.getItem(KEY) ?? (window.LYRICDOCK_MINI ? localStorage.getItem('dock:settings') : null)); } catch (e) {}
   const fresh = !saved; // first run on this phone: take the desktop's last settings when the bridge sends them
   const S = { ...defaults, ...saved };
   if (typeof S.clockHaptic === 'boolean') S.clockHaptic = S.clockHaptic ? 'light' : 'off'; // was a toggle

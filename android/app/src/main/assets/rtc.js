@@ -13,6 +13,8 @@
 // The phone always listens on LyricDock's ntfy AND the chosen relay, so a mismatch between the two ends can't strand it.
 // Not ntfy.sh: topic names are hashes of the pairing code, and a third party that logs them could brute-force the code.
 const Rtc = (() => {
+  if (window.LYRICDOCK_MINI) return { code: '', send() {}, watchAccount() {}, onAsk() {}, onMessage() {}, open: () => false, path: () => null, log: () => [],
+    desk: () => null, discoverable: () => ({}), lastLink: () => null, refreshPath() {}, status: () => 'miniplayer' };
   const CHUNK = 16000;
   // Settings is a top-level const (not a window property): read it by name.
   const SS = () => (typeof Settings !== 'undefined' ? Settings.S : {});

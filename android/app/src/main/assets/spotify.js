@@ -9,7 +9,7 @@ const Web = (() => {
   // busy: this page load is the return from Spotify's sign-in page (web), so the setup screen waits for the result.
   let tok = {}, pending = null, status = '', backoff = 0, wait = 5, lastDevice = null, busy = location.pathname === '/callback', wanted = false, timer = null, cur = null, state = {}, hist = [], out = () => {};
   try { tok = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tok)); } catch (e) {} };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(tok)); } catch (e) {} window.Sync?.push(); }; // a new refresh token goes to the account (sync.js)
   const cid = () => (Settings.S.spClientId || '').trim().toLowerCase();
   const loggedIn = () => !!tok.refresh && tok.cid === cid();
   const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -67,6 +67,11 @@ const Web = (() => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params) }).catch(() => null);
     const j = r ? await r.json().catch(() => ({})) : {};
     if (!r?.ok) {
+      // Another screen on this LyricDock account used the refresh token (Spotify replaces it on each use): take theirs.
+      if (j.error === 'invalid_grant' && params.grant_type === 'refresh_token') {
+        const t = await window.Sync?.rescue(params.refresh_token);
+        if (t) { tok = { ...tok, ...t, access: null, exp: 0 }; save(); return token({ ...params, refresh_token: t.refresh }); }
+      }
       if (j.error === 'invalid_grant' || j.error === 'invalid_client') { tok = {}; save(); }
       say(`Spotify: ${j.error_description || j.error || (r ? r.status : 'offline')}`);
       return false;
@@ -79,7 +84,10 @@ const Web = (() => {
   // One refresh at a time: parallel calls share it. Two refreshes with the same token race, and the loser's
   // invalid_grant would sign the user out.
   let refreshing = null;
-  const fresh = async () => (tok.access && Date.now() < tok.exp) ||
+  // The miniplayer (mini.js) is a second copy of this screen: it borrows the main copy's token and never refreshes it,
+  // or the two would race each other's refresh token.
+  const fresh = async () => window.LYRICDOCK_MINI ? (() => { try { tok = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {} return !!tok.access && Date.now() < tok.exp; })() :
+    (tok.access && Date.now() < tok.exp) ||
     (loggedIn() && (refreshing ??= token({ grant_type: 'refresh_token', refresh_token: tok.refresh, client_id: cid() }).finally(() => { refreshing = null; })));
 
   function logout() {
@@ -114,11 +122,12 @@ const Web = (() => {
   }
 
   // Poll every second while playing (3s paused, 5-10s idle). Position = progress + half the round trip.
-  let pollGen = 0;
+  let pollGen = 0, dueAt = 0;
   async function poll() {
     clearTimeout(timer);
     if (!wanted || !loggedIn()) return;
     const my = ++pollGen; // a kick() while this one waits starts a newer poll: only the newest re-arms the timer
+    dueAt = Date.now() + 10000; // in flight
     let delay = 10000;
     const r = await api('GET', '/me/player');
     const s = r?.json, it = s?.item;
@@ -132,9 +141,9 @@ const Web = (() => {
         liked: cur.liked, volume: state.volume, device: state.device, shuffle: state.shuffle, repeat: state.repeat });
       delay = s.is_playing ? 1000 : 3000;
     } else if (r) { state = { playing: false }; delay = 5000; }
-    if (wanted && my === pollGen) timer = setTimeout(poll, delay);
+    if (wanted && my === pollGen) { timer = setTimeout(poll, delay); dueAt = Date.now() + delay; }
   }
-  const kick = (ms = 0) => { clearTimeout(timer); timer = setTimeout(poll, ms); };
+  const kick = (ms = 0) => { clearTimeout(timer); timer = setTimeout(poll, ms); dueAt = Date.now() + ms; };
 
   async function newTrack(it) {
     cur = { ...info(it), liked: undefined };
@@ -200,6 +209,7 @@ const Web = (() => {
   }
 
   function setWanted(w) {
+    if (window.LYRICDOCK_MINI) return; // the miniplayer is fed by the main copy (mini.js)
     if (w === wanted) return;
     wanted = w;
     if (w) kick(); else clearTimeout(timer);
@@ -285,6 +295,11 @@ const Web = (() => {
   }
 
   return {
+    // Account sync (sync.js): the sign-in without the short-lived access token, and taking one from another screen.
+    syncToken: () => (tok.refresh ? { refresh: tok.refresh, cid: tok.cid, uid: tok.uid, name: tok.name } : null),
+    adopt: t => { if (t.refresh === tok.refresh) return; tok = { ...t, access: null, exp: 0 }; try { localStorage.setItem(KEY, JSON.stringify(tok)); } catch (e) {} kick(); },
+    // A hidden tab's timers can be held back to one a minute; the open miniplayer pokes once a second (mini.js).
+    poke: () => { if (wanted && Date.now() > dueAt + 300) kick(); },
     login, logout, onAuth, control, setWanted, loggedIn, list, act, redirect: REDIRECT,
     busy: () => busy || !!pending,
     userId: () => (loggedIn() ? tok.uid ?? null : null),

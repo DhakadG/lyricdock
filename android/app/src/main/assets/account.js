@@ -14,6 +14,8 @@ const Account = (() => {
   try { acc = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
   const valid = () => !!acc?.token && acc.exp > now() + 60;
   const save = a => { acc = a; store(KEY, a && JSON.stringify(a)); };
+  // The miniplayer (web/public/mini.js) opens only from a signed-in screen: it uses that screen's token and never asks.
+  if (window.LYRICDOCK_MINI) return { user: () => (valid() ? acc : null), headers: () => (valid() ? { Authorization: `Bearer ${acc.token}` } : {}), check() {}, signIn() {}, signOut() {}, noBrowser() {} };
   const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
   // ---- the sign-in screen (over everything until signed in)

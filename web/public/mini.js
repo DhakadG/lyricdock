@@ -1,11 +1,35 @@
-// LyricDock web app: the miniplayer. A small always-on-top window with the cover, the line being sung (swept as it is
-// sung), the next line and the controls.
-// - Chrome, Edge, Brave, Opera (desktop): Document Picture-in-Picture, a real page with buttons.
-// - Safari (Mac, iPad, iPhone): the same drawn on a canvas and shown as picture-in-picture video; the system's
-//   play/pause/skip buttons go through Media Session.
+// LyricDock web app: the miniplayer, a small always-on-top window.
+// - Chrome, Edge, Brave, Opera (Windows, Mac, Linux): Document Picture-in-Picture holding a second copy of the app
+//   (/?mini=<channel>), so it's LyricDock itself: the same lyrics, word effects, background and layouts. It never
+//   connects to Spotify: this copy hands it every message it hears (app.js route -> miniFeed) and carries out its
+//   commands (send / control -> miniHost). It keeps its own settings (settings.js), and by default its layout follows
+//   the window's shape while it's resized (Settings -> Miniplayer layout).
+// - Safari (Mac, iPad, iPhone): the cover, the line being sung and the next one drawn on a canvas and shown as
+//   picture-in-picture video; the system's play/pause/skip buttons go through Media Session.
 // - Firefox has neither API, so Settings hides the option.
-// It reads the app's own state (P, pos(), Lyrics) and presses the app's own buttons, so it is never a second player.
 (() => {
+  // ---- inside the miniplayer: fed by the main copy
+  const mini = window.LYRICDOCK_MINI;
+  if (mini) {
+    const ch = new BroadcastChannel(`lyricdock-mini-${mini}`);
+    window.miniHost = d => { try { ch.postMessage(d); } catch (e) {} };
+    ch.onmessage = e => { if (e.data?.src) route(e.data.src, e.data.m); };
+    miniHost({ hello: 1 });
+    setInterval(() => miniHost({ beat: 1 }), 1000);
+    // Fit the window: wide -> cover beside the lyrics, short -> big centred lyrics, narrow or tall -> lyrics only.
+    const fit = () => {
+      const w = innerWidth, h = innerHeight;
+      const want = S.miniLayout !== 'auto' ? S.miniLayout
+        : h < 190 ? 'cinema' : w / h >= 1.45 ? (w >= 620 ? 'split' : 'player') : w < 420 || h > w * 1.3 ? 'lyrics' : 'compact';
+      if (S.layout !== want) Settings.set('layout', want, false);
+    };
+    let fitT = 0;
+    addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fit, 120); }); // once the drag settles
+    Settings.onChange(k => { if (k === 'miniLayout') fit(); });
+    fit();
+    return;
+  }
+
   const dpip = 'documentPictureInPicture' in window;
   const vpip = !dpip && !!document.pictureInPictureEnabled && 'captureStream' in HTMLCanvasElement.prototype;
   const state = () => {
@@ -14,62 +38,37 @@
   };
   const sweep = s => s.L?.text ? Math.max(0, Math.min(1, (s.p - s.L.t) / Math.max(1, s.L.e - s.L.t))) : 0;
   const press = k => $(k)?.click();
-  const icon = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
-  const PREV = 'M6 6h2v12H6zm3.5 6 8.5 6V6z', NEXT = 'M16 6h2v12h-2zM6 18l8.5-6L6 6z';
 
-  // ---- Document Picture-in-Picture
-  const CSS = `*{box-sizing:border-box;margin:0}html,body{height:100%}
-body{overflow:hidden;background:#000;color:#fff;font:15px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;display:grid;grid-template-rows:auto 1fr;gap:6px;padding:12px 14px;user-select:none}
-#bg{position:fixed;inset:-20%;z-index:-1;background:#111 center/cover;filter:blur(40px) saturate(1.4) brightness(.45)}
-header{display:flex;gap:10px;align-items:center;min-width:0}
-#art{width:44px;height:44px;flex:none;border-radius:8px;object-fit:cover;background:#222}#art:not([src]){visibility:hidden}
-header div{display:grid;min-width:0}#t,#a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#t{font-weight:650}#a{font-size:.8em;opacity:.65}
-main{display:grid;align-content:center;gap:6px;min-height:0}
-#cur{font-weight:750;font-size:clamp(16px,7vw,34px);line-height:1.15;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-/* inline, so the gradient runs across the wrapped rows in reading order (box-decoration-break: slice) */
-#cs{--k:0;color:transparent;-webkit-background-clip:text;background-clip:text;background-image:linear-gradient(90deg,#fff calc(var(--k)*100%),rgba(255,255,255,.38) calc(var(--k)*100%))}
-#cs.gap{color:rgba(255,255,255,.4);background:none}
-#nxt{font-size:clamp(12px,4vw,18px);opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-nav{position:fixed;right:10px;bottom:10px;display:flex;gap:6px;opacity:0;transition:opacity .2s}
-body:hover nav,nav:focus-within{opacity:1}@media (hover:none){nav{opacity:1}}
-button{width:36px;height:36px;display:grid;place-items:center;border:0;border-radius:50%;color:#fff;background:rgba(255,255,255,.16);cursor:pointer;backdrop-filter:blur(8px)}
-button:hover{background:rgba(255,255,255,.28)}button:focus-visible{outline:2px solid #fff}svg{width:18px;height:18px;fill:currentColor}`;
+  // ---- Document Picture-in-Picture: the app itself in an iframe, on a channel of its own
   let win = null, opening = false;
   async function openDoc() {
     if (win) return win.focus();
     if (opening) return; // a second press while the first window is still opening
     opening = true;
-    try { win = await documentPictureInPicture.requestWindow({ width: 380, height: 200 }); } finally { opening = false; }
-    const w = win, d = w.document;
-    d.title = 'LyricDock';
-    d.head.innerHTML = `<meta name="color-scheme" content="dark"><style>${CSS}</style>`;
-    d.body.innerHTML = `<div id="bg"></div><header><img id="art" alt=""><div><b id="t"></b><span id="a"></span></div></header>
-      <main><p id="cur"><span id="cs"></span></p><p id="nxt"></p></main>
-      <nav><button data-k="prev" aria-label="Previous">${icon(PREV)}</button><button data-k="pp" aria-label="Play or pause">${icon('')}</button><button data-k="next" aria-label="Next">${icon(NEXT)}</button></nav>`;
-    d.body.onclick = e => { const k = e.target.closest('[data-k]')?.dataset.k; if (k) press(k); };
-    d.onkeydown = e => { if (e.key === ' ') { e.preventDefault(); press('pp'); } else if (e.key === 'ArrowRight') press('next'); else if (e.key === 'ArrowLeft') press('prev'); };
-    const q = id => d.getElementById(id), last = {};
-    w.addEventListener('pagehide', () => { if (win === w) win = null; });
-    // Driven by the miniplayer window's own frames: the app's tab is usually hidden (and throttled) while it is open.
-    const frame = () => {
-      if (win !== w) return;
-      const s = state(), L = s.L;
-      if (s.art !== last.art) { last.art = s.art; if (s.art) q('art').src = s.art; else q('art').removeAttribute('src'); q('bg').style.backgroundImage = s.art ? `url(${JSON.stringify(s.art)})` : 'none'; }
-      if (s.title !== last.title) q('t').textContent = last.title = s.title;
-      if (s.artist !== last.artist) q('a').textContent = last.artist = s.artist;
-      if (s.playing !== last.playing) { last.playing = s.playing; d.querySelector('[data-k="pp"] path').setAttribute('d', s.playing ? PAUSE : PLAY); }
-      const key = `${L?.i}|${L?.text}`;
-      if (key !== last.key) {
-        last.key = key;
-        q('cs').textContent = L?.text || '♪';
-        q('cs').classList.toggle('gap', !L?.text);
-        q('nxt').textContent = L?.next?.[0] || '';
-      }
-      q('cs').style.setProperty('--k', sweep(s).toFixed(3));
-      w.requestAnimationFrame(frame);
+    try { win = await documentPictureInPicture.requestWindow({ width: 480, height: 270 }); } finally { opening = false; }
+    const w = win, id = crypto.randomUUID().slice(0, 8), ch = new BroadcastChannel(`lyricdock-mini-${id}`);
+    ch.onmessage = e => {
+      const d = e.data || {};
+      if (d.hello) { // (re)loaded: catch it up with the song, what's next and where playback is
+        for (const src of ['bridge', 'web']) for (const m of [SRC[src].track, SRC[src].preload, SRC[src].pos]) if (m) ch.postMessage({ src, m });
+      } else if (d.beat) Web.poke(); // the window is visible, this tab usually isn't: keep Spotify's polling on time
+      else if (d.ctl) control(...d.ctl);
+      else if (d.send && !['alive', 'settings', 'schema', 'pair'].includes(d.send.type)) send(d.send); // its own heartbeat and look stay home
     };
-    frame();
+    const skip = new Set(['hello', 'set', 'load', 'auth', 'update', 'wake']); // this screen's settings, sign-in and updates
+    window.miniFeed = (src, m) => { if (!skip.has(m?.type)) try { ch.postMessage({ src, m }); } catch (e) {} };
+    const d = w.document;
+    d.title = 'LyricDock';
+    d.head.innerHTML = '<meta name="color-scheme" content="dark"><style>html,body{margin:0;height:100%;overflow:hidden;background:#000}iframe{display:block;border:0;width:100%;height:100%}</style>';
+    const f = d.createElement('iframe');
+    f.src = `${location.origin}/?mini=${id}`;
+    f.allow = 'autoplay';
+    d.body.append(f);
+    w.addEventListener('pagehide', () => { if (win !== w) return; win = null; window.miniFeed = null; ch.close(); });
   }
+  // Chrome opens it by itself when the tab is left, but only for a page it counts as playing media (System media
+  // controls on, shim.js) and once the user allows "Automatic picture-in-picture" for the site.
+  if (dpip) try { navigator.mediaSession.setActionHandler('enterpictureinpicture', () => openDoc().catch(() => {})); } catch (e) {}
 
   // ---- Safari: a canvas, streamed into a muted video, shown picture-in-picture. Prepared up front, because Safari
   // only allows picture-in-picture straight from a tap, with a video that already has a frame.

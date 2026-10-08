@@ -68,6 +68,7 @@ The owner's step-by-step guide (Google console, TURN, browser control) is **docs
 | `PUBLISH_TOKEN` | ntfy Worker + your PC | `secrets/PUBLISH_TOKEN.txt` | done (random) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | auth Worker | `secrets/google-client.json`: the client's downloaded JSON, `.web.client_id` and `.web.client_secret` | **user**, setup-guide part 1 |
 | `TURN_KEY_ID`, `TURN_KEY_TOKEN` | web Worker | `secrets/TURN_KEY_ID.txt`, `secrets/TURN_KEY_TOKEN.txt` | **user**, setup-guide part 2 (dashboard or `scripts/new-turn-key.ps1`) |
+| `SYNC_KEY` | cloud Worker | `secrets/SYNC_KEY.txt` (random 32 bytes, base64) | done 2026-10-08. Changing it loses every account's synced settings |
 | `CF_API_TOKEN` | cloud Worker | already set | unchanged (`ADMIN_PASSWORD` is no longer used: `npx wrangler secret delete ADMIN_PASSWORD`) |
 
 Google client facts (for checking the user's setup):

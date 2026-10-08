@@ -80,14 +80,42 @@ browser hides its local addresses behind random `.local` names.
 
 ## Miniplayer and keyboard
 
-- **Miniplayer** (*Settings → Miniplayer*, or press **M**): a small always-on-top window with the cover, the line being
-  sung (swept as it's sung), the next line and the controls. It reads the app's own state and presses its buttons.
-  - **Chrome, Edge, Brave, Opera:** Document Picture-in-Picture, driven by its own frames (the app's tab is usually
-    hidden, and hidden tabs are throttled).
+- **Miniplayer** (*Settings → Miniplayer*, or press **M**): a small always-on-top window.
+  - **Chrome, Edge, Brave, Opera (Windows, Mac, Linux):** Document Picture-in-Picture holding a second copy of the app
+    (`/?mini=<channel>`, `window.LYRICDOCK_MINI`), so it's LyricDock itself: lyrics, word effects, background, layouts.
+    - It never connects to Spotify. The main copy hands it every message it hears (`app.js route` → `miniFeed`, over a
+      BroadcastChannel) and carries out its commands (`send` / `control` → `miniHost`). Its own heartbeat, settings and
+      pairing messages are dropped, so the desktop only ever sees the main copy.
+    - Off in the miniplayer copy: pairing (`rtc.js` stub), Spotify polling and token refresh (it borrows the main
+      copy's token), the sign-in screen, the setup screen, account sync, usage pings, the install prompt.
+    - Its own settings (`dock:settings:mini`, first copied from the screen's). *Settings → Miniplayer layout*: *Fit the
+      window* (default) switches layout as the window is resized: wide → Cover + lyrics / Player card, short → Cinema,
+      narrow or tall → Lyrics only, otherwise Compact. Or pin one of six layouts.
+    - The main tab is usually hidden, and Chrome holds a hidden tab's timers back: the miniplayer pokes the main
+      copy's Spotify polling once a second (`Web.poke`).
+    - Chrome opens it by itself when the tab is left only for pages it counts as playing media, and only once the user
+      allows *Automatic picture-in-picture* for the site; otherwise a click or M.
   - **Safari (Mac, iPad, iPhone):** drawn on a canvas, shown as picture-in-picture video; the system's play/skip
     buttons go through Media Session.
   - **Firefox:** no API for either, so the option is hidden.
-- **Keyboard** (computers): Space play/pause, ←/→ previous/next, F full screen. The mouse wheel scrolls the lyrics.
+- **Keyboard** (computers): Space play/pause, ←/→ previous/next, ↑/↓ Spotify's volume, F full screen. The mouse wheel
+  scrolls the lyrics.
+- **System media controls** (*Settings → Screen → System media controls*, on by default): the song goes into Media
+  Session, so the OS media overlay and the keyboard's play / next / previous keys control Spotify. A browser shows a
+  page's Media Session only while it plays audio, so a silent 10 s loop plays along (`shim.js` `media`, the phone's
+  media-notification path). With *Lyrics on the lock screen* the sung line replaces the artist. The computer's own
+  volume keys can't be caught by a web page; ↑/↓ and the slider set Spotify's volume.
+
+## Account sync
+
+`sync.js`: what a LyricDock sign-in carries to every screen signed in with the same Google account.
+- *Settings → Playback source → Sync with your LyricDock account*: **all** (default: settings, the Spicy Lyrics and
+  YouTube keys, the Spotify Client ID, the Spotify sign-in), **keys** (the keys and the Spotify sign-in), **off**.
+- Never synced: the Screen, Performance and Storage groups and device keys (orientation, edge padding, relay, TURN).
+- Stored at `art.lyricdock…/v1/sync` (docs/lyricdock-cloud.md), one blob per account, last writer wins. A screen
+  pulls on start, on coming back on screen and every 10 min; pushes 2 s after a change, and only after its first pull.
+- Spotify replaces the refresh token on each use. Every screen pushes the new one, and a screen that gets
+  `invalid_grant` takes the newer one from the account (`Sync.rescue`) instead of signing out.
 
 ## Install as an app
 

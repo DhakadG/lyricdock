@@ -23,7 +23,8 @@ function pos() {
 // Lyrics use the position plus the user's sync offset; the progress bar and time labels use the real position.
 const now = () => pos() + S.offset;
 // To the desktop bridge over whichever link is up: the adb WebSocket (native) and/or the WebRTC channel (rtc.js).
-const send = o => { const s = JSON.stringify(o); try { Dock.send(s); } catch (e) {} Rtc.send(s); };
+// The miniplayer (web/public/mini.js) is a second copy of this page: what it would send goes through the main copy.
+const send = o => { if (window.LYRICDOCK_MINI) return window.miniHost?.({ send: o }); const s = JSON.stringify(o); try { Dock.send(s); } catch (e) {} Rtc.send(s); };
 const sleep = t => new Promise(r => setTimeout(r, t));
 
 // ---- art cache: covers are decoded before they're shown, so animations never reveal a half-loaded image
@@ -440,6 +441,7 @@ Rtc.onMessage(m => route('bridge', m)); // same bridge, reached over WebRTC inst
 Web.onMessage(m => route('web', m));
 
 function route(src, m) {
+  window.miniFeed?.(src, m); // an open miniplayer gets everything this copy hears (mini.js)
   const s = SRC[src];
   s.heard = performance.now(); // any message proves the link is up (see 'stale' in the frame loop)
   if (m.type === 'track') { s.track = m; s.trackAt = performance.now(); }
@@ -589,7 +591,8 @@ document.addEventListener('click', e => {
   showUi(true); // (buttons inside the controls just keep them up)
 }, true);
 // Commands go to whichever source is on screen.
-const control = (c, arg) => P.source === 'web' ? Web.control(c, arg) : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
+const control = (c, arg) => window.LYRICDOCK_MINI ? window.miniHost?.({ ctl: [c, arg] })
+  : P.source === 'web' ? Web.control(c, arg) : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
 // Spotify refused a command (spotify.js): drop the optimistic state so its next answer puts the screen back.
 window.controlFailed = () => { P.skip = null; P.optimistic = 0; P.swipeWait = 0; P.lockUntil = 0; P.seekUntil = 0; P.volLock = 0; };
 const cmd = (c, dir) => { control(c); if (dir) { P.dir = dir; P.dirAt = performance.now(); } };

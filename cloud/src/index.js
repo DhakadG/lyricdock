@@ -17,7 +17,7 @@ import TERMS from './terms.html';
 const PAGES = { '/': withIcon(SITE), '/privacy': withIcon(PRIVACY), '/terms': withIcon(TERMS) }; // the info site (Google's consent screen links /privacy and /terms)
 
 // Authorization: the apps' sign-in (a header, not a cookie, so '*' stays valid). Max-Age: one preflight a day per URL shape.
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'range, authorization', 'Access-Control-Expose-Headers': '*', 'Access-Control-Max-Age': '86400' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'range, authorization, content-type', 'Access-Control-Allow-Methods': 'GET, HEAD, PUT, OPTIONS', 'Access-Control-Expose-Headers': '*', 'Access-Control-Max-Age': '86400' };
 const EVENTS = new Set(['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error', 'lna-granted', 'lna-denied', 'lna-prompt', 'control-fail']);
 const json = (body, status = 200, cache = 'no-store') => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json', 'cache-control': cache } });
 
@@ -43,6 +43,7 @@ export default {
 
 async function publicApi(req, env, ctx, url, ev) {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+  if (url.hostname.startsWith('art.') && url.pathname === '/v1/sync') { ev.kind = 'sync'; return sync(req, env); }
   if (req.method !== 'GET' && req.method !== 'HEAD') return json({ error: 'method not allowed' }, 405);
   const p = url.pathname, q = url.searchParams;
   if (!url.hostname.startsWith('art.')) { // the info site
@@ -152,4 +153,38 @@ function log(env, req, url, ev, res, ms) {
   track(env, { ...ev, status: res.status, ms, device, version: q.get('v'), model, country: cf.country, city: cf.city, colo: cf.colo,
     lat: round(cf.latitude), lon: round(cf.longitude), px: q.get('px'), hevc: q.has('hevc') ? +(q.get('hevc') === '1') : -1,
     plat: clip('plat'), screen: clip('scr'), tz: clip('tz'), lang: clip('lang') });
+}
+
+// ---- /v1/sync: one encrypted blob per LyricDock account (sync.js in the apps): settings, the Spicy Lyrics key, the
+// Spotify Client ID and Spotify sign-in, so a new screen signed in with the same Google account starts set up.
+// GET -> { v, data } (v = 0: nothing saved yet). PUT { v, data } -> { v }. Last writer wins (v = the writer's clock).
+// At rest it's AES-GCM with the SYNC_KEY secret (base64, 32 bytes), so a KV dump alone doesn't leak Spotify tokens.
+const SYNC_MAX = 64 * 1024;
+let syncKey = null;
+const aes = env => (syncKey ??= crypto.subtle.importKey('raw', Uint8Array.from(atob(env.SYNC_KEY), c => c.charCodeAt(0)), 'AES-GCM', false, ['encrypt', 'decrypt']));
+async function sync(req, env) {
+  const me = await appUser(req);
+  if (!me?.sub) return json({ error: 'sign in to LyricDock' }, 401);
+  if (!env.SYNC_KEY) return json({ error: 'sync not configured' }, 503);
+  const key = `sync:${me.sub}`;
+  if (req.method === 'GET') {
+    const buf = await env.KV.get(key, 'arrayBuffer');
+    if (!buf) return json({ v: 0, data: null });
+    const b = new Uint8Array(buf);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.slice(0, 12), additionalData: new TextEncoder().encode(key) }, await aes(env), b.slice(12));
+    return json(JSON.parse(new TextDecoder().decode(plain)));
+  }
+  if (req.method !== 'PUT') return json({ error: 'method not allowed' }, 405);
+  const text = await req.text();
+  if (text.length > SYNC_MAX) return json({ error: 'too big' }, 413);
+  let body;
+  try { body = JSON.parse(text); } catch { return json({ error: 'bad json' }, 400); }
+  if (!body || typeof body.data !== 'object' || Array.isArray(body.data) || !Number.isFinite(body.v)) return json({ error: 'bad body' }, 400);
+  const v = Math.min(body.v, Date.now() + 60000); // a clock far ahead must not freeze everyone else out
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(key) }, await aes(env), new TextEncoder().encode(JSON.stringify({ v, data: body.data })));
+  const out = new Uint8Array(12 + enc.byteLength);
+  out.set(iv); out.set(new Uint8Array(enc), 12);
+  await env.KV.put(key, out);
+  return json({ v });
 }

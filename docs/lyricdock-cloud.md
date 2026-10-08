@@ -164,6 +164,7 @@ All endpoints are `GET` with open CORS.
 | `/v1/track` | `title` (prefix match) | `{ track, album }` |
 | `/v1/ping` | `px`, `hevc` | `{ ok }`: heartbeat for "active devices" |
 | `/v1/health` | | `{ ok }` |
+| `/v1/sync` | `GET` / `PUT { v, data }`, Bearer app token, no `d` | the account's synced settings `{ v, data }` (`sync.js`). KV `sync:<Google sub>`, AES-GCM with the `SYNC_KEY` secret, 64 KB max |
 
 ## Storage layout
 

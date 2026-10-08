@@ -981,7 +981,7 @@
   window.cloudPing = (e, detail) => timed(`${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${e ? `&e=${e}` : ''}`
     + `${detail ? `&x=${encodeURIComponent(String(detail).slice(0, 300))}` : ''}${who()}${env()}`, 15000).catch(() => {});
   const ping = () => window.cloudPing();
-  setTimeout(ping, 5000); setInterval(ping, 10 * 60000);
+  if (!window.LYRICDOCK_MINI) { setTimeout(ping, 5000); setInterval(ping, 10 * 60000); }
 
   // ---- phone hardware: volume keys (MainActivity forwards them while the setting is on), media notification,
   // brightness schedule, and "wake" from Spotify (Ctrl+Alt+W / right-click menu).
@@ -1166,7 +1166,7 @@
       const bridge = Rtc.open?.() || P.gotHello, signed = Web.loggedIn();
       if (bridge || signed) mark();
       if (forced) { if ((signed && !wasIn) || (bridge && view === 'pc')) return close(); } // opened on purpose: stays until done or closed
-      else if (bridge || signed || P.id || ever() || skipped || Web.busy() || (!web && performance.now() < 3000)) return close();
+      else if (bridge || signed || P.id || ever() || skipped || window.LYRICDOCK_MINI || Web.busy() || (!web && performance.now() < 3000)) return close();
       else open();
       if (web && view === 'pc') window.lyricdockLna?.state().then(s => { lna = s; });
       update();

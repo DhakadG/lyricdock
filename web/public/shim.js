@@ -3,6 +3,8 @@
 // Real web APIs where there is one, a harmless answer where there isn't. Phone-only calls the app makes through its
 // try/catch wrapper (hasWidgets, nowPlaying, showOverLock) are left out on purpose.
 // Docs: docs/web-app.md.
+// The miniplayer's copy of the app (web/public/mini.js) loads as /?mini=<channel>.
+window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
 (() => {
   if (window.Dock) return;
 
@@ -19,6 +21,19 @@
     } catch (e) { /* denied (battery saver, no gesture yet): tried again on the next visibility change */ }
   }
   document.addEventListener('visibilitychange', holdAwake);
+
+  let silence = null, mediaOn = false;
+  function quiet() {
+    if (silence) return silence;
+    const rate = 3000, n = rate * 10, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, 'data'); v.setUint32(40, n, true);
+    b.fill(128, 44); // 8-bit PCM silence
+    silence = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' })));
+    silence.loop = true;
+    return silence;
+  }
 
   // Battery: async in the browser, read synchronously by the app every second -> keep a "pct,charging" copy.
   let battery = '';
@@ -102,7 +117,26 @@
     vibrate: ms => navigator.vibrate?.(ms),
     battery: () => battery,
     brightness() {}, // no web API
-    media() {}, // Media Session only shows while a page plays audio
+    // System media controls (media keys, Windows / macOS / Linux media overlays, Chrome's media hub). A browser shows a
+    // page's Media Session only while the page plays audio, so a silent loop plays along with Spotify (10 s: Chrome
+    // ignores media shorter than 5 s). Buttons come back through the phone's own path, window.mediaCmd (features.js).
+    media(title, artist, art, playing) {
+      const ms = navigator.mediaSession;
+      if (!ms || window.LYRICDOCK_MINI) return;
+      if (!title) { mediaOn = false; silence?.pause(); ms.metadata = null; ms.playbackState = 'none'; return; }
+      if (!mediaOn) {
+        mediaOn = true;
+        for (const [a, c] of [['play', 'toggle'], ['pause', 'toggle'], ['nexttrack', 'next'], ['previoustrack', 'prev']]) try { ms.setActionHandler(a, () => window.mediaCmd?.(c)); } catch (e) {}
+        try { ms.setActionHandler('seekto', d => typeof seek === 'function' && seek(Math.round(d.seekTime * 1000))); } catch (e) {}
+      }
+      ms.metadata = new MediaMetadata({ title, artist, artwork: art ? [{ src: art, sizes: '640x640' }] : [] });
+      ms.playbackState = playing ? 'playing' : 'paused';
+      try { if (P.dur) ms.setPositionState({ duration: P.dur / 1000, position: Math.max(0, Math.min(pos(), P.dur)) / 1000, playbackRate: 1 }); } catch (e) {}
+      const a = quiet();
+      if (!playing) return a.pause();
+      // Autoplay rules: sound needs one click on the page first.
+      a.play().catch(() => addEventListener('pointerdown', () => mediaOn && a.play().catch(() => {}), { once: true, capture: true }));
+    },
     setVolKeys() {},
     wake() {}, // a page can't switch the screen on
   };

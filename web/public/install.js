@@ -147,10 +147,18 @@
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, select, button, [contenteditable]') || window.lyricdockPanelOpen()) return;
     const k = { ' ': 'pp', ArrowRight: 'next', ArrowLeft: 'prev' }[e.key];
     if (k) { e.preventDefault(); document.getElementById(k)?.click(); }
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { // Spotify's volume (the slider's own throttled path, app.js)
+      e.preventDefault();
+      const v = document.getElementById('vol');
+      v.value = Math.max(0, Math.min(100, +v.value + (e.key === 'ArrowUp' ? 5 : -5)));
+      v.dispatchEvent(new Event('input'));
+      window.notice?.(`Volume ${v.value}%`, 1200);
+    }
     else if (e.key === 'f' || e.key === 'F') fullscreenEl() ? exitFullscreen() : window.lyricdockFullscreen();
   });
 
   // ---- anonymous usage: opened (with how), and errors (message + file:line only, never user data)
+  if (window.LYRICDOCK_MINI) return;
   addEventListener('load', () => setTimeout(() => ping('open'), 3000));
   addEventListener('error', e => ping('error', `${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
   addEventListener('unhandledrejection', e => ping('error', `promise: ${String(e.reason?.message || e.reason).slice(0, 200)}`));
