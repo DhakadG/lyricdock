@@ -62,7 +62,10 @@ const landed = (n, dir) => (b, a) => {
   return c >= n || `sent ${c} ${dir > 0 ? 'next' : 'prev'}`;
 };
 await check('short drag springs back', () => drag(cx, cy, -step * 0.2, 400), same);
-await check('vertical drag on the cover', () => call('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx, y: cy }] }).then(async () => { for (let i = 1; i < 10; i++) { await sleep(25); await touch('touchMove', cx + 3, cy - i * 12); } await touch('touchEnd'); }), same);
+const vdrag = dir => () => call('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx, y: cy }] }).then(async () => { for (let i = 1; i < 10; i++) { await sleep(25); await touch('touchMove', cx + 3, cy + dir * i * 12); } await touch('touchEnd'); });
+await check('drag down on the cover does nothing', vdrag(1), same);
+await check('swipe up on the cover = play / pause', vdrag(-1), (b, a) => a.id === b.id && a.sent.join() === 'toggle' || `sent=${a.sent}`);
+await check('short slow swipe up does nothing', async () => { await touch('touchStart', cx, cy); for (let i = 1; i <= 6; i++) { await sleep(60); await touch('touchMove', cx, cy - i * 4); } await sleep(150); await touch('touchEnd'); }, same);
 await check('swipe left one card = next', () => drag(cx, cy, -step * 0.7, 300, 14, async () => { await sleep(150); shot('mid-next.png'); }), landed(1, 1));
 await check('swipe right one card = previous', () => drag(cx, cy, step * 0.7, 300), landed(1, -1));
 await check('long swipe = 2 ahead', () => drag(cx, cy, -step * 2.1, 520, 22, async () => { await sleep(150); shot('mid-two.png'); }), landed(2, 1));

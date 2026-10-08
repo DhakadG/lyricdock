@@ -159,7 +159,7 @@
     b.innerHTML = $('heart').querySelector('svg').outerHTML;
     document.body.append(b);
     b.animate([{ transform: 'translate(-50%,-50%) scale(.3)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1.15)', opacity: 1, offset: .35 },
-      { transform: 'translate(-50%,-80%) scale(1)', opacity: 0 }], { duration: 900, easing: 'cubic-bezier(.2,.8,.2,1)' }).onfinish = () => b.remove();
+      { transform: 'translate(-50%,-80%) scale(1)', opacity: 0 }], { duration: ms(900), easing: 'cubic-bezier(.2,.8,.2,1)' }).onfinish = () => b.remove();
   }
   // Long-press (350ms) on the progress bar: drag to scrub with a time bubble, release to seek.
   let scrub = null;
@@ -477,7 +477,7 @@
     if (P.source === 'web') Web.act(cmd, x.uri).then(r => acted({ cmd, uri: x.uri, ...r }));
     else send({ type: 'cmd', cmd, uri: x.uri, uid: x.uid });
   }
-  function heartPop(el) { el.querySelector('button[data-a=like]')?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 320, easing: 'cubic-bezier(.3,1.6,.5,1)' }); }
+  function heartPop(el) { el.querySelector('button[data-a=like]')?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: ms(320), easing: 'cubic-bezier(.3,1.6,.5,1)' }); }
   function acted(m) {
     if (m.ok === false) window.notice?.(`Couldn't do that: ${m.error || 'failed'}`);
     if (view().which === 'queue' && ['queueRemove', 'queueTop', 'queueAdd'].includes(m.cmd)) setTimeout(() => request(view()), 350);
@@ -624,7 +624,7 @@
       const c = e.target.closest('.lp-card');
       if (!c || c.dataset.l === S.layout || !Gesture.tap()) return;
       Settings.set('layout', c.dataset.l);
-      $('wrap').animate([{ opacity: 0.2, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: ms(380), easing: 'cubic-bezier(.2,.8,.2,1)' });
+      $('wrap').animate([{ opacity: 0.2, scale: 0.985 }, { opacity: 1, scale: 1 }], { duration: ms(380), easing: 'cubic-bezier(.2,.8,.2,1)' });
       g.querySelectorAll('.lp-card').forEach(x => { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c); });
     });
     // the portrait carousel opens on the current layout

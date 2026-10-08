@@ -311,9 +311,9 @@ const Lyrics = (() => {
     if (!drag) return;
     const d = drag; drag = null;
     if (!d.on) return;
-    let v = d.v * 16; // px per frame
-    const step = () => { if (Math.abs(v) < 0.4) return release(); setY(curY + v); v *= 0.94; fling = requestAnimationFrame(step); };
-    step();
+    let v = d.v, last = performance.now(); // px per ms; decays the same at 60 or 120 Hz
+    const step = t => { const dt = Math.min(50, t - last); last = t; if (Math.abs(v) < 0.025) return release(); setY(curY + v * dt); v *= Math.pow(0.94, dt / 16.7); fling = requestAnimationFrame(step); };
+    fling = requestAnimationFrame(step);
   }, { passive: true });
   // Mouse wheel / trackpad (web app on a computer): the same free scroll, gliding back the same way.
   BOX.addEventListener('wheel', e => {
