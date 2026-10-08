@@ -53,9 +53,9 @@ body.mini.short #mh{display:none}body.mini.narrow #mini .s{display:none}`;
     pr.onpointerdown = () => { drag = true; };
     pr.onchange = () => { drag = false; seek(+pr.value); };
     const fit = () => {
-      document.body.classList.toggle('short', innerHeight < 230);
+      document.body.classList.toggle('short', innerHeight < 160);
       document.body.classList.toggle('narrow', innerWidth < 300);
-      document.body.style.setProperty('--mh', `${innerHeight < 230 ? 8 : q('mh').offsetHeight}px`);
+      document.body.style.setProperty('--mh', `${innerHeight < 160 ? 8 : q('mh').offsetHeight}px`);
       document.body.style.setProperty('--mb', `${q('mb').offsetHeight}px`);
     };
     addEventListener('resize', fit);

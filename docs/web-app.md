@@ -85,7 +85,7 @@ browser hides its local addresses behind random `.local` names.
     (`/?mini=<channel>`, `window.LYRICDOCK_MINI`), so the lyrics are LyricDock's own (word effects, background, the
     screen's look). Around them `mini.js` draws a trimmed-down player: cover, song and like on top; timeline, shuffle,
     previous, play/pause, next and repeat at the bottom. The app's own controls, settings button, quick bar, clock and
-    cover column are hidden. Short window (< 230 px): the top bar goes. Narrow (< 300 px): shuffle and repeat go.
+    cover column are hidden. Short window (< 160 px): the top bar goes. Narrow (< 300 px): shuffle and repeat go.
     - It never connects to Spotify. The main copy hands it every message it hears (`app.js route` → `miniFeed`, over a
       BroadcastChannel) and carries out its commands (`send` / `control` → `miniHost`). Its own heartbeat, settings and
       pairing messages are dropped, so the desktop only ever sees the main copy.
