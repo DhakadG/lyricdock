@@ -1,14 +1,15 @@
 // LyricDock web app: the miniplayer, a small always-on-top window.
 // - Chrome, Edge, Brave, Opera (Windows, Mac, Linux): Document Picture-in-Picture holding a second copy of the app
-//   (/?mini=<channel>), so it's LyricDock itself: the same lyrics, word effects, background and layouts. It never
-//   connects to Spotify: this copy hands it every message it hears (app.js route -> miniFeed) and carries out its
-//   commands (send / control -> miniHost). It keeps its own settings (settings.js), and by default its layout follows
-//   the window's shape while it's resized (Settings -> Miniplayer layout).
+//   (/?mini=<channel>), so the lyrics are LyricDock's own: word effects, background, the screen's look. Around them a
+//   trimmed-down player: cover, song and like on top, timeline and controls at the bottom. It never connects to
+//   Spotify: this copy hands it every message it hears (app.js route -> miniFeed) and carries out its commands
+//   (send / control -> miniHost).
 // - Safari (Mac, iPad, iPhone): the cover, the line being sung and the next one drawn on a canvas and shown as
 //   picture-in-picture video; the system's play/pause/skip buttons go through Media Session.
 // - Firefox has neither API, so Settings hides the option.
 (() => {
-  // ---- inside the miniplayer: fed by the main copy
+  // ---- inside the miniplayer: fed by the main copy. Only the lyrics pane (and the background behind it) is the app's
+  // own; around it sits a trimmed-down player: cover, song and like on top, timeline and controls at the bottom.
   const mini = window.LYRICDOCK_MINI;
   if (mini) {
     const ch = new BroadcastChannel(`lyricdock-mini-${mini}`);
@@ -16,17 +17,64 @@
     ch.onmessage = e => { if (e.data?.src) route(e.data.src, e.data.m); };
     miniHost({ hello: 1 });
     setInterval(() => miniHost({ beat: 1 }), 1000);
-    // Fit the window: wide -> cover beside the lyrics, short -> big centred lyrics, narrow or tall -> lyrics only.
+    // The look comes from the screen's settings (settings.js); the screen's furniture stays off in here.
+    const off = { layout: 'lyrics', clock: 'off', qsEnabled: false, nextChip: false, progress: 'off', times: false, timeStyle: 'off', battery: false, showBlocks: false, sourceBadge: false };
+    for (const [k, v] of Object.entries(off)) if (S[k] !== v) Settings.set(k, v, false);
+    const svg = id => $(id).querySelector('svg').outerHTML;
+    const st = document.createElement('style');
+    st.textContent = `body.mini #left,body.mini #ctl,body.mini #gear,body.mini #qs,body.mini #qpanel,body.mini #stat,body.mini #nextChip,body.mini #bar,body.mini #times,body.mini #clockPane,body.mini #signin{display:none!important}
+body.mini #wrap{padding:var(--mh) 16px var(--mb)!important}
+#mh,#mb{position:fixed;left:0;right:0;z-index:50;display:flex;align-items:center;gap:10px;padding:10px 14px;color:#fff;font:14px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif}
+#mh{top:0;background:linear-gradient(rgba(0,0,0,.45),transparent)}
+#mb{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding-top:6px;background:linear-gradient(transparent,rgba(0,0,0,.55))}
+#mArt{width:44px;height:44px;flex:none;border-radius:8px;object-fit:cover;background:#222;box-shadow:0 2px 10px rgba(0,0,0,.4)}#mArt:not([src]){visibility:hidden}
+#mh div{display:grid;min-width:0;flex:1}#mT,#mA{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#mT{font-weight:700}#mA{font-size:.85em;opacity:.7}
+#mTl{display:flex;align-items:center;gap:8px;font-size:11px;opacity:.85;font-variant-numeric:tabular-nums}
+#mPr{flex:1;min-width:0;height:4px;accent-color:rgb(var(--acc,255,255,255));cursor:pointer}
+#mNav{display:flex;justify-content:center;align-items:center;gap:6px}
+#mini button{position:relative;width:34px;height:34px;flex:none;display:grid;place-items:center;border:0;border-radius:50%;color:#fff;background:none;cursor:pointer;padding:0}
+#mini button:hover{background:rgba(255,255,255,.14)}#mini button:focus-visible{outline:2px solid #fff}
+#mini svg{width:18px;height:18px;fill:currentColor}
+#mini .s{opacity:.55}#mini .s.on{opacity:1;color:rgb(var(--acc,255,255,255))}#mini .one::after{content:"1";position:absolute;top:4px;right:5px;font:700 9px system-ui}
+#mini [data-k=pp]{width:40px;height:40px;background:#fff;color:#000}#mini [data-k=pp]:hover{background:#ddd}
+#mLike path:last-child{display:block}#mLike path.fill{opacity:0}#mLike.on path.fill{opacity:1;color:rgb(var(--acc,30,215,96))}
+body.mini.short #mh{display:none}body.mini.narrow #mini .s{display:none}`;
+    document.head.append(st);
+    const ui = document.createElement('div');
+    ui.id = 'mini';
+    ui.innerHTML = `<header id="mh"><img id="mArt" alt=""><div><b id="mT"></b><span id="mA"></span></div><button id="mLike" data-k="heart" aria-label="Like">${svg('heart')}</button></header>
+<footer id="mb"><div id="mTl"><span id="mCur">0:00</span><input id="mPr" type="range" min="0" max="1" value="0" aria-label="Seek"><span id="mDur">0:00</span></div>
+<nav id="mNav"><button class="s" data-k="shuf" aria-label="Shuffle">${svg('shuf')}</button><button data-k="prev" aria-label="Previous">${svg('prev')}</button><button data-k="pp" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path/></svg></button><button data-k="next" aria-label="Next">${svg('next')}</button><button class="s" data-k="rep" aria-label="Repeat">${svg('rep')}</button></nav></footer>`;
+    document.body.append(ui);
+    document.body.classList.add('mini');
+    ui.onclick = e => { const k = e.target.closest('[data-k]')?.dataset.k; if (k) { e.stopPropagation(); $(k).click(); } }; // the app's own buttons
+    const q = id => document.getElementById(id), pr = q('mPr'), last = {};
+    let drag = false;
+    pr.onpointerdown = () => { drag = true; };
+    pr.onchange = () => { drag = false; seek(+pr.value); };
     const fit = () => {
-      const w = innerWidth, h = innerHeight;
-      const want = S.miniLayout !== 'auto' ? S.miniLayout
-        : h < 190 ? 'cinema' : w / h >= 1.45 ? (w >= 620 ? 'split' : 'player') : w < 420 || h > w * 1.3 ? 'lyrics' : 'compact';
-      if (S.layout !== want) Settings.set('layout', want, false);
+      document.body.classList.toggle('short', innerHeight < 230);
+      document.body.classList.toggle('narrow', innerWidth < 300);
+      document.body.style.setProperty('--mh', `${innerHeight < 230 ? 8 : q('mh').offsetHeight}px`);
+      document.body.style.setProperty('--mb', `${q('mb').offsetHeight}px`);
     };
-    let fitT = 0;
-    addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fit, 120); }); // once the drag settles
-    Settings.onChange(k => { if (k === 'miniLayout') fit(); });
+    addEventListener('resize', fit);
     fit();
+    (function frame() {
+      const t = $('title').textContent, a = $('artist').textContent, real = pos();
+      if (t !== last.t) q('mT').textContent = last.t = t;
+      if (a !== last.a) q('mA').textContent = last.a = a;
+      if (P.art !== last.art) { last.art = P.art; if (P.art) q('mArt').src = P.art; else q('mArt').removeAttribute('src'); }
+      if (P.playing !== last.pl) { last.pl = P.playing; ui.querySelector('[data-k="pp"] path').setAttribute('d', P.playing ? PAUSE : PLAY); }
+      for (const k of ['heart', 'shuf', 'rep']) {
+        const b = ui.querySelector(`[data-k="${k}"]`), c = $(k).classList;
+        b.classList.toggle('on', c.contains('on')); b.classList.toggle('one', c.contains('one'));
+      }
+      if (P.dur !== last.dur) { pr.max = last.dur = P.dur || 1; q('mDur').textContent = clock(P.dur); }
+      if (!drag) pr.value = real;
+      q('mCur').textContent = clock(drag ? +pr.value : real);
+      requestAnimationFrame(frame);
+    })();
     return;
   }
 

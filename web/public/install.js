@@ -44,7 +44,8 @@
   let deferred = null;
   const ios = /iPhone|iPad/.test(navigator.userAgent) && !window.MSStream;
 
-  function chip(text, actionLabel, action, always = false) {
+  // snooze: where "not now" is remembered (default: the install prompt's 14 days).
+  function chip(text, actionLabel, action, always = false, snooze = SNOOZE) {
     if (!always && (standalone() || snoozed())) return;
     if (document.getElementById('installChip') || window.Setup?.isOpen()) return; // the setup screen has its own steps
     const el = document.createElement('div');
@@ -56,12 +57,12 @@
     go.onclick = () => { el.remove(); action?.(); };
     el.querySelector('.later').onclick = () => {
       el.remove();
-      localStorage.setItem(SNOOZE, String(Date.now() + 14 * 864e5));
-      ping('install-dismissed');
+      localStorage.setItem(snooze, String(Date.now() + 14 * 864e5));
+      if (snooze === SNOOZE) ping('install-dismissed');
     };
     document.body.append(el);
     requestAnimationFrame(() => el.classList.add('on'));
-    ping('install-shown');
+    if (snooze === SNOOZE) ping('install-shown');
   }
 
   addEventListener('beforeinstallprompt', e => {
@@ -87,6 +88,27 @@
   if ((ios || ipad) && !standalone()) setTimeout(() => chip('Add LyricDock to your Home Screen: tap Share, then "Add to Home Screen". You sign in once more inside it.'), 8000);
   else if (macSafari && !standalone()) setTimeout(() => chip('Add LyricDock to your Dock: File → "Add to Dock"'), 8000);
   window.lyricdockInstall = () => !!deferred && (promptInstall(), true);
+
+  // ---- Tips that depend on where Spotify plays, each offered once.
+  //  - Spotify on THIS computer (the extension's link is direct and under 1.5 ms: same machine, or as good as): it
+  //    already shows in the system's media controls, so LyricDock's copy (System media controls) is a duplicate.
+  //  - Spotify on a phone or speaker (account mode): this computer's media keys can't reach it, LyricDock's copy can.
+  //  - The miniplayer, once a song plays: opening it is a click, which is also what the browser needs to allow it.
+  const once = k => { try { if (localStorage.getItem(k)) return false; localStorage.setItem(k, '1'); return true; } catch (e) { return false; } };
+  const tip = (k, text, label, run) => {
+    if (document.getElementById('installChip') || window.lyricdockPanelOpen?.() || !once(k)) return;
+    chip(text, label, run, true, `${k}:later`);
+  };
+  setInterval(() => {
+    if (window.LYRICDOCK_MINI || !P.playing || document.hidden) return;
+    const p = P.source === 'bridge' && Rtc.open() ? Rtc.path() : null, on = Web.playingOn();
+    if (S.mediaNotif && p && !p.relayed && p.rtt != null && p.rtt < 0.0015)
+      tip('dock:tipSame', 'Spotify is playing on this computer and already shows in its media controls. Turn off LyricDock\'s copy?', 'Turn off', () => Settings.set('mediaNotif', false));
+    else if (!S.mediaNotif && P.source === 'web' && on.type && on.type !== 'Computer')
+      tip('dock:tipAway', `Spotify is playing on ${on.name || 'another device'}. Control it with this computer's media keys?`, 'Turn on', () => Settings.set('mediaNotif', true));
+    else if (window.lyricdockMini?.supported && P.shown)
+      tip('dock:tipMini', 'Keep the lyrics on top of your other windows: the miniplayer (or press M)', 'Open', () => window.lyricdockMini());
+  }, 20000);
 
   // ---- Local network access. Chrome / Edge (2026) let a public site reach this PC or the home network - where Spotify
   // with the LyricDock extension is - only after the user allows it. Explained first, then the browser's own prompt is

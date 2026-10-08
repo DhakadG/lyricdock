@@ -243,7 +243,7 @@ body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / 
   background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .02) 60%), var(--glass);
   box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 0 0 1px var(--glass-edge), 0 3vmin 8vmin rgba(0, 0, 0, .5);
   backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5);
-  opacity: 0; pointer-events: none; z-index: 5; }
+  opacity: 0; pointer-events: none; z-index: 5; container-type: inline-size; }
 /* Inside the cover: explicit width - absolutely positioned at left:50% it otherwise only gets half the cover and
    the buttons wrap into a lopsided stack. */
 #artbox > #ctl { position: absolute; left: 50%; top: var(--ctl-top, 100%); width: 100%; transform: translate(-50%, 4vmin) scale(.96); }
@@ -499,12 +499,14 @@ body.hide-lists #lists { display: none; }
 #ctl { gap: 1.2vmin .6vmin; padding: 2.4vmin 3.4vmin; justify-content: space-evenly; }
 #artbox > #ctl { width: 100%; }
 body > #ctl { width: min(92vmin, 94vw); max-width: 520px; }
-#ctl button { width: 9.4vmin; height: 9.4vmin; }
-#ctl button svg { width: 5.4vmin; height: 5.4vmin; }
-#ctl #pp { width: 11.6vmin; height: 11.6vmin; }
-#ctl #pp svg { width: 6.4vmin; height: 6.4vmin; }
-#ctl button.small { width: 7.6vmin; height: 7.6vmin; }
-#ctl button.small svg { width: 4.4vmin; height: 4.4vmin; }
+/* ...and capped by the pill's own width (cqi, #ctl is a size container): a squarish browser window has a smaller cover
+   (~46 vmin), where full-size buttons wrapped next / repeat onto a second row. */
+#ctl button { width: min(9.4vmin, 16cqi); height: min(9.4vmin, 16cqi); }
+#ctl button svg { width: min(5.4vmin, 9.2cqi); height: min(5.4vmin, 9.2cqi); }
+#ctl #pp { width: min(11.6vmin, 20cqi); height: min(11.6vmin, 20cqi); }
+#ctl #pp svg { width: min(6.4vmin, 11cqi); height: min(6.4vmin, 11cqi); }
+#ctl button.small { width: min(7.6vmin, 13cqi); height: min(7.6vmin, 13cqi); }
+#ctl button.small svg { width: min(4.4vmin, 7.5cqi); height: min(4.4vmin, 7.5cqi); }
 #ctl #lists button { width: 7.6vmin; height: 7.6vmin; }
 #ctl #lists svg { width: 4.2vmin; height: 4.2vmin; }
 /* The Flip clock layout: a tap brings the settings button, not a player over the clock. */

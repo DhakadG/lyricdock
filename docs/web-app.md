@@ -82,15 +82,16 @@ browser hides its local addresses behind random `.local` names.
 
 - **Miniplayer** (*Settings → Miniplayer*, or press **M**): a small always-on-top window.
   - **Chrome, Edge, Brave, Opera (Windows, Mac, Linux):** Document Picture-in-Picture holding a second copy of the app
-    (`/?mini=<channel>`, `window.LYRICDOCK_MINI`), so it's LyricDock itself: lyrics, word effects, background, layouts.
+    (`/?mini=<channel>`, `window.LYRICDOCK_MINI`), so the lyrics are LyricDock's own (word effects, background, the
+    screen's look). Around them `mini.js` draws a trimmed-down player: cover, song and like on top; timeline, shuffle,
+    previous, play/pause, next and repeat at the bottom. The app's own controls, settings button, quick bar, clock and
+    cover column are hidden. Short window (< 230 px): the top bar goes. Narrow (< 300 px): shuffle and repeat go.
     - It never connects to Spotify. The main copy hands it every message it hears (`app.js route` → `miniFeed`, over a
       BroadcastChannel) and carries out its commands (`send` / `control` → `miniHost`). Its own heartbeat, settings and
       pairing messages are dropped, so the desktop only ever sees the main copy.
     - Off in the miniplayer copy: pairing (`rtc.js` stub), Spotify polling and token refresh (it borrows the main
       copy's token), the sign-in screen, the setup screen, account sync, usage pings, the install prompt.
-    - Its own settings (`dock:settings:mini`, first copied from the screen's). *Settings → Miniplayer layout*: *Fit the
-      window* (default) switches layout as the window is resized: wide → Cover + lyrics / Player card, short → Cinema,
-      narrow or tall → Lyrics only, otherwise Compact. Or pin one of six layouts.
+    - It takes the screen's settings on every open and forces the Lyrics only layout (saved apart, `dock:settings:mini`).
     - The main tab is usually hidden, and Chrome holds a hidden tab's timers back: the miniplayer pokes the main
       copy's Spotify polling once a second (`Web.poke`).
     - Chrome opens it by itself when the tab is left only for pages it counts as playing media, and only once the user
@@ -102,9 +103,18 @@ browser hides its local addresses behind random `.local` names.
   scrolls the lyrics.
 - **System media controls** (*Settings → Screen → System media controls*, on by default): the song goes into Media
   Session, so the OS media overlay and the keyboard's play / next / previous keys control Spotify. A browser shows a
-  page's Media Session only while it plays audio, so a silent 10 s loop plays along (`shim.js` `media`, the phone's
-  media-notification path). With *Lyrics on the lock screen* the sung line replaces the artist. The computer's own
-  volume keys can't be caught by a web page; ↑/↓ and the slider set Spotify's volume.
+  page's Media Session only while it plays audio, so a 10 s loop of -67 dBFS noise plays along (`shim.js` `media`,
+  the phone's media-notification path): inaudible, but not digital silence, which browsers treat as not playing (and
+  only a playing page may open the miniplayer by itself). With *Lyrics on the lock screen* the sung line replaces the
+  artist. The computer's own volume keys can't be caught by a web page; ↑/↓ and the slider set Spotify's volume.
+- **Tips** (`install.js`, each shown once, while a song plays):
+  - Spotify on this computer (the extension's link is direct and under 1.5 ms): offer to turn System media controls
+    off, since Spotify already shows in the system's controls.
+  - Spotify on a phone or speaker (account mode, Spotify's device type isn't Computer) with them off: offer to turn
+    them on.
+  - Otherwise: offer to open the miniplayer. Browsers have no way to ask for picture-in-picture ahead of time; the
+    click that opens it is the permission, and Chrome asks about *Automatic picture-in-picture* the first time it
+    would open it by itself.
 
 ## Account sync
 

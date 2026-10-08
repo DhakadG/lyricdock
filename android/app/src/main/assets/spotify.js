@@ -135,7 +135,7 @@ const Web = (() => {
       // iPhones (and some speakers) set their own volume: supports_volume false = no slider (Spotify refuses the change).
       const vol = s.device?.supports_volume === false ? undefined : s.device?.volume_percent;
       if (s.device?.id) lastDevice = s.device.id; // to wake it again when Spotify drops it as the active device
-      state = { playing: s.is_playing, device: s.device?.name, volume: vol, shuffle: s.shuffle_state, repeat: { off: 0, context: 1, track: 2 }[s.repeat_state] ?? 0 };
+      state = { playing: s.is_playing, device: s.device?.name, dtype: s.device?.type, volume: vol, shuffle: s.shuffle_state, repeat: { off: 0, context: 1, track: 2 }[s.repeat_state] ?? 0 };
       if (it.id !== cur?.id) newTrack(it);
       out({ type: 'pos', pos: s.progress_ms + (s.is_playing ? r.rtt / 2 : 0), playing: s.is_playing, dur: it.duration_ms,
         liked: cur.liked, volume: state.volume, device: state.device, shuffle: state.shuffle, repeat: state.repeat });
@@ -299,6 +299,7 @@ const Web = (() => {
     syncToken: () => (tok.refresh ? { refresh: tok.refresh, cid: tok.cid, uid: tok.uid, name: tok.name } : null),
     adopt: t => { if (t.refresh === tok.refresh) return; tok = { ...t, access: null, exp: 0 }; try { localStorage.setItem(KEY, JSON.stringify(tok)); } catch (e) {} kick(); },
     // A hidden tab's timers can be held back to one a minute; the open miniplayer pokes once a second (mini.js).
+    playingOn: () => ({ name: state.device, type: state.dtype }), // Spotify's device type: Computer, Smartphone, Speaker...
     poke: () => { if (wanted && Date.now() > dueAt + 300) kick(); },
     login, logout, onAuth, control, setWanted, loggedIn, list, act, redirect: REDIRECT,
     busy: () => busy || !!pending,

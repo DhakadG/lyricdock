@@ -11,9 +11,6 @@ const Settings = (() => {
     { k: 'layout', label: 'Layout', type: 'choice', def: 'split', opts: [
       ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['clocksplit', 'Cover + clock'], ['clock', 'Flip clock']],
       help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds, double-tap to go back to the layout before).' },
-    { k: 'miniLayout', label: 'Miniplayer layout', type: 'choice', def: 'auto', when: () => !!window.LYRICDOCK_MINI,
-      opts: [['auto', 'Fit the window'], ['lyrics', 'Lyrics only'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['compact', 'Compact'], ['player', 'Player card'], ['split', 'Cover + lyrics']],
-      help: 'Fit the window: the layout changes as you resize the miniplayer - cover and lyrics side by side when wide, lyrics only when narrow, big centred lyrics when short.' },
     { k: 'artSide', label: 'Cover side', type: 'choice', def: 'left', opts: [['left', 'Cover left, lyrics right'], ['right', 'Lyrics left, cover right']],
       when: s => ['split', 'tv', 'clocksplit'].includes(s.layout), help: 'Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top.' },
     { k: 'progress', label: 'Progress bar', type: 'choice', def: 'art', opts: [['art', 'Under the cover'], ['bottom', 'Bottom edge'], ['top', 'Top edge'], ['off', 'Off']],
@@ -343,7 +340,7 @@ const Settings = (() => {
   const KEY = window.LYRICDOCK_MINI ? 'dock:settings:mini' : 'dock:settings'; // the miniplayer's own look (mini.js)
   const defaults = Object.fromEntries(SCHEMA.filter(x => x.k).map(x => [x.k, x.def]));
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(KEY) ?? (window.LYRICDOCK_MINI ? localStorage.getItem('dock:settings') : null)); } catch (e) {}
+  try { saved = JSON.parse(localStorage.getItem(window.LYRICDOCK_MINI ? 'dock:settings' : KEY)); } catch (e) {} // the miniplayer starts from the screen's look
   const fresh = !saved; // first run on this phone: take the desktop's last settings when the bridge sends them
   const S = { ...defaults, ...saved };
   if (typeof S.clockHaptic === 'boolean') S.clockHaptic = S.clockHaptic ? 'light' : 'off'; // was a toggle

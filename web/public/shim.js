@@ -25,11 +25,13 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
   let silence = null, mediaOn = false;
   function quiet() {
     if (silence) return silence;
-    const rate = 3000, n = rate * 10, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+    const rate = 8000, n = rate * 10, b = new Uint8Array(44 + n * 2), v = new DataView(b.buffer);
     const str = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
-    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, 'data'); v.setUint32(40, n, true);
-    b.fill(128, 44); // 8-bit PCM silence
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+    // 16-bit noise at about -67 dBFS: nothing you can hear, but not digital silence either. Browsers count a page whose
+    // audio is all zeros as silent, and only a page playing sound may open the miniplayer by itself (mini.js).
+    for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round((Math.random() * 2 - 1) * 24), true);
     silence = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' })));
     silence.loop = true;
     return silence;
@@ -118,7 +120,7 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
     battery: () => battery,
     brightness() {}, // no web API
     // System media controls (media keys, Windows / macOS / Linux media overlays, Chrome's media hub). A browser shows a
-    // page's Media Session only while the page plays audio, so a silent loop plays along with Spotify (10 s: Chrome
+    // page's Media Session only while the page plays audio, so an inaudible loop plays along with Spotify (10 s: Chrome
     // ignores media shorter than 5 s). Buttons come back through the phone's own path, window.mediaCmd (features.js).
     media(title, artist, art, playing) {
       const ms = navigator.mediaSession;
