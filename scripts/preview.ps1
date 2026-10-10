@@ -4,8 +4,9 @@ $root = Split-Path $PSScriptRoot
 $a = "$root\android\app\src\main\assets"
 $h = Get-Content "$a\index.html" -Raw
 $h = $h.Replace('<link rel="stylesheet" href="style.css">', "<style>`n$(Get-Content "$a\style.css" -Raw)`n</style>")
-foreach ($f in "kawarp.js", "roman.js", "settings.js", "api.js", "spotify.js", "sync.js", "rtc.js", "anim.js", "lyrics.js", "app.js", "flipclock.js", "features.js", "swipe.js") {
-    $h = $h.Replace("<script src=""$f""></script>", "<script>`n$(Get-Content "$a\$f" -Raw)`n</script>")
+# every <script src> the page loads, in its order (a hand-kept list here went stale and broke the preview)
+foreach ($m in [regex]::Matches($h, '<script src="([\w.-]+)"></script>')) {
+    $h = $h.Replace($m.Value, "<script>`n$(Get-Content "$a\$($m.Groups[1].Value)" -Raw)`n</script>")
 }
 $h = $h.Replace("</body>", "<script>`n$(Get-Content "$PSScriptRoot\preview-driver.js" -Raw)`n</script>`n</body>")
 New-Item -ItemType Directory -Force "$root\android\build" | Out-Null

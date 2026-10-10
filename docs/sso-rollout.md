@@ -148,7 +148,7 @@ Every LyricDock screen needs a sign-in, not just the web app.
   - Already signed in on that browser: no Google page, the browser bounces straight back (about 2 s).
 - **Web app**: the Worker gate (SSO on) plus `account.js`, whose `POST /token` with the cookie gives the same token
   and renews the cookie (sliding 14 days). An installed app running from its cache goes to sign-in on a 401.
-- **Cover API** (`cloud`, `API_SSO`): `/v1/album|track|cover` answer `Authorization: Bearer <app token>` only.
+- **Cover API** (`cloud`, always on; the `API_SSO` switch is gone): `/v1/album|track|cover` answer `Authorization: Bearer <app token>` only.
   `/v1/ping` and `/v1/health` stay open, so old builds still show in the dashboard.
 - **Favicon**: `auth/brand.js` links every LyricDock site to `app.lyricdock.../icons/` and redirects `/favicon.ico`.
 - [x] auth, cloud and web deployed; phone round trip tested on the Galaxy M01 (R9ZN905WPLJ, kiosk).

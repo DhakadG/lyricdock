@@ -328,15 +328,11 @@ const Lyrics = (() => {
 
   function scrollTo(a, instant) {
     anchor = a;
-    if (free) { // keep the line states, leave the scroll where the finger put it
-      lines.forEach((x, k) => x.el.classList.toggle('past', k < a));
-      return;
-    }
+    if (free) return; // leave the scroll where the finger put it
     const i = Math.max(a, 0);
     lines.forEach((x, k) => {
       const d = Math.min(3, Math.abs(k - i));
       if (x.d !== d) { x.d = d; x.el.dataset.d = d; }
-      x.el.classList.toggle('past', k < a);
       x.el.classList.toggle('far', Math.abs(k - i) > Settings.S.renderDistance); // off screen: skip painting it (long songs)
     });
     const el = lines[i]?.el;

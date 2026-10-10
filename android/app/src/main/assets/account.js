@@ -34,7 +34,6 @@ const Account = (() => {
       gate.querySelector('.si-go').onclick = () => signIn();
       gate.querySelector('.si-alt').onclick = () => signIn(true);
       document.body.append(gate);
-      document.body.classList.add('signin-open');
     }
     const m = gate.querySelector('.si-msg');
     m.className = `si-msg ${kind}`;
@@ -42,7 +41,7 @@ const Account = (() => {
     m.append(msg);
     gate.querySelector('.si-alt').hidden = kind !== 'bad';
   }
-  function hide() { gate?.remove(); gate = null; document.body.classList.remove('signin-open'); }
+  function hide() { gate?.remove(); gate = null; }
 
   async function signIn(other) {
     if (web) return location.assign(`${AUTH}/login?rd=${encodeURIComponent(location.href)}${other ? '&switch=1' : ''}`);

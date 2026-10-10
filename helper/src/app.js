@@ -104,7 +104,7 @@ async function notifyUpdate() {
     if (first) return; // don't announce the version that was current at install
     const n = window.__TAURI__.notification;
     if (!(await n.isPermissionGranted()) && (await n.requestPermission()) !== 'granted') return;
-    n.sendNotification({ title: `LyricDock ${v} is out`, body: 'Spotify picks it up by itself (Update in the LyricDock popup), the phone within 6 hours. Release notes: Dashboard → Release notes.' });
+    n.sendNotification({ title: `LyricDock ${v} is out`, body: 'Spotify picks it up by itself (Update in the LyricDock popup), open phones within minutes. Release notes: Dashboard → Release notes.' });
   } catch (e) {}
 }
 notifyUpdate();
@@ -140,7 +140,7 @@ const FAQ = [
   ['Do I need this helper?', 'No. Spotify and the phone talk to each other directly. The helper installs or repairs the Spotify extension, runs the one-time phone setup, and can host a local signalling relay.'],
   ['The LyricDock button is gone from Spotify', 'Spotify updates can remove Spicetify. Click Install / repair on the Dashboard (or run spicetify backup apply), then restart Spotify.'],
   ['The phone says "Waiting for Spotify"', 'In Spotify: LyricDock → Devices → Find devices → Connect, then Allow on the phone. Both must be on the same network (or set a TURN server for away-from-home use). If your router isolates devices, use USB tethering or the local relay.'],
-  ['Can I use several phones?', 'Yes. Pair each one in Spotify → LyricDock → Phones. They all follow the same Spotify, and each keeps its own settings (Edit settings next to its name).'],
+  ['Can I use several phones?', 'Yes. Pair each one in Spotify → LyricDock → Devices. They all follow the same Spotify, and each keeps its own settings (Edit its settings, next to its name).'],
   ['Does it work without Spicetify?', 'Yes, in Spotify-account mode: put your own Spotify Client ID in the phone\'s Settings → Playback source and sign in. It follows whatever device your account plays on.'],
   ['What goes through LyricDock\'s server?', 'Only the encrypted one-time connection setup (keys derived from the pairing code). Music, lyrics and commands go directly between Spotify and the phone. The local relay adds a path that works without the internet.'],
   ['Why no lyrics for some songs?', 'LyricDock uses Spicy Lyrics\' cache on this PC, Spotify\'s lyrics and LRCLIB. Songs none of them have show "No lyrics". A Spicy Lyrics publishable key on the phone fills more gaps.'],

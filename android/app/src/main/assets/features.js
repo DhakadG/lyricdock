@@ -545,7 +545,6 @@
   const LAYOUTS = () => Settings.schema().find(x => x.k === 'layout')?.opts || [];
   const layoutName = () => LAYOUTS().find(([v]) => v === S.layout)?.[1] || '';
   const SVG = p => `<svg viewBox="0 0 24 24">${p}</svg>`;
-  const CLOCKY = () => ['clock', 'clocksplit'].includes(S.layout);
   const cycle = (k, list, names) => { const v = list[(list.indexOf(S[k]) + 1) % list.length]; Settings.set(k, v); window.notice?.(names[v], 1400); };
   const QB = {
     swap: { html: SVG('<path d="M6 8h12m0 0-3.5-3.5M18 8l-3.5 3.5M18 16H6m0 0 3.5-3.5M6 16l3.5 3.5"/>'), tip: 'Swap cover side',
@@ -560,10 +559,16 @@
     h24: { html: () => (S.clock24 === '24' ? '24' : '12'), tip: '12 / 24 hour',
       run: () => { Settings.set('clock24', S.clock24 === '24' ? '12' : '24'); window.notice?.(S.clock24 === '24' ? '24-hour clock' : '12-hour clock', 1200); } },
     tune: { html: SVG('<path d="M4 7h8M18 7h2M4 17h2M12 17h8"/><circle cx="15" cy="7" r="2.4"/><circle cx="9" cy="17" r="2.4"/>'), tip: 'Quick settings', run: () => openQuick() },
+    // A quarter turn per tap from however the screen stands now, then held there: no waiting on the tilt sensor.
+    rotate: { html: SVG('<rect x="7.5" y="3.5" width="9" height="17" rx="2"/><path d="M3 9.5a9 9 0 0 1 3-5M21 14.5a9 9 0 0 1-3 5"/><path d="M3.5 5v4.5H8M20.5 19v-4.5H16"/>'),
+      tip: 'Rotate the screen', on: () => ROT.includes(S.orientation),
+      run: () => { const i = ROT.indexOf(ROT.includes(S.orientation) ? S.orientation : screen.orientation?.type); Settings.set('orientation', ROT[(i + 1) % 4]);
+        window.notice?.('Rotation locked - Settings → Orientation → Auto-rotate to undo', 2600); } },
   };
-  const QBAR = { split: ['swap', 'roman', 'layout', 'tune'], tv: ['swap', 'roman', 'layout', 'tune'], player: ['roman', 'layout', 'tune'], lyrics: ['roman', 'layout', 'tune'],
-    compact: ['roman', 'layout', 'tune'], cinema: ['roman', 'layout', 'tune'], nowbar: ['roman', 'layout', 'tune'],
-    clocksplit: ['swap', 'theme', 'secs', 'layout', 'tune'], clock: ['theme', 'secs', 'h24', 'layout', 'tune'] };
+  const ROT = ['landscape-primary', 'portrait-primary', 'landscape-secondary', 'portrait-secondary']; // a quarter turn apart, in order
+  const QBAR = { split: ['swap', 'roman', 'rotate', 'layout', 'tune'], tv: ['swap', 'roman', 'rotate', 'layout', 'tune'], player: ['roman', 'rotate', 'layout', 'tune'],
+    lyrics: ['roman', 'rotate', 'layout', 'tune'], compact: ['roman', 'rotate', 'layout', 'tune'], cinema: ['roman', 'rotate', 'layout', 'tune'], nowbar: ['roman', 'rotate', 'layout', 'tune'],
+    clocksplit: ['swap', 'theme', 'secs', 'rotate', 'layout', 'tune'], clock: ['theme', 'secs', 'h24', 'rotate', 'layout', 'tune'] };
   // Keys are Settings schema keys; a row only shows while its own "when" holds.
   const LYR = ['roman', 'size', 'align', 'weight', 'lineGap', 'lineOpacity', 'blurLines', 'glow', 'scroll'];
   const STATUS = ['timeStyle', 'battery', 'battStyle', 'statPos'];
@@ -574,7 +579,7 @@
     clocksplit: ['artSide', ...CLK], clock: [...CLK, ...STATUS],
   };
   function renderQs() {
-    const box = $('qs'), ids = QBAR[S.layout] || ['layout', 'tune'];
+    const box = $('qs'), ids = (QBAR[S.layout] || ['layout', 'tune']).filter(id => id !== 'rotate' || !window.LYRICDOCK_WEB); // a browser can't turn its screen
     box.replaceChildren(...ids.map(id => {
       const q = QB[id], b = document.createElement('button');
       b.dataset.q = id; b.title = q.tip; b.setAttribute('aria-label', q.tip);
@@ -1016,7 +1021,8 @@
     const p = Rtc.path?.(), linked = Rtc.open?.(), desk = Rtc.desk?.() || 'Spotify on your computer', vis = Rtc.discoverable?.() ?? {};
     let dockOn = false; try { dockOn = !!Dock.kioskOn(); } catch (e) {}
     const state = linked ? `Connected to ${desk}` : P.source === 'web' ? 'Following your Spotify account' : 'Not connected';
-    const how = linked ? `${p?.relayed ? 'Through a TURN relay' : 'Same network'}${p?.rtt != null ? ` · ${Math.round(p.rtt * 1000)} ms` : ''}`
+    // USB tethering: the link's local address isn't the phone's Wi-Fi one (myIp: app.js)
+    const how = linked ? `${p?.relayed ? 'Through a TURN relay' : p?.local && myIp && p.local !== myIp ? 'USB cable' : 'Same network'}${p?.rtt != null ? ` · ${Math.round(p.rtt * 1000)} ms` : ''}`
       : P.source === 'web' ? 'Spotify on your computer isn\'t linked. Playback comes from your account instead.'
       : 'Waiting for Spotify on your computer.';
     card.innerHTML = `<div class="cc-top"><i class="cc-dot${linked ? ' on' : P.source === 'web' ? ' mid' : ''}"></i><div><b>${esc(state)}</b><small>${esc(how)}</small></div></div>

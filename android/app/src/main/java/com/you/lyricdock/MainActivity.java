@@ -260,11 +260,16 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return ""; }
     }
 
-    // Settings -> "Orientation": auto (all four), landscape (both), portrait (both).
+    // Settings -> "Orientation": auto (all four), landscape (both), portrait (both), or one fixed way (the quick bar's
+    // rotate button; screen.orientation type names, same as the web shim locks).
     @JavascriptInterface
     public void setOrientation(String mode) {
         int o = "landscape".equals(mode) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 : "portrait".equals(mode) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                : "landscape-primary".equals(mode) ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                : "portrait-primary".equals(mode) ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                : "landscape-secondary".equals(mode) ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                : "portrait-secondary".equals(mode) ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
                 : ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR;
         if (getRequestedOrientation() != o) setRequestedOrientation(o);
     }

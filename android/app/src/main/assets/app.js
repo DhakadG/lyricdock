@@ -489,7 +489,6 @@ function handle(m) {
   else if (m.type === 'set') Settings.setRemote(m.k, m.v); // changed from the desktop panel
   else if (m.type === 'load' && m.S && typeof m.S === 'object') Settings.load(m.S);
   else if (m.type === 'presets') Settings.setPresets(m.presets);
-  else if (m.type === 'diag') window.lastDiag = m; // inspected over CDP while developing
   else if (m.type === 'auth') Web.onAuth(m);
   else if (['list', 'album', 'acted', 'canvas'].includes(m.type)) window.onExtra?.(m);
   else if (m.type === 'browse') window.dockBrowse?.(m.uri);
@@ -552,7 +551,7 @@ let lastPing = 0, retry = 5000;
 })(Math.floor(Date.now() / 1000));
 // The path we control: every release rewrites extension/version.json on GitHub (release.ps1), and every open dock
 // reads that 30-byte file every 5 minutes. A newer version there = required: installed even with "Update automatically"
-// off. So a release reaches every open phone within ~5-10 min even when ntfy.sh is down or over its quota.
+// off. So a release reaches every open phone within ~5-10 min even when the ntfy ping is missed.
 const VERSION_URL = 'https://raw.githubusercontent.com/DhakadG/lyricdock/main/extension/version.json';
 const newer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
 async function pollVersion() {
@@ -638,23 +637,26 @@ window.swipeTo = k => {
   const n = Math.abs(k), nb = window.neighbours(), list = k > 0 ? nb.next : nb.prev, t = list[n - 1] || null, now = performance.now();
   // "Previous" more than 3 s into a song only restarts it, so one extra press goes back the first song.
   for (let i = 0; i < n + (k < 0 && pos() > 3000 ? 1 : 0); i++) queueCmd(k > 0 ? 'next' : 'prev');
-  P.dir = Math.sign(k); P.dirAt = now;
-  setTimeout(settleSkip, 5200); // after the skip window, whatever happened
+  P.dir = Math.sign(k); P.dirAt = now; P.skipAt = now;
+  setTimeout(settleSkip, 5200, now, true); // after the skip window, whatever happened
   if (!t?.id) { P.swipeWait = now + 5000; return null; } // unknown song: the card lands empty, Spotify fills it in
   const prevSkip = P.skip && now < P.skip.until ? P.skip : null;
   const pass = new Set([...(prevSkip ? [...prevSkip.pass, prevSkip.target] : []), ...list.slice(0, n - 1).map(x => x.id), P.id]);
   pass.delete(t.id);
   P.skip = { target: t.id, pass, until: now + 5000, passed: k > 0 ? list.slice(0, n - 1) : [] };
-  P.optimistic = now + 2500; P.pos = 0; P.at = now; P.dur = t.dur || P.dur;
+  P.optimistic = now + 5000; P.pos = 0; P.at = now; P.dur = t.dur || P.dur; // old-song beats ignored until Spotify confirms (or the skip window ends)
   return t;
 };
 // A skip burst can end somewhere other than where the phone went (Spotify dropped a skip, the queue changed), and the
 // songs it passed are ignored while it runs - so nothing would ever correct the screen. Once the source has been quiet
-// for a moment, the song it named last is the truth.
-function settleSkip() {
+// for a moment, the song it named last is the truth. Before the final check (5.2 s) only a song named since the skip
+// counts: the one named before it is the song the skip left, and going back to it (Spotify - the Web API above all -
+// takes over 1.5 s to report the change) showed the new cover, then the old one, then the new one again.
+function settleSkip(since, final) {
   const s = SRC[P.source], t = s.track;
-  if (!t?.id || t.id === P.id) return;
-  if (performance.now() - (s.trackAt || 0) < 1200) return setTimeout(settleSkip, 400);
+  if (!t?.id || t.id === P.id || since !== P.skipAt) return; // a newer skip runs its own checks
+  if (!final && (s.trackAt || 0) < since) return;
+  if (performance.now() - (s.trackAt || 0) < 1200) return setTimeout(settleSkip, 400, since, final);
   P.skip = null; P.swipeWait = 0;
   onTrack({ ...t });
 }
@@ -664,7 +666,7 @@ window.swipeLand = t => {
   art(t.art).then(im => {
     if (token !== P.token) return;
     swap(t, im, lyr, true); topUp(t.id); P.shown = true;
-    setTimeout(settleSkip, 1500);
+    setTimeout(settleSkip, 1500, P.skipAt);
     const sk = P.skip;
     if (sk?.target !== t.id) return;
     for (const x of sk.passed) P.hist.unshift({ ...x }); // skipped over = played, as far as Spotify's "previous" goes
@@ -688,8 +690,8 @@ function songEnd(real) {
   endFor = P.id;
   if (!arts.has(t.art)) return;
   P.skip = { target: t.id, pass: new Set([P.id]), until: now + 5000, passed: [] };
-  P.optimistic = now + 2500; P.pos = 0; P.at = now; P.dur = t.dur || P.dur;
-  setTimeout(settleSkip, 5200); // paused at the end, repeat, queue changed: Spotify's word wins
+  P.optimistic = now + 5000; P.pos = 0; P.at = now; P.dur = t.dur || P.dur; P.skipAt = now;
+  setTimeout(settleSkip, 5200, now, true); // paused at the end, repeat, queue changed: Spotify's word wins
   change({ ...t, dir: 1 }, false);
 }
 $('pp').onclick = () => { P.pos = pos(); P.at = performance.now(); P.lockUntil = P.at + 2500; setPlaying(!P.playing, true); cmd('toggle'); };
@@ -726,16 +728,6 @@ $('bar').addEventListener('click', e => {
 
 // Keep-alive for the bridge: an adb-forwarded socket can stay "open" on the PC after the phone end dies,
 // so the bridge reconnects when these stop arriving.
-// Direct link over Wi-Fi or over the USB cable (tethering): compare the link's local address with the Wi-Fi one.
-const rtcVia = () => { const p = Rtc.path(); if (!p?.local) return 'direct'; const ms = p.rtt ? ` · ${Math.round(p.rtt * 1000)} ms` : '';
-  return (p.local === myIp ? 'direct Wi-Fi' : `USB cable (${p.local})`) + ms; };
-window.dockStatus = () => {
-  const link = document.body.classList.contains('stale') ? 'Not connected'
-    : P.source === 'web' ? `Spotify account${SRC.web.pos?.device ? ` · ${SRC.web.pos.device}` : ''}`
-    : `Desktop bridge (${Rtc.open() ? rtcVia() : 'adb'})`;
-  const api = Api.enabled() ? ` · API key set${Api.lastStatus ? ` (last ${Api.lastStatus})` : ''}` : '';
-  return `${link} · phone IP ${myIp || 'none'}${api}`;
-};
 // Spotify reaches the phone through adb (USB, or wireless adb when the cable is out - see scripts/link.ps1),
 // always via localhost on the PC: Chromium refuses ws:// from Spotify's https page to a LAN address.
 let myIp = '', phoneModel = '';

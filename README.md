@@ -313,7 +313,7 @@ phone screen). Nothing needs it day to day.
 - **Settings on the phone:** ⚙. Every row has an **ⓘ** — tap it to read what the setting does.
 - **Settings from the PC:** Spotify → LyricDock button. The same settings (hover the **ⓘ** for help), applied to the
   phone instantly, or saved and applied when it next connects.
-- **Presets:** built-in **Default** (the shipped config, see [`config/default-settings.json`](config/default-settings.json)),
+- **Presets:** built-in **Default** (the shipped config: the `def` values in [`settings.js`](android/app/src/main/assets/settings.js)),
   **Smooth (slow phones)** and **Full Spicy**; save your own from either panel (stored in Spotify on the PC, so a new
   phone picks them up). **Reset all** returns to Default.
 - **Gestures:** swipe left/right to skip (on the cover it follows your finger), double-tap to like, long-press the progress bar to scrub, three-finger swipe to change layout (up/down in landscape, left/right in portrait).
@@ -355,7 +355,7 @@ phone screen). Nothing needs it day to day.
 ## Settings reference
 
 Everything is in the phone's ⚙ menu (and most of it in Spotify's LyricDock panel). Defaults below are the shipped
-config ([`config/default-settings.json`](config/default-settings.json)).
+config (the `def` values in [`settings.js`](android/app/src/main/assets/settings.js)).
 
 **Built-in presets**
 
@@ -613,8 +613,8 @@ here for development only.
 | CI | `.github/workflows/build.yml` checks the JavaScript and builds the APK on every push |
 
 Layout: `extension/` (Spicetify loader + bridge), `android/` (app: Java shell + `assets/` web UI — `style.css`,
-`settings.js` holds the settings schema and defaults), `updater/` (installer, phone setup), `config/` (generated
-default config), `helper/` (Windows helper app) and `scripts/` (tooling). `docs/ROADMAP.md` lists 200 rated features and their status. See [CONTRIBUTING.md](CONTRIBUTING.md).
+`settings.js` holds the settings schema and defaults), `updater/` (installer, phone setup),
+`helper/` (Windows helper app) and `scripts/` (tooling). `docs/ROADMAP.md` lists 200 rated features and their status. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

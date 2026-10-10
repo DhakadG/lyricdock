@@ -27,9 +27,18 @@ jobs:
       - name: Syntax-check the JavaScript
         shell: pwsh
         run: |
-          Get-ChildItem extension/*.js, android/app/src/main/assets/*.js, helper/src/*.js | ForEach-Object {
+          Get-ChildItem extension/*.js, android/app/src/main/assets/*.js, helper/src/*.js, web/public/*.js | ForEach-Object {
             node --check $_.FullName
             if ($LASTEXITCODE) { throw "syntax error in $($_.Name)" }
+          }
+
+      # sso.test.mjs needs the private signing key (secrets/, never in CI): run it locally with SSO_KEY_FILE.
+      - name: Tests
+        shell: pwsh
+        run: |
+          foreach ($t in 'tests/roman.test.js', 'tests/cloud.test.mjs', 'tests/sign.test.mjs') {
+            node $t
+            if ($LASTEXITCODE) { throw "$t failed" }
           }
 
       - name: Android SDK platform 34

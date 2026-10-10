@@ -390,14 +390,13 @@
     s.kind ??= 'adb';
     s.code = code;
     s.lastRx = Date.now();
-    s.since = Date.now();
     links.set(id, s);
     s.onclose = () => { if (links.get(id) === s) { links.delete(id); log(`${phoneName(s.code)} disconnected`); ensureLink(); } };
     s.onmessage = e => { s.lastRx = Date.now(); onMessage(e.data, s); };
     log(`${phoneName(code)} connected${s.kind === 'rtc' ? '' : ' over adb'}`);
     if (s.pc) linkPath(s);
     const S = settingsFor(code);
-    sendTo(s, { type: 'hello', last: S, presets: readJson(PRESETS_KEY, {}), paired: !!code, version: VERSION, desk: deskName(), ...(helperIp !== undefined ? { helper: helperIp } : {}) });
+    sendTo(s, { type: 'hello', last: S, presets: readJson(PRESETS_KEY, {}), paired: !!code, desk: deskName(), ...(helperIp !== undefined ? { helper: helperIp } : {}) });
     if (code && dirty(code)) { sendTo(s, { type: 'load', S }); dirty(code, false); }
     renderPanel();
     if (track) sendTo(s, track); else sendTrack();
@@ -416,11 +415,12 @@
   }
 
   const URI = /^spotify:[a-z]+:[A-Za-z0-9:._-]+$/;
+  // API keys / client IDs stay on the phone they were typed on: never in presets, exports or broadcasts.
+  const noKeys = ({ apiKey, videoKey, spClientId, ...S }) => S;
   function onMessage(data, from) {
     const m = safe(() => JSON.parse(data), null);
     if (!m || typeof m !== 'object') return;
     if (m.type === 'alive') {
-      if (/^\d+\.\d+\.\d+\.\d+$/.test(m.ip ?? '')) from.ip = m.ip;
       const c = cleanCode(m.code);
       if (c.length === 10 && from.kind === 'adb' && from.code !== c) { from.code = c; closeLink(c, 'moved to adb'); addPair(c, m.name); renderPanel(); }
       if (c.length === 10 && typeof m.name === 'string' && m.name) addPair(c, m.name.slice(0, 40));
@@ -442,7 +442,7 @@
     }
     else if (m.type === 'preset' && typeof m.name === 'string' && m.name.length <= 40) {
       const presets = readJson(PRESETS_KEY, {});
-      if (m.action === 'save' && okSettings(m.S)) { const { apiKey, videoKey, ...rest } = m.S; presets[m.name] = rest; } // keys stay out of presets
+      if (m.action === 'save' && okSettings(m.S)) presets[m.name] = noKeys(m.S);
       else if (m.action === 'delete') delete presets[m.name];
       writeJson(PRESETS_KEY, presets);
       send({ type: 'presets', presets });
@@ -463,10 +463,8 @@
         act(m.cmd, uri, typeof m.uid === 'string' ? m.uid : null).then(r => sendTo(from, { type: 'acted', cmd: m.cmd, uri, ...r }));
       setTimeout(beat, 80);
     }
-    // Diagnostics for development: which of Spotify's internal APIs this client has (names only), last errors.
     // The phone restarted after a crash (CrashLog.java): keep it with the diagnostics, and in Spotify's DevTools console.
     else if (m.type === 'crashlog' && typeof m.text === 'string') { console.warn('[LyricDock] phone crash log:\n' + m.text.slice(0, 4000)); noteErr('phone', m.text.split('\n').filter(Boolean).pop()); }
-    else if (m.type === 'probe') sendTo(from, { type: 'diag', gql: Object.keys(Spicetify.GraphQL?.Definitions ?? {}), platform: Object.keys(Spicetify.Platform ?? {}), errors: lastErrors.slice(-10) });
     else if (m.type === 'list' && ['queue', 'recent', 'library', 'friends', 'tracks', 'search'].includes(m.which)) {
       const arg = m.which === 'tracks' ? (URI.test(m.uri ?? '') ? m.uri : null) : m.which === 'search' ? String(m.q ?? '').slice(0, 100) : null;
       lists(m.which, arg).then(r => sendTo(from, { type: 'list', which: m.which, uri: m.uri, q: m.q, ...r }));
@@ -552,7 +550,7 @@
 
   // Local play history: always available, even when Spotify's recently-played endpoint refuses.
   const HISTORY_KEY = 'lyricdock:history';
-  function remember_(t, it) {
+  function remember_(t) {
     const h = readJson(HISTORY_KEY, []).filter(x => x.uri !== t.uri);
     h.unshift({ uri: t.uri, title: t.title, sub: t.artist, art: t.art, ctx: safe(() => P.data?.context?.uri, null) || undefined, time: Date.now() });
     writeJson(HISTORY_KEY, h.slice(0, 60));
@@ -806,7 +804,7 @@
     track = { type: 'track', ...base, dir, lyrics: early };
     send(track);
     beat();
-    if (base.uri.startsWith('spotify:track:')) remember_(base, it);
+    if (base.uri.startsWith('spotify:track:')) remember_(base);
     preloadNext();
     setTimeout(preloadNext, 3000); // Spotify's queue can lag the song change by a moment
     extras(it, base.id);
@@ -1003,8 +1001,7 @@
     .ldx-main{overflow:auto;padding:26px 36px 48px;position:relative}
     .ldx-main::-webkit-scrollbar,.ldx-nav::-webkit-scrollbar{width:10px} .ldx-main::-webkit-scrollbar-thumb,.ldx-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:5px;border:3px solid transparent;background-clip:padding-box}
     .ldx-main::-webkit-scrollbar-track,.ldx-nav::-webkit-scrollbar-track{background:transparent}
-    .ldx-h{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-    .ldx-h{flex-direction:column;align-items:flex-start;gap:2px}
+    .ldx-h{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin-bottom:6px}
     .ldx-badge{font:600 12.5px/1.2 ${FONT};color:rgba(255,255,255,.45)}
     .ldx-h h2{font-size:28px;font-weight:700;letter-spacing:-.025em;margin:0}
     .ldx-lead{color:var(--sub);margin:4px 0 22px;max-width:72ch;line-height:1.5}
@@ -1159,7 +1156,7 @@
 
   // Export / import the selected phone's settings as a JSON file (API keys left out of exports).
   function exportSettings() {
-    const { apiKey, videoKey, spClientId, ...S } = settingsFor(panelPhone);
+    const S = noKeys(settingsFor(panelPhone));
     const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' })), download: 'lyricdock-settings.json' });
     document.body.append(a); a.click(); a.remove();
   }
@@ -1204,7 +1201,6 @@
   }
 
   // ---- sections
-  const VISUAL = new Set(['View']);
   function sections(schema) {
     const groups = schema.filter(x => x.group), byCat = new Map();
     for (const g of groups) { Object.assign(g, { icon: g.icon || META[g.group]?.[0], tint: g.tint || META[g.group]?.[1], cat: g.cat || META[g.group]?.[2], desc: g.desc || META[g.group]?.[3] }); const c = g.cat || 'More'; if (!byCat.has(c)) byCat.set(c, []); byCat.get(c).push(g); }
@@ -1239,8 +1235,8 @@
     return [h('div', { className: 'ldx-h' }, h('span', { className: 'ldx-badge' }, badge), h('h2', {}, title)), ...(lead ? [h('p', { className: 'ldx-lead' }, lead)] : [])];
   }
 
-  function overview(S) {
-    const ps = pairs(), latest = window.__lyricdock?.latest, loaderV2 = (window.__lyricdock?.loader ?? 0) >= 2;
+  function overview() {
+    const latest = window.__lyricdock?.latest, loaderV2 = (window.__lyricdock?.loader ?? 0) >= 2;
     const kids = [...header('General', 'Overview', 'Version and updates.')];
     const ver = h('div', { className: 'ldx-box' });
     ver.append(h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, `LyricDock ${VERSION === 'dev' ? '(development build)' : 'v' + VERSION}`),
@@ -1363,7 +1359,7 @@
           h('div', { className: 'ld-presets' }, sel, btn('Apply', () => { const p = chosen(); if (p) loadAll(p); }, true),
             btn('Delete', () => { if (!sel.value.startsWith('u:')) return; const p = { ...presets }; delete p[sel.value.slice(2)]; savePresets(p); }))),
         h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'Save the current settings'), h('small', {}, 'API keys are never included.')),
-          h('div', { className: 'ld-presets' }, name, btn('Save', () => { const n = name.value.trim().slice(0, 40); if (!n) return; const { apiKey, videoKey, ...rest } = S; savePresets({ ...presets, [n]: rest }); }))),
+          h('div', { className: 'ld-presets' }, name, btn('Save', () => { const n = name.value.trim().slice(0, 40); if (!n) return; savePresets({ ...presets, [n]: noKeys(S) }); }))),
         h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'Settings file'), h('small', {}, 'Export this phone\'s settings as JSON, or import a file (from another PC, or a backup).')),
           h('div', { className: 'ld-presets' }, btn('Export', exportSettings), btn('Import', importSettings))))];
   }
@@ -1374,6 +1370,8 @@
       h('div', { className: 'ldx-sec' }, 'Connection log'),
       h('div', { className: 'ldx-box' }, h('div', { className: 'ld-log' }, ...(events.length ? events.slice(0, 20).map(e =>
         h('div', {}, `${new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}   ${e.text}`)) : ['Nothing yet']))),
+      ...(lastErrors.length ? [h('div', { className: 'ldx-sec' }, 'Recent errors'), // Spotify API calls that failed, and the phone's last crash
+        h('div', { className: 'ldx-box' }, h('div', { className: 'ld-log' }, ...lastErrors.slice(-10).reverse().map(e => h('div', {}, e))))] : []),
       h('div', { className: 'ldx-sec' }, 'Shortcuts'),
       h('div', { className: 'ldx-box' }, h('div', { className: 'ld-log' },
         h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('L'), '  this window'), h('div', {}, kbd('Ctrl'), kbd('Alt'), kbd('W'), '  wake the phone'),
@@ -1383,9 +1381,9 @@
   function groupSection(schema, g, S) {
     const defs = readJson('lyricdock:defaults', {}), rows = rowsOf(schema, g.group);
     const kids = [...header(g.cat || 'Settings', g.group, g.desc)];
-    if (VISUAL.has(g.cat) && LS.get('lyricdock:hidePreview') !== '1') kids.push(previewBox);
+    if (g.cat === 'View' && LS.get('lyricdock:hidePreview') !== '1') kids.push(previewBox);
     kids.push(h('div', { className: 'ldx-sec' }, `${rows.length} setting${rows.length === 1 ? '' : 's'}`, h('span', { className: 'ld-presets' },
-      ...(VISUAL.has(g.cat) ? [h('a', { onclick: () => { LS.set('lyricdock:hidePreview', LS.get('lyricdock:hidePreview') === '1' ? '0' : '1'); renderPanel(true); } }, LS.get('lyricdock:hidePreview') === '1' ? 'Show preview' : 'Hide preview')] : []),
+      ...(g.cat === 'View' ? [h('a', { onclick: () => { LS.set('lyricdock:hidePreview', LS.get('lyricdock:hidePreview') === '1' ? '0' : '1'); renderPanel(true); } }, LS.get('lyricdock:hidePreview') === '1' ? 'Show preview' : 'Hide preview')] : []),
       h('a', { onclick: () => { if (confirm(`Reset "${g.group}" to defaults?`)) loadAll(Object.fromEntries(rows.map(x => x.k).filter(k => k in defs).map(k => [k, defs[k]]))); } }, 'Reset section'))));
     kids.push(h('div', { className: 'ldx-box' }, ...rows.map(x => row(x, S))));
     return kids;
@@ -1412,10 +1410,10 @@
     const groups = schema.filter(x => x.group);
     if (!['devices', 'overview', 'presets', 'diag'].includes(section) && !groups.some(g => g.group === section)) section = 'devices';
     const kids = filter.trim() ? searchSection(schema, S)
-      : section === 'devices' ? devicesSection() : section === 'overview' ? overview(S) : section === 'presets' ? presetsSection(S) : section === 'diag' ? diagnostics()
+      : section === 'devices' ? devicesSection() : section === 'overview' ? overview() : section === 'presets' ? presetsSection(S) : section === 'diag' ? diagnostics()
       : groupSection(schema, groups.find(g => g.group === section), S);
     if (!schema.length && !['devices', 'overview', 'diag'].includes(section)) kids.push(h('p', { className: 'ldx-empty' }, 'Connect the phone once so its settings can load here.'));
-    if (ps.length > 1 && !['devices', 'overview', 'diag'].includes(section)) kids.splice(2, 0, h('p', { className: 'ldx-lead' }, `Editing ${phoneName(panelPhone)}${linkFor(panelPhone) ? '' : ' (offline - changes are sent when it connects)'}. Switch phones in Overview.`));
+    if (ps.length > 1 && !['devices', 'overview', 'diag'].includes(section)) kids.splice(2, 0, h('p', { className: 'ldx-lead' }, `Editing ${phoneName(panelPhone)}${linkFor(panelPhone) ? '' : ' (offline - changes are sent when it connects)'}. Switch phones in Devices.`));
     if (scrollTop !== true && main.contains(document.activeElement) && document.activeElement.matches?.('input[type=text]')) return;
     const top = scrollTop === true ? 0 : main.scrollTop;
     main.replaceChildren(...kids);
