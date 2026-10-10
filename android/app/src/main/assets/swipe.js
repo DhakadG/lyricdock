@@ -171,7 +171,9 @@
     const el = upEl(), last = el.style.transform;
     if (go) $('pp').onclick(); // same path as the button: optimistic state, the pulse, the command
     reset(); g = null;
-    if (last) el.animate([{ transform: last }], { duration: ms(520), easing: 'cubic-bezier(.34,1.45,.64,1)' }); // to wherever CSS now puts it
+    // offset 0: FROM the lifted pose to wherever CSS now puts it. A lone keyframe is the END of an animation - the cover
+    // jumped to its new pose, rose back to the lifted one and snapped down again (two moves for one swipe).
+    if (last) el.animate([{ transform: last, offset: 0 }], { duration: ms(520), easing: 'cubic-bezier(.34,1.45,.64,1)' });
   }
 
   addEventListener('touchmove', e => {
@@ -221,7 +223,7 @@
     const toggle = () => window.showUi(!body.classList.contains('ui'));
     if (!(S.doubleTapLike && S.showLiked)) return toggle();
     const now = performance.now();
-    if (tapT && now - lastTapAt < 320) { clearTimeout(tapT); tapT = 0; $('heart').click(); window.heartBurst?.(t.clientX, t.clientY); return; }
+    if (tapT && now - lastTapAt < 320) { clearTimeout(tapT); tapT = 0; window.likeTap?.(t.clientX, t.clientY); return; }
     lastTapAt = now;
     tapT = setTimeout(() => { tapT = 0; toggle(); }, 300);
   }

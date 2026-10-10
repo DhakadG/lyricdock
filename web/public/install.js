@@ -171,8 +171,10 @@
   window.lyricdockPanelOpen = () => window.Setup?.isOpen() || document.body.matches('.settings-open, .lists-open, .qs-open, .news-open, .pair-ask');
   addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, select, button, [contenteditable]') || window.lyricdockPanelOpen()) return;
+    // The buttons' own handlers, not a click: a click also pops the controls up, and on a cover layout the cover would
+    // shrink for them while the pause shrinks it too (two moves for one key). The pulse / song change is the feedback.
     const k = { ' ': 'pp', ArrowRight: 'next', ArrowLeft: 'prev' }[e.key];
-    if (k) { e.preventDefault(); document.getElementById(k)?.click(); }
+    if (k) { e.preventDefault(); document.getElementById(k)?.onclick?.(); }
     else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { // Spotify's volume (the slider's own throttled path, app.js)
       e.preventDefault();
       const v = document.getElementById('vol');

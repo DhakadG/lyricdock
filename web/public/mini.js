@@ -15,6 +15,8 @@
   if (mini) {
     const ch = new BroadcastChannel(`lyricdock-mini-${mini}`);
     window.miniHost = d => { try { ch.postMessage(d); } catch (e) {} };
+    // No controls pill in here: a click (one of the buttons below, or on the lyrics) must not dim the lyrics behind it.
+    window.showUi = () => {};
     ch.onmessage = e => { if (e.data?.src) route(e.data.src, e.data.m); };
     miniHost({ hello: 1 });
     setInterval(() => miniHost({ beat: 1 }), 1000);

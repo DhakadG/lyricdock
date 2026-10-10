@@ -5,7 +5,9 @@
 (() => {
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const fmtT = t => { t = Math.max(0, t) / 1000 | 0; return `${t / 60 | 0}:${String(t % 60).padStart(2, '0')}`; };
-  const cmdOf = (c, extra = {}) => (P.source === 'web' ? Web.control(c, 'ms' in extra ? extra.ms : 'v' in extra ? extra.v : extra) : send({ type: 'cmd', cmd: c, ...extra }));
+  // control() (app.js), not Web.control: the miniplayer's copy must hand commands to the main copy - its own Web never
+  // polls, so a toggle there (shuffle) read a blank state and could only ever switch on.
+  const cmdOf = (c, extra = {}) => (P.source === 'web' ? control(c, 'ms' in extra ? extra.ms : 'v' in extra ? extra.v : extra) : send({ type: 'cmd', cmd: c, ...extra }));
 
   // ---- marquee: only text that does not fit scrolls, back and forth, with soft edges.
   function marquee(el) {
@@ -30,7 +32,7 @@
     $('album').textContent = S.albumLine ? [a.album || P.album, a.year].filter(Boolean).join(' · ') : '';
     marquee($('album'));
   }
-  window.afterSwap = m => { document.body.classList.remove('q-new'); void document.body.offsetWidth; document.body.classList.add('q-new'); fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; if (P.next?.id === m.id) P.next = null; if (P.next2?.id === m.id) P.next2 = null; /* the bridge's preloads for the new song may already be here */ remarquee(); albumLine(); badge(); hideChip(); };
+  window.afterSwap = m => { fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; if (P.next?.id === m.id) P.next = null; if (P.next2?.id === m.id) P.next2 = null; /* the bridge's preloads for the new song may already be here */ remarquee(); albumLine(); badge(); hideChip(); };
   window.afterPreload = m => { if (m.ahead === 2) P.next2 = m; else P.next = m; }; // ahead: 1 = next, 2 = the one after
   // Cover + title in the left column (Default / TV, landscape): the column is padded clear of the song times and
   // progress bar, and the cover is capped so cover + title + artist + album always fit between them.
@@ -86,13 +88,15 @@
   }
 
   // ---- shuffle / repeat state (from the bridge beat or the Web API poll)
+  // After a tap, beats already in flight still carry the old mode: ignored for a moment so the button doesn't flick back.
   window.afterPos = m => {
-    if (typeof m.shuffle === 'boolean') { P.shuffle = m.shuffle; $('shuf').classList.toggle('on', m.shuffle); }
-    if (Number.isFinite(m.repeat)) { P.repeat = m.repeat; $('rep').classList.toggle('on', m.repeat > 0); $('rep').classList.toggle('one', m.repeat === 2); }
+    const locked = performance.now() < (P.modeLock || 0);
+    if (typeof m.shuffle === 'boolean' && !locked) { P.shuffle = m.shuffle; $('shuf').classList.toggle('on', m.shuffle); }
+    if (Number.isFinite(m.repeat) && !locked) { P.repeat = m.repeat; $('rep').classList.toggle('on', m.repeat > 0); $('rep').classList.toggle('one', m.repeat === 2); }
     lastPlayAt = m.playing ? Date.now() : lastPlayAt;
   };
-  $('shuf').onclick = () => { $('shuf').classList.toggle('on'); cmdOf('shuffle'); };
-  $('rep').onclick = () => { const n = ((P.repeat || 0) + 1) % 3; P.repeat = n; $('rep').classList.toggle('on', n > 0); $('rep').classList.toggle('one', n === 2); cmdOf('repeat', { v: n }); };
+  $('shuf').onclick = () => { P.modeLock = performance.now() + 1500; P.shuffle = $('shuf').classList.toggle('on'); cmdOf('shuffle'); };
+  $('rep').onclick = () => { P.modeLock = performance.now() + 1500; const n = ((P.repeat || 0) + 1) % 3; P.repeat = n; $('rep').classList.toggle('on', n > 0); $('rep').classList.toggle('one', n === 2); cmdOf('repeat', { v: n }); };
 
   // ---- gestures: double-tap to like, long-press the progress bar to scrub (changing songs by swiping: swipe.js,
   // on the cover / song card only - a sideways drag anywhere else does nothing)
@@ -101,7 +105,7 @@
   let down = null, lastTap = 0;
   // While the clock is up it owns every tap (seconds, double-tap to leave): no double-tap like.
   const clockUp = () => document.body.classList.contains('clock');
-  const coverLayouts = ['split', 'tv', 'clocksplit'], body = document.body;
+  const coverLayouts = ['split', 'tv', 'clocksplit'];
   addEventListener('touchstart', e => {
     const t = e.touches[0];
     if (clockUp()) { down = null; return; }
@@ -116,7 +120,7 @@
     const onLine = S.tapSeek && e.target.closest?.('#lyrics:not(.static) .ln');
     if (Gesture.tap() && dt < 300 && !onLine && !d0.cover) {
       const now2 = performance.now();
-      if (S.doubleTapLike && S.showLiked && now2 - lastTap < 320) { $('heart').click(); heartBurst(t.clientX, t.clientY); lastTap = 0; }
+      if (S.doubleTapLike && S.showLiked && now2 - lastTap < 320) { likeTap(t.clientX, t.clientY); lastTap = 0; }
       else lastTap = now2;
     } else lastTap = 0;
   }, { capture: true, passive: true });
@@ -124,7 +128,7 @@
   // Mouse / trackpad: a double-click likes (touch has its own double tap above and in swipe.js).
   addEventListener('dblclick', e => {
     if (Gesture.touch() || clockUp() || interactive(e) || !S.doubleTapLike || !S.showLiked || e.target.closest?.('#lyrics .ln')) return;
-    $('heart').click(); heartBurst(e.clientX, e.clientY);
+    likeTap(e.clientX, e.clientY);
   });
 
   // ---- four-finger swipe switches layouts (with a notice naming it): up / down in landscape (next / previous),
@@ -133,12 +137,10 @@
   let quad = null;
   const mid = ts => [...ts].reduce((a, t) => ({ x: a.x + t.clientX / ts.length, y: a.y + t.clientY / ts.length }), { x: 0, y: 0 });
   addEventListener('touchstart', e => {
-    body.classList.toggle('multi', e.touches.length > 1);
     if (e.touches.length === 4) { const m = mid(e.touches); quad = { x: m.x, y: m.y, dx: 0, dy: 0, t: performance.now() }; }
   }, { capture: true, passive: true });
   addEventListener('touchmove', e => { if (quad && e.touches.length === 4) { const m = mid(e.touches); quad.dx = m.x - quad.x; quad.dy = m.y - quad.y; } }, { capture: true, passive: true });
   addEventListener('touchend', e => {
-    if (!e.touches.length) body.classList.remove('multi');
     if (!quad || e.touches.length) return;
     const s = quad; quad = null;
     const land = innerWidth > innerHeight, main = land ? s.dy : s.dx, cross = land ? s.dx : s.dy;
@@ -151,10 +153,12 @@
     window.notice?.(`Layout: ${next[1]}`, 1400);
   }, { capture: true, passive: true });
 
-  window.heartBurst = (x, y) => heartBurst(x, y); // swipe.js: double tap on the cover
-  function heartBurst(x, y) {
+  // Double tap / double-click: the heart's own handler, called directly. A synthetic click would also reach app.js's tap
+  // handler and pop the controls up (the cover shrinking under the heart burst). Unliking bursts a hollow heart.
+  const likeTap = window.likeTap = (x, y) => { $('heart').onclick(); heartBurst(x, y, P.liked); }; // swipe.js: double tap on the cover
+  function heartBurst(x, y, on) {
     const b = document.createElement('div');
-    b.className = 'burst';
+    b.className = on ? 'burst' : 'burst off';
     b.style.left = `${x}px`; b.style.top = `${y}px`;
     b.innerHTML = $('heart').querySelector('svg').outerHTML;
     document.body.append(b);
@@ -175,7 +179,8 @@
   const frac = e => Math.min(1, Math.max(0, e.clientX / innerWidth));
   function move(e) { if (!scrub) return; const f = frac(e); $('bar').style.setProperty('--scrub', f); $('bar').dataset.time = fmtT(f * P.dur); }
   $('bar').addEventListener('pointermove', move);
-  $('bar').addEventListener('pointerup', e => { if (!scrub) return; scrub = null; setTimeout(() => document.body.classList.remove('scrubbing'), 0); const t = Math.round(frac(e) * P.dur); cmdOf('seek', { ms: t }); P.pos = t; P.at = performance.now(); });
+  // seek() (app.js), like the timeline: beats still carrying the old position are ignored for a moment, so the bar doesn't jump back.
+  $('bar').addEventListener('pointerup', e => { if (!scrub) return; scrub = null; setTimeout(() => document.body.classList.remove('scrubbing'), 0); seek(Math.round(frac(e) * P.dur)); });
 
   // ---- up-next chip
   function hideChip() { $('nextChip').classList.remove('show'); }

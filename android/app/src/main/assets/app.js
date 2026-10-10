@@ -260,7 +260,7 @@ function spread(url, im) {
   const [x, y] = artCentre(), night = document.body.classList.contains('night');
   if (!night && im && (S.bg === 'dynamic' || S.bg === 'artist') && kawarp()) {
     kw.setOrigin(x / innerWidth, y / innerHeight);
-    kw.transitionDuration = ms(950);
+    kw.transitionDuration = ms(S.bgFade); // Settings -> Cover crossfade (a fixed 950 here overrode it from the first song change on)
     return background(url, im);
   }
   if (!night && url && (S.bg === 'blur' || S.bg === 'gradient')) return bloom(url, im, x, y);
@@ -341,8 +341,10 @@ async function change(m, sw) {
   // Next slides left, previous slides right. The bridge knows which (history), a phone tap knows too.
   const style = S.trackAnim, d = m.dir ?? (performance.now() - P.dirAt < 3000 ? P.dir : 1);
   const parts = [$('meta'), $('lyrics')]; // the cover never leaves: the change grows out of it (showArt)
+  // Only the end keyframe: the leave starts from wherever the text is. A second skip during the first one's leave used to
+  // pop the half-gone text back to full and fade it out again.
   const outDone = !sw && style !== 'none' && P.shown
-    ? Promise.all(parts.map((el, i) => el.animate(OUT[style](d), { duration: ms(200), delay: ms(i * 30), easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished))
+    ? Promise.all(parts.map((el, i) => el.animate(OUT[style](d).slice(1), { duration: ms(200), delay: ms(i * 30), easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished))
     : Promise.resolve();
   // A decoded cover changes right away, together with the text leaving: the change starts on the press.
   const hot = !sw && P.shown && m.art && ready.get(m.art);
@@ -384,7 +386,7 @@ function onPreload(m) {
 
 // ---- liked + audio quality (sent with every heartbeat)
 function onMeta(m) {
-  if (m.repeat !== undefined) P.repeat = m.repeat; // 2 = this song on repeat: no early change at its end
+  if (m.repeat !== undefined && !(performance.now() < P.modeLock)) P.repeat = m.repeat; // 2 = this song on repeat: no early change at its end (modeLock: features.js)
   if (Number.isFinite(m.volume) && !(performance.now() < P.volLock)) { $('vol').value = m.volume; window.volMuted?.(); }
   $('ctl').classList.toggle('has-vol', Number.isFinite(m.volume) && S.showVolume);
   if (typeof m.liked === 'boolean' && performance.now() > P.heartLock) {
@@ -426,7 +428,9 @@ function onPos(m) {
   if (m.dur) P.dur = +m.dur;
   if (m.via) P.via = m.via;
   onMeta(m);
-  // After a tap, ignore play state from beats already in flight, so the button doesn't flicker back.
+  // After a tap, beats still carrying the old play state are ignored until the source agrees (or 2.5 s pass): a fixed
+  // 400 ms let a slow answer (the Web API takes ~0.5-1 s) undo the pause and redo it - three pulses for one tap.
+  if (P.lockUntil && !!m.playing === P.playing) P.lockUntil = 0;
   if (performance.now() > P.lockUntil) setPlaying(!!m.playing, had && !!m.playing !== P.playing);
   window.afterPos?.(m);
 }
@@ -568,8 +572,11 @@ window.showUi = on => {
   if (on && document.body.classList.contains('art-ctl')) {
     // The cover shrinks (from its top edge) just enough for the controls to fit under it.
     // The controls take the title's place under the cover (it fades out), and the cover gives up only what's missing.
-    const box = $('artbox').getBoundingClientRect(), meta = $('meta').getBoundingClientRect(), w = box.width, h = $('ctl').offsetHeight, gap = w * 0.04;
-    const room = (meta.height && meta.top >= box.bottom - 2 ? meta.bottom : box.bottom) - box.top;
+    // #meta's resting place: with the controls up it slides 3vmin down (style.css), and measuring it there (every later
+    // showUi: a button tap, the web's mouse move) grew the cover again a moment after it had shrunk.
+    const box = $('artbox').getBoundingClientRect(), w = box.width, h = $('ctl').offsetHeight, gap = w * 0.04;
+    const mt = getComputedStyle($('meta')).transform, my = mt && mt !== 'none' ? new DOMMatrix(mt).f : 0, meta = $('meta').getBoundingClientRect();
+    const room = (meta.height && meta.top - my >= box.bottom - 2 ? meta.bottom - my : box.bottom) - box.top;
     const tl = $('tl').getClientRects().length ? $('tl').offsetHeight + gap * 0.5 : 0; // the timeline rides under the shrunk cover
     const s = w ? Math.min(0.94, Math.max(0.5, (room - h - gap - tl) / w)) : 0.9;
     document.documentElement.style.setProperty('--art-mini', s.toFixed(3));
@@ -580,12 +587,13 @@ window.showUi = on => {
   if (on) hideT = setTimeout(() => { if (!document.body.classList.contains('qs-open')) document.body.classList.remove('ui'); }, S.hideAfter * 1000);
 };
 // The controls appear on a tap, not on every touch: scrolling the lyrics or swiping must not pop them up. A tap on a lyric line
-// seeks (Settings -> Tap a line to jump to it) instead; the cover handles its own taps (features.js).
+// seeks (Settings -> Tap a line to jump to it) instead; the cover handles its own taps (swipe.js).
 document.addEventListener('click', e => {
   if (!Gesture.tap() || e.target.closest?.('#settings, #qpanel, #listPanel, #pairAsk, #news, #setup, #installChip')) return;
   // The cover: a finger's tap is swipe.js's (it waits for a double tap); a mouse click toggles the controls here.
+  // (e.detail > 1: the second click of a double-click, which likes - it must not also hide the controls the first one showed)
   if (document.body.classList.contains('art-ctl') && e.target.closest?.('#artbox') && !e.target.closest('#ctl, button'))
-    return Gesture.touch() ? undefined : showUi(!document.body.classList.contains('ui'));
+    return Gesture.touch() || e.detail > 1 ? undefined : showUi(!document.body.classList.contains('ui'));
   const onLine = S.tapSeek && e.target.closest?.('#lyrics:not(.static) .ln:not(.dots):not(.credits):not(.skel):not(.empty)');
   if (onLine && !document.body.classList.contains('ui')) return;
   showUi(true); // (buttons inside the controls just keep them up)
@@ -594,17 +602,20 @@ document.addEventListener('click', e => {
 const control = (c, arg) => window.LYRICDOCK_MINI ? window.miniHost?.({ ctl: [c, arg] })
   : P.source === 'web' ? Web.control(c, arg) : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
 // Spotify refused a command (spotify.js): drop the optimistic state so its next answer puts the screen back.
-window.controlFailed = () => { P.skip = null; P.optimistic = 0; P.swipeWait = 0; P.lockUntil = 0; P.seekUntil = 0; P.volLock = 0; };
+window.controlFailed = () => { P.skip = null; P.optimistic = 0; P.swipeWait = 0; P.lockUntil = 0; P.seekUntil = 0; P.volLock = 0; P.modeLock = 0; };
 const cmd = (c, dir) => { control(c); if (dir) { P.dir = dir; P.dirAt = performance.now(); } };
 // ---- cover swipe (swipe.js): the songs on either side, and committing a swipe of 1-3 songs.
 // Next: the preloaded song, then the queue (fetched on every song change). Previous: what this phone showed before.
 P.upq = [];
 const idOf = x => x?.id || (x?.uri || '').split(':')[2] || null;
 window.neighbours = () => {
-  const q = P.upq, at = q.findIndex(x => idOf(x) === P.id);
-  const after = (at >= 0 ? q.slice(at + 1) : q).filter(x => idOf(x) !== P.id);
+  // A skip still on its way to the screen (Next pressed twice quickly): count from where it is going, or the second press
+  // aimed at the same song as the first and the screen changed twice, the second time when Spotify named the real one.
+  const sk = P.skip && performance.now() < P.skip.until ? P.skip : null, id = sk?.target || P.id;
+  const q = P.upq, at = q.findIndex(x => idOf(x) === id);
+  const after = (at >= 0 ? q.slice(at + 1) : q).filter(x => idOf(x) !== id && idOf(x) !== P.id);
   const next = [];
-  if (P.next?.id && P.next.id !== P.id) next.push(P.next);
+  if (P.next?.id && P.next.id !== id && P.next.id !== P.id) next.push(P.next);
   for (const x of after) if (next.length < 3 && !next.some(n => n.id === idOf(x)))
     next.push({ id: idOf(x), uri: x.uri, title: x.title, artist: x.sub, art: x.big || x.art, dur: x.dur });
   return { next, prev: (P.hist || []).slice(0, 3) };
@@ -681,7 +692,7 @@ function songEnd(real) {
   setTimeout(settleSkip, 5200); // paused at the end, repeat, queue changed: Spotify's word wins
   change({ ...t, dir: 1 }, false);
 }
-$('pp').onclick = () => { P.pos = pos(); P.at = performance.now(); P.lockUntil = P.at + 400; setPlaying(!P.playing, true); cmd('toggle'); };
+$('pp').onclick = () => { P.pos = pos(); P.at = performance.now(); P.lockUntil = P.at + 2500; setPlaying(!P.playing, true); cmd('toggle'); };
 $('heart').onclick = () => {
   P.liked = !P.liked;
   P.heartLock = performance.now() + 1500; // don't let an in-flight beat flip it back

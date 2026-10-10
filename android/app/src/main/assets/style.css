@@ -477,7 +477,7 @@ body.settings-open .sl-modal-container > * { opacity: 1; }
 #heart.badge:not(.on) { opacity: .9; }
 body.layout-nowbar #heart.badge, body.layout-compact #heart.badge, body.layout-cinema #heart.badge { top: -1vmin; left: -1vmin; width: 5vmin; height: 5vmin; padding: .9vmin; }
 .burst { position: fixed; z-index: 9; width: 22vmin; height: 22vmin; color: #fff; pointer-events: none; filter: drop-shadow(0 0 3vmin rgba(var(--acc), .6)); }
-.burst svg { width: 100%; height: 100%; } .burst .fill { opacity: 1; }
+.burst svg { width: 100%; height: 100%; } .burst .fill { opacity: 1; } .burst.off .fill { opacity: 0; } /* unliked: a hollow heart */
 
 /* Shuffle / repeat + the list buttons */
 #ctl button.small { width: 9vmin; height: 9vmin; opacity: .6; position: relative; }

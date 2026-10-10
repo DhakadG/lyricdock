@@ -181,23 +181,29 @@ const Web = (() => {
   async function control(cmd, arg, retried) {
     if (!loggedIn()) return window.notice?.('Not signed in to Spotify - Settings → Playback source');
     let r = null;
-    if (cmd === 'toggle') r = await api('PUT', state.playing ? '/me/player/pause' : '/me/player/play');
+    // toggle / shuffle / like flip the known state before the request: two quick taps used to both read the last poll
+    // and send the same request twice (pause, pause). A failure or the next poll puts the real state back.
+    if (cmd === 'toggle') r = await api('PUT', (state.playing = !state.playing) ? '/me/player/play' : '/me/player/pause');
     else if (cmd === 'next') r = await api('POST', '/me/player/next');
     else if (cmd === 'prev') r = await api('POST', '/me/player/previous');
     else if (cmd === 'seek') r = await api('PUT', `/me/player/seek?position_ms=${Math.max(0, Math.round(arg))}`);
     else if (cmd === 'volume') r = await api('PUT', `/me/player/volume?volume_percent=${Math.max(0, Math.min(100, Math.round(arg)))}`);
-    else if (cmd === 'shuffle') r = await api('PUT', `/me/player/shuffle?state=${!state.shuffle}`);
+    else if (cmd === 'shuffle') r = await api('PUT', `/me/player/shuffle?state=${state.shuffle = !state.shuffle}`);
     else if (cmd === 'repeat') r = await api('PUT', `/me/player/repeat?state=${['off', 'context', 'track'][Number.isFinite(arg) ? arg % 3 : ((state.repeat || 0) + 1) % 3]}`);
     else if (cmd === 'play' && arg?.uri) { if (arg.shuffle) await api('PUT', '/me/player/shuffle?state=true'); r = await api('PUT', '/me/player/play', /^spotify:(playlist|album|artist|show|collection)/.test(arg.uri) ? { context_uri: arg.uri }
       : arg.ctx && !/^spotify:collection/.test(arg.ctx) ? { context_uri: arg.ctx, offset: { uri: arg.uri } } : { uris: [arg.uri] }); }
     else if (cmd === 'heart' && cur) {
-      r = await api(cur.liked ? 'DELETE' : 'PUT', '/me/library?uris=' + encodeURIComponent(cur.uri));
-      if (r && r.status < 300) cur.liked = !cur.liked;
+      const t = cur, like = t.liked = !t.liked;
+      r = await api(like ? 'PUT' : 'DELETE', '/me/library?uris=' + encodeURIComponent(t.uri));
+      if (!r || r.status >= 300) t.liked = !like;
     }
     // An idle iPhone stops being Spotify's active device (404): hand playback back to it once, then try again.
     if (r?.status === 404 && lastDevice && !retried && cmd !== 'heart') {
       const t = await api('PUT', '/me/player', { device_ids: [lastDevice] });
-      if (t && t.status < 300) { await new Promise(res => setTimeout(res, 400)); return control(cmd, arg, true); }
+      if (t && t.status < 300) {
+        if (cmd === 'toggle') state.playing = !state.playing; else if (cmd === 'shuffle') state.shuffle = !state.shuffle; // the retry flips it again
+        await new Promise(res => setTimeout(res, 400)); return control(cmd, arg, true);
+      }
     }
     const failed = (r && r.status >= 400) || (!r && Date.now() < backoff);
     if (r && r.status >= 400) {
