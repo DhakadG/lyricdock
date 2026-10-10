@@ -2,9 +2,8 @@
 // (auth.lyricdock.losthusky.qzz.io, ../../auth/sso.js) for the ADMIN_EMAILS listed in wrangler.jsonc.
 // Metrics come from Analytics Engine (needs the CF_API_TOKEN secret), the index and cache from KV + R2.
 
-import { config, setConfig, getAlbum, promote, demote, setPin, maintain, aeQuery, listAll, DEFAULTS } from './store.js';
-import { fetchAlbum } from './apple.js';
-import { AUTH, session, signIn, isAllowed } from '../../auth/sso.js';
+import { config, setConfig, getAlbum, ingest, promote, demote, setPin, maintain, aeQuery, listAll, DEFAULTS } from './store.js';
+import { AUTH, session, signIn, isAllowed, same } from '../../auth/sso.js';
 import { withIcon } from '../../auth/brand.js';
 import ADMIN_HTML from './admin.html';
 
@@ -16,26 +15,21 @@ const CSP = "default-src 'none'; script-src 'self' 'unsafe-inline' https://cdnjs
   + "img-src https: data:; media-src https:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const html = (s, status = 200) => new Response(s, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY', 'content-security-policy': CSP } });
 const json = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
-const enc = new TextEncoder();
 
 // Scripts / tests: "Authorization: Bearer <ADMIN_API_TOKEN>" when that optional secret is set.
-const bearer = async (req, env) => !!env.ADMIN_API_TOKEN && await sameSecret((req.headers.get('authorization') || '').replace(/^Bearer /, ''), env.ADMIN_API_TOKEN);
-async function sameSecret(a, b) { // compare digests: constant time regardless of input length
-  const [x, y] = await Promise.all([a, b].map(s => crypto.subtle.digest('SHA-256', enc.encode(s))));
-  return crypto.subtle.timingSafeEqual(x, y);
-}
+const bearer = (req, env) => !!env.ADMIN_API_TOKEN && same((req.headers.get('authorization') || '').replace(/^Bearer /, ''), env.ADMIN_API_TOKEN);
 
 export async function admin(req, env, ctx, url) {
   const p = url.pathname;
   if (p === '/logout') return Response.redirect(`${AUTH}/logout?rd=${encodeURIComponent(url.origin + '/')}`, 303);
-  if (!(await bearer(req, env))) {
+  if (!bearer(req, env)) {
     const me = await session(req);
     if (!me) return p.startsWith('/api/') ? json({ error: 'login required' }, 401) : signIn(req);
     if (!isAllowed(me, env.ADMIN_EMAILS)) return html(`<!doctype html><meta name=viewport content="width=device-width"><body style="font:15px system-ui;background:#0d0d10;color:#eee;display:grid;place-items:center;min-height:90vh"><p>${me.email.replace(/[<>&"]/g, '')} is not an admin. <a style="color:#1ed760" href="/logout">Switch account</a></p>`, 403);
   }
   if (p === '/') return html(DASH);
   if (!p.startsWith('/api/')) return json({ error: 'not found' }, 404);
-  if (req.method === 'POST' && req.headers.get('origin') !== url.origin && !(await bearer(req, env))) return json({ error: 'bad origin' }, 403); // CSRF
+  if (req.method === 'POST' && req.headers.get('origin') !== url.origin && !bearer(req, env)) return json({ error: 'bad origin' }, 403); // CSRF
   try { return await api(req, env, url, p.slice(5)); }
   catch (e) { return json({ error: String(e?.message || e) }, 500); }
 }
@@ -107,9 +101,7 @@ async function api(req, env, url, p) {
     const id = am[1], a = await getAlbum(env, id);
     if (!a) return json({ error: 'not found' }, 404);
     if (am[2] === 'refresh' && req.method === 'POST') {
-      const { album, tracks } = await fetchAlbum(id, a.url);
-      const rec = { ...album, tracks, fetched_at: Date.now() };
-      await env.KV.put(`a:${id}`, JSON.stringify(rec), { metadata: { n: rec.name, ar: rec.artist, m: rec.has_motion, f: rec.fetched_at, g: rec.genre, y: rec.release_date, t: tracks.length, art: rec.cover_url || rec.art_url } });
+      const rec = await ingest(env, { id, url: a.url });
       return json({ ok: true, has_motion: rec.has_motion });
     }
     if (am[2] === 'delete' && req.method === 'POST') {

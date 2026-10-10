@@ -2,6 +2,7 @@
 // in a Cloudflare Container, with this Worker in front. Usable by any app (curl, the ntfy Android/iOS apps, the web
 // app at the root). LyricDock uses it for pairing signals. Docs: docs/ntfy.md
 import { Container, getContainer } from '@cloudflare/containers';
+import { same } from '../../auth/sso.js';
 
 export class Ntfy extends Container {
   defaultPort = 80;
@@ -31,16 +32,11 @@ const subscribing = (req, sub) => !!sub && req.method === 'GET';
 const publishing = (req, sub) => !sub && (req.method === 'POST' || req.method === 'PUT');
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PUT', 'Access-Control-Allow-Headers': '*' };
 
-async function sameSecret(a, b) {
-  const enc = new TextEncoder();
-  const [x, y] = await Promise.all([a, b].map(s => crypto.subtle.digest('SHA-256', enc.encode(s))));
-  return crypto.subtle.timingSafeEqual(x, y);
-}
-async function owner(req, env) {
+function owner(req, env) {
   const [kind, value = ''] = (req.headers.get('authorization') || '').split(' ');
   let tok = kind === 'Bearer' ? value : '';
   if (kind === 'Basic') try { tok = atob(value).split(':').slice(1).join(':'); } catch (e) {} // user:token, the user name ignored
-  return !!env.PUBLISH_TOKEN && !!tok && await sameSecret(tok, env.PUBLISH_TOKEN);
+  return !!env.PUBLISH_TOKEN && !!tok && same(tok, env.PUBLISH_TOKEN);
 }
 async function allowed(req, env, path) {
   let m = APP_TOPIC.exec(path);

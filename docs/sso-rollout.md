@@ -109,7 +109,6 @@ PowerShell, repo root, branch `web-fixes-apple`.
 - [x] **Sign-in works on its own** (2026-10-08, owner signed in with Google):
   - `$env:SSO_KEY_FILE='secrets/SSO_PRIVATE_JWK.json'; node tests/sso.test.mjs` prints `sso ok`.
   - The user opens https://auth.lyricdock.losthusky.qzz.io/login, signs in, and the auth page shows their name.
-  - `/me` returns their email.
   - Errors: `cd auth; npx wrangler tail`.
 - [x] **Web gate on** (2026-10-08): `web/wrangler.jsonc` → `"SSO": "on"`, then `./scripts/build-web.ps1 -Deploy`.
   - A private window to https://app.lyricdock.losthusky.qzz.io goes to Google and comes back.
@@ -148,7 +147,7 @@ Every LyricDock screen needs a sign-in, not just the web app.
   - Already signed in on that browser: no Google page, the browser bounces straight back (about 2 s).
 - **Web app**: the Worker gate (SSO on) plus `account.js`, whose `POST /token` with the cookie gives the same token
   and renews the cookie (sliding 14 days). An installed app running from its cache goes to sign-in on a 401.
-- **Cover API** (`cloud`, always on; the `API_SSO` switch is gone): `/v1/album|track|cover` answer `Authorization: Bearer <app token>` only.
+- **Cover API** (`cloud`, always on; the `API_SSO` switch is gone): `/v1/cover` answers `Authorization: Bearer <app token>` only.
   `/v1/ping` and `/v1/health` stay open, so old builds still show in the dashboard.
 - **Favicon**: `auth/brand.js` links every LyricDock site to `app.lyricdock.../icons/` and redirects `/favicon.ico`.
 - [x] auth, cloud and web deployed; phone round trip tested on the Galaxy M01 (R9ZN905WPLJ, kiosk).

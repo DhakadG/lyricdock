@@ -72,9 +72,10 @@ footer { margin-top: 48px; font-size: 14px; }
     <li><strong>Following Spotify on your computer</strong> (the LyricDock extension):
       <ul>
         <li>Your computer and your screen talk directly to each other.</li>
-        <li>The short messages they exchange to find each other pass through a relay
-          (<a href="https://ntfy.sh">ntfy</a> or LyricDock's own copy of it), encrypted with your pairing code, so the
-          relay only ever sees unreadable data.</li>
+        <li>The short messages they exchange to find each other pass through LyricDock's own relay server (a
+          self-hosted copy of the open-source <a href="https://ntfy.sh">ntfy</a>), and through the LyricDock Helper or a relay
+          you set up yourself if you use one. They are encrypted with your pairing code, so a relay only ever sees
+          unreadable data.</li>
         <li>When the two are on different networks, the connection may run through Cloudflare's relay (TURN). It only
           forwards the encrypted connection.</li>
       </ul>

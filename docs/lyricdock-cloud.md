@@ -160,8 +160,6 @@ All endpoints are `GET` with open CORS.
 | Endpoint | Extra params | Returns |
 |---|---|---|
 | `/v1/cover` | `px`, `hevc=1`, `shape=square\|tall`, `q=max` | `{ album, still, poster, colors, video, variant }`. `still` = real cover (up to px), `poster` = video's first frame. 404 when Apple has no such album. |
-| `/v1/album` | | `{ album, tracks }`: every indexed field + all variants (without URLs) |
-| `/v1/track` | `title` (prefix match) | `{ track, album }` |
 | `/v1/ping` | `px`, `hevc` | `{ ok }`: heartbeat for "active devices" |
 | `/v1/health` | | `{ ok }` |
 | `/v1/sync` | `GET` / `PUT { v, data }`, Bearer app token, no `d` | the account's synced settings `{ v, data }` (`sync.js`). KV `sync:<Google sub>`, AES-GCM with the `SYNC_KEY` secret, 64 KB max |

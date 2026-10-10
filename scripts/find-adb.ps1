@@ -7,8 +7,7 @@ $candidates = @(
     (Get-Command adb -ErrorAction SilentlyContinue).Source,
     "$root\.tools\sdk\platform-tools\adb.exe",
     "$env:ANDROID_HOME\platform-tools\adb.exe",
-    "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-    "$env:LOCALAPPDATA\LyricDock\platform-tools\adb.exe"   # platform-tools downloaded by earlier installers
+    "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 )
 $found = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 if (-not $found) { throw 'adb not found - install Android platform-tools or set $env:ADB to adb.exe' }

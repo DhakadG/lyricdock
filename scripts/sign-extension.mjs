@@ -1,5 +1,5 @@
-// Sign the Spicetify extension build for a release: the loader (extension/lyricdock.js) and the bridge's own updater
-// only run a dock-bridge.js whose signature checks out against the public key built into them, so whoever can push to
+// Sign the Spicetify extension build for a release: the loader (extension/lyricdock.js), the only part that downloads
+// builds, only runs a dock-bridge.js whose signature checks out against the public key built into it, so whoever can push to
 // the repo or the CDN still can't ship code into people's Spotify without this key.
 //   node scripts/sign-extension.mjs           signs HEAD:extension/dock-bridge.js -> extension/dock-bridge.js.sig (release.ps1)
 //   node scripts/sign-extension.mjs --new-key creates secrets/EXTENSION_SIGNING_JWK.json once (back it up!) and prints the public key
@@ -16,7 +16,7 @@ if (process.argv.includes('--new-key')) {
   const kp = await crypto.subtle.generateKey(ALG, true, ['sign', 'verify']);
   writeFileSync(KEY, JSON.stringify(await crypto.subtle.exportKey('jwk', kp.privateKey)));
   const { kty, crv, x, y } = await crypto.subtle.exportKey('jwk', kp.publicKey);
-  console.log('Public key for extension/lyricdock.js + dock-bridge.js:', JSON.stringify({ kty, crv, x, y }));
+  console.log('Public key for extension/lyricdock.js:', JSON.stringify({ kty, crv, x, y }));
 } else {
   const key = await crypto.subtle.importKey('jwk', JSON.parse(readFileSync(KEY, 'utf8')), ALG, false, ['sign']);
   const code = execFileSync('git', ['show', 'HEAD:extension/dock-bridge.js'], { cwd: root, maxBuffer: 1 << 26 });

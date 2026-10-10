@@ -229,20 +229,6 @@ if ($SpiceCode) {
 if ($SpiceCode) { $out | ForEach-Object { Info "$_" }; Fail 'spicetify apply failed (output above).' }
 Ok 'Spicetify applied - Spotify is starting'
 
-# v1.0.x installers also put an adb companion app here; LyricDock no longer uses adb, so take it out again.
-$oldApp = Join-Path $env:LOCALAPPDATA 'LyricDock\app'
-if (Test-Path $oldApp) {
-    Get-CimInstance Win32_Process -Filter "Name like 'p%sh%.exe'" |
-        Where-Object { $_.CommandLine -like '*LyricDock.ps1*' -or $_.CommandLine -like '*link.ps1*' } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    Remove-Item $oldApp -Recurse -Force -ErrorAction SilentlyContinue
-    foreach ($dir in [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Startup')) {
-        $lnk = Join-Path $dir 'LyricDock.lnk'
-        if (Test-Path $lnk) { Remove-Item $lnk -ErrorAction SilentlyContinue }
-    }
-    Info 'Removed the old adb companion (no longer needed)'
-}
-
 Section 'PHONE'
 Info 'Phone not set up yet? Do this once, either way:'
 Info '  - on the phone: install the APK from https://github.com/DhakadG/lyricdock/releases/latest'

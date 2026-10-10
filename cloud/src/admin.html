@@ -161,7 +161,7 @@ async function overview() {
   chart('cMs', { type: 'line', data: { labels: lbl, datasets: kinds.map((k, i) => ({ label: k, borderColor: COLORS[i % 7], tension: .3, pointRadius: 0, data: ts.map(t => o.series.find(r => r.t === t && r.kind === k)?.ms ?? null) })) } });
   chart('cTier', { type: 'doughnut', data: { labels: o.tiers.map(r => r.tier || '–'), datasets: [{ data: o.tiers.map(r => r.n), backgroundColor: COLORS, borderWidth: 0 }] }, options: { plugins: { legend: { position: 'right' } } } });
   $('topAlbums').innerHTML = '<tr><th>Album</th><th>Artist</th><th>Plays</th></tr>' + o.topAlbums.map(a => `<tr class="click" onclick="album(${js(a.id)})"><td>${esc(a.name)}</td><td>${esc(a.artist)}</td><td>${n(a.n)}</td></tr>`).join('');
-  const evk = ['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error', 'control-fail'];
+  const evk = ['open', 'install-shown', 'install-accepted', 'install-dismissed', 'installed', 'update', 'error', 'control-fail', 'lna-prompt', 'lna-granted', 'lna-denied']; // = index.js EVENTS
   $('platforms').innerHTML = '<tr><th>Platform</th><th>Devices</th><th>Requests</th></tr>' + (o.platforms || []).map(p => `<tr><td>${esc(p.plat)}</td><td>${n(p.devices)}</td><td>${n(p.n)}</td></tr>`).join('')
     + o.kinds.filter(k => evk.includes(k.kind)).map(k => `<tr><td class="muted">event: ${esc(k.kind)}</td><td></td><td>${n(k.n)}</td></tr>`).join('');
   $('countries').innerHTML = '<tr><th>Country</th><th>Requests</th><th>Devices</th></tr>' + o.countries.map(c => `<tr><td>${esc(c.country)}</td><td>${n(c.n)}</td><td>${n(c.devices)}</td></tr>`).join('');

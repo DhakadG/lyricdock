@@ -69,7 +69,7 @@ export async function aeQuery(env, sql, retry = 1) {
 // ---- index
 export const getAlbum = (env, id) => env.KV.get(`a:${id}`, { type: 'json', cacheTtl: 300 });
 
-async function ingest(env, cand) {
+export async function ingest(env, cand) { // Apple -> KV (also the dashboard's Refresh)
   const { album, tracks } = await fetchAlbum(cand.id, cand.url);
   album.fetched_at = Date.now();
   album.tracks = tracks;

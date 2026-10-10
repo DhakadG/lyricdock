@@ -70,5 +70,13 @@ export function signIn(req) {
   return new Response(null, { status: 302, headers: { location: `${AUTH}/login?rd=${encodeURIComponent(u.href)}`, 'cache-control': 'no-store' } });
 }
 
+// Constant-time string compare, for secrets and tokens (every LyricDock Worker, and ntfy's owner token).
+export function same(a, b) {
+  a = String(a); b = String(b);
+  let d = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) d |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
+  return d === 0;
+}
+
 // Comma/space-separated allowlist ("" = nobody). For admin-only pages: isAllowed(me, env.ADMIN_EMAILS).
 export const isAllowed = (me, list) => !!me && String(list || '').toLowerCase().split(/[\s,]+/).filter(Boolean).includes(me.email.toLowerCase());

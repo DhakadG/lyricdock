@@ -9,7 +9,7 @@ $bt = (Get-ChildItem "$sdk\build-tools" | Sort-Object Name | Select-Object -Last
 $jar = "$sdk\platforms\android-34\android.jar"
 $app = "$root\android\app\src\main"
 $out = "$root\android\build\lite"
-# Runtime deps (same as android/app/build.gradle): reuse Gradle's cache, else fetch from Maven Central once.
+# Runtime deps: reuse Gradle's cache if this machine has one, else fetch from Maven Central once.
 $libDir = "$root\.tools\libs"
 $libs = foreach ($d in @(
         @{ g = 'org/java-websocket'; a = 'Java-WebSocket'; v = '1.5.7' },
@@ -35,7 +35,7 @@ if (-not (Test-Path $ks)) {
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory "$out\gen", "$out\classes" | Out-Null
 
-# AGP normally injects these from build.gradle. One version for everything: extension/version.json.
+# Package name + version into the manifest. One version for everything: extension/version.json.
 $vj = Get-Content "$root\extension\version.json" -Raw | ConvertFrom-Json
 $ver = if ($vj.beta -and [version]$vj.beta -gt [version]$vj.version) { $vj.beta } else { $vj.version } # a beta build carries the beta version
 $parts = $ver.Split('.') | ForEach-Object { [int]$_ }

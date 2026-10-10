@@ -2,7 +2,7 @@
 //   lyricdock.losthusky.qzz.io        public info page
 //   art.lyricdock.losthusky.qzz.io    API (/v1/*) + promoted videos (/m/*)
 //   admin.lyricdock.losthusky.qzz.io  dashboard, ADMIN_EMAILS only (admin.js)
-// /v1/album|track|cover answer signed-in LyricDock apps only (Bearer app token from auth.lyricdock, ../../auth/sso.js).
+// /v1/cover answers signed-in LyricDock apps only (Bearer app token from auth.lyricdock, ../../auth/sso.js).
 // Docs: docs/lyricdock-cloud.md
 
 import { still } from './apple.js';
@@ -105,16 +105,6 @@ async function answer(env, cfg, url, ev, me) {
   if (src === 'limited') return json({ error: 'slow down' }, 429); // not cached: only 200/404 are
   Object.assign(ev, { tier: src, album_id: album?.id, album: album?.name, artist: album?.artist });
 
-  if (p === '/v1/album') {
-    if (!album) return json({ album: null }, 404);
-    const { tracks, ...rest } = album;
-    return json({ album: publicAlbum(rest), tracks });
-  }
-  if (p === '/v1/track') {
-    const title = (q.get('title') || '').trim().toLowerCase();
-    const t = album && title && album.tracks.filter(t => t.name.toLowerCase().startsWith(title)).sort((a, b) => a.name.length - b.name.length)[0];
-    return t ? json({ track: t, album: publicAlbum({ ...album, tracks: undefined }) }) : json({ track: null }, 404);
-  }
   if (p === '/v1/cover') {
     ev.kind = q.has('warm') ? 'warm' : 'cover'; // warm = the app preloading the next song: not a play
     if (!album) return json({ video: null, still: null }, 404);
@@ -135,11 +125,6 @@ async function answer(env, cfg, url, ev, me) {
     return json(out, v ? 200 : 404);
   }
   return json({ error: 'not found' }, 404);
-}
-
-function publicAlbum(a) {
-  const { square_variants, tall_variants, square_m3u8, tall_m3u8, tracks, ...rest } = a;
-  return { ...rest, motion: { square: (square_variants || []).map(({ url, ...v }) => v), tall: (tall_variants || []).map(({ url, ...v }) => v) } };
 }
 
 // One Analytics Engine data point per request. Geo comes from Cloudflare's edge (request.cf), never the app.

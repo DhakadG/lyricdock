@@ -6,7 +6,7 @@ import android.view.WindowManager;
 
 // Small UI-thread jobs posted from the page's JavaScript thread (no inner/anonymous classes - see DockServer).
 class UiOp implements Runnable {
-    static final int BRIGHTNESS = 1, WAKE = 2, JS = 3, CLEAR_CACHE = 4, OVER_LOCK = 5, OPEN_URL = 6;
+    static final int BRIGHTNESS = 1, WAKE = 2, JS = 3, CLEAR_CACHE = 4, OVER_LOCK = 5, OPEN_URL = 6, AWAKE = 7, KIOSK_EXIT = 8;
     private final MainActivity a;
     private final int op;
     private final float f;
@@ -32,6 +32,10 @@ class UiOp implements Runnable {
             a.web.clearCache(true);
         } else if (op == OPEN_URL) {
             a.openBrowser(s);
+        } else if (op == AWAKE) {
+            a.applyAwake(f > 0);
+        } else if (op == KIOSK_EXIT) {
+            a.exitKiosk();
         } else if (op == JS && a.web != null) {
             a.web.evaluateJavascript(s, null);
         }

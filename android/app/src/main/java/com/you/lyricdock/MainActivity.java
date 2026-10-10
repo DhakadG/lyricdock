@@ -39,6 +39,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     static volatile MainActivity current; // for MediaReceiver (notification buttons)
     static volatile boolean volKeys = true;
     android.net.wifi.WifiManager.WifiLock wifiLock;
+    boolean dev;
 
     // Called on the server thread.
     void deliver(String msg) { inbox.add(msg); web.post(this); }
@@ -59,7 +60,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         CrashLog.install(this); // a crash on any thread is written down (shown on the next start) instead of vanishing
         // Development builds only (scripts/build-apk.ps1 without -Release): page inspection over adb, and the adb
         // link below. A release build has neither, so adb on the phone can't read the app's tokens or drive the page.
-        boolean dev = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        dev = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         WebView.setWebContentsDebuggingEnabled(dev);
         root = new FrameLayout(this); // hosts the dock page, and the Spotify login overlay when open
         setContentView(root);
@@ -124,7 +125,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         web.getSettings().setSupportZoom(false); // a dock, not a page: no pinch / double-tap zoom
         web.getSettings().setBuiltInZoomControls(false);
         web.getSettings().setTextZoom(100); // ignore the system font-size zoom (layout is sized in vmin)
-        web.setWebViewClient(new PageClient()); // adds the Referer YouTube's embed needs; recovers a dead renderer
+        web.setWebViewClient(new PageClient()); // serves the music-video wrapper page; recovers a dead renderer
         web.setBackgroundColor(0xFF000000);
         web.addJavascriptInterface(this, "Dock"); // page -> PC (prev/play/next/seek); only @JavascriptInterface methods are exposed
         web.setOnApplyWindowInsetsListener(this);
@@ -150,6 +151,10 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
 
     @JavascriptInterface
     public void send(String json) { if (server != null) server.broadcast(json); }
+
+    // A development build (the adb link runs): the page tells Spotify, so only then does the bridge dial it.
+    @JavascriptInterface
+    public boolean dev() { return dev; }
 
     // Device name for the desktop's phone list ("Galaxy M01"), else the model.
     @JavascriptInterface
@@ -372,7 +377,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     // Settings -> Screen -> Keep the screen on: FLAG_KEEP_SCREEN_ON, and in kiosk mode also the "stay on while
     // plugged in" global setting (otherwise that would keep it on regardless).
     @JavascriptInterface
-    public void keepAwake(boolean on) { runOnUiThread(new Awake(this, on)); }
+    public void keepAwake(boolean on) { runOnUiThread(new UiOp(this, UiOp.AWAKE, on ? 1 : 0, null)); }
 
     void applyAwake(boolean on) {
         if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -398,7 +403,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     @JavascriptInterface
     @SuppressWarnings("deprecation")
     public void leaveKiosk() {
-        runOnUiThread(new KioskExit(this));
+        runOnUiThread(new UiOp(this, UiOp.KIOSK_EXIT, 0, null));
     }
 
     void exitKiosk() {

@@ -36,16 +36,11 @@
   const events = [];
   const log = text => { events.unshift({ t: Date.now(), text }); events.length = Math.min(events.length, 30); };
 
-  // ---- paired phones: [{ code, name }]. Migrates the single code older versions stored.
-  const PAIR_KEY = 'lyricdock:pair', PAIRS_KEY = 'lyricdock:pairs';
+  // ---- paired phones: [{ code, name }].
+  const PAIRS_KEY = 'lyricdock:pairs';
   function pairs() {
-    let p = readJson(PAIRS_KEY, null);
-    if (!Array.isArray(p)) {
-      const c = (LS.get(PAIR_KEY) || '').toUpperCase().replace(/[^A-Z2-9]/g, '');
-      p = c.length === 10 ? [{ code: c, name: 'Phone' }] : [];
-      writeJson(PAIRS_KEY, p);
-    }
-    return p.filter(x => /^[A-Z2-9]{10}$/.test(x?.code ?? ''));
+    const p = readJson(PAIRS_KEY, []);
+    return Array.isArray(p) ? p.filter(x => /^[A-Z2-9]{10}$/.test(x?.code ?? '')) : [];
   }
   const cleanCode = s => String(s ?? '').toUpperCase().replace(/[^A-Z2-9]/g, '');
   function addPair(code, name) {
@@ -360,12 +355,15 @@
   // ---- keep every paired phone linked. Failed dials back off (1, 2, 4, 8s, then every 10s) and alternate relays.
   const dial = new Map();
   let adbBusy = false, nextAdb = 0;
+  // The adb link only exists in development builds of the phone app (scripts/deploy.ps1): dial it on a -Dev install, or
+  // once a phone has said it is such a build (remembered), not every 3 s on every user's Spotify.
+  let adbWanted = VERSION === 'dev' || LS.get('lyricdock:adb') === '1';
   function ensureLink() {
     linkState();
     // Quiet = dead: 2.5s over adb (a forwarded socket can look open after the phone died), 8s over WebRTC, which rides
     // out Wi-Fi power-save hiccups (ICE recovers by itself; closing early is what caused needless reconnects).
     for (const [id, l] of links) if (l.readyState !== 1 || Date.now() - l.lastRx > (l.kind === 'rtc' ? 8000 : 2500)) closeLink(id, l.readyState === 1 ? 'went quiet' : 'disconnected');
-    if (!links.has('adb') && !adbBusy && Date.now() > nextAdb) {
+    if (adbWanted && !links.has('adb') && !adbBusy && Date.now() > nextAdb) {
       adbBusy = true; nextAdb = Date.now() + 3000;
       tryOpen(1200).then(s => { adbBusy = false; if (s) adopt('adb', s, null); });
     }
@@ -421,6 +419,7 @@
     const m = safe(() => JSON.parse(data), null);
     if (!m || typeof m !== 'object') return;
     if (m.type === 'alive') {
+      if (m.dev === true && !adbWanted) { adbWanted = true; LS.set('lyricdock:adb', '1'); }
       const c = cleanCode(m.code);
       if (c.length === 10 && from.kind === 'adb' && from.code !== c) { from.code = c; closeLink(c, 'moved to adb'); addPair(c, m.name); renderPanel(); }
       if (c.length === 10 && typeof m.name === 'string' && m.name) addPair(c, m.name.slice(0, 40));
@@ -1179,26 +1178,6 @@
       .filter(r => /^v\d+\.\d+\.\d+$/.test(r?.tag_name ?? '')).map(r => ({ v: r.tag_name.slice(1), pre: r.prerelease }));
     return releases;
   }
-  // The loader runs whatever build is stored here on the next start.
-  function saveBuild(v, code) {
-    localStorage.setItem('lyricdock:build', code);
-    localStorage.setItem('lyricdock:build-version', v);
-  }
-  // A release build, only if signed with the release key (scripts/sign-extension.mjs; same key as the loader's).
-  const SIGN_KEY = { kty: 'EC', crv: 'P-256', x: '5Jt4no0pL1EAzLRkZTz_qTWC6wW3BVZIS7jE0J12umI', y: 'EZC3pygg0nHSsSTbCBcTYPh0FVb_fpH6znz1AdoK1_8' };
-  async function fetchBuild(v) {
-    const at = `https://cdn.jsdelivr.net/gh/DhakadG/lyricdock@v${v}/extension/dock-bridge.js`;
-    const [r, s] = await Promise.all([fetch(at), fetch(`${at}.sig`)]);
-    if (!r.ok || !s.ok) throw new Error('download failed');
-    const buf = await r.arrayBuffer(), sig = Uint8Array.from(atob((await s.text()).trim().replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-    const k = await crypto.subtle.importKey('jwk', SIGN_KEY, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-    if (!(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, k, sig, buf))) throw new Error('signature check failed');
-    return new TextDecoder().decode(buf);
-  }
-  async function useBuild(v) {
-    saveBuild(v, await fetchBuild(v));
-    location.reload();
-  }
 
   // ---- sections
   function sections(schema) {
@@ -1240,7 +1219,7 @@
     const kids = [...header('General', 'Overview', 'Version and updates.')];
     const ver = h('div', { className: 'ldx-box' });
     ver.append(h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, `LyricDock ${VERSION === 'dev' ? '(development build)' : 'v' + VERSION}`),
-      h('small', {}, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : LS.get('lyricdock:pin') ? `Pinned to v${LS.get('lyricdock:pin')} - updates paused` : latest && latest !== VERSION ? `v${latest} downloaded` : 'Up to date - updates install automatically')),
+      h('small', {}, VERSION === 'dev' ? 'Installed with -Dev: no auto-updates' : LS.get('lyricdock:pin') ? `Pinned to v${LS.get('lyricdock:pin')} - updates paused` : latest && latest !== VERSION ? `v${latest} ready` : 'Up to date - updates install automatically')),
       VERSION === 'dev' ? '' : latest && latest !== VERSION ? btn('Update now', () => location.reload(), true) : btn('Check for updates', e => checkUpdate(e.target))));
     if (VERSION !== 'dev') {
       const chan = h('select', {}, h('option', { value: 'stable' }, 'Stable'), h('option', { value: 'beta' }, 'Beta (pre-releases)'));
@@ -1251,7 +1230,7 @@
       vs.onchange = () => {
         if (!vs.value) { LS.set('lyricdock:pin', ''); checkUpdate(null); return; }
         LS.set('lyricdock:pin', vs.value);
-        useBuild(vs.value).catch(() => safe(() => Spicetify.showNotification('Could not download that version', true)));
+        location.reload(); // the loader downloads + verifies the pinned build on start (the running one stays if it can't)
       };
       chan.disabled = vs.disabled = !loaderV2;
       ver.append(h('div', { className: 'ldx-row' }, h('div', {}, h('b', {}, 'Update channel and version'),
@@ -1454,16 +1433,14 @@
     const j = await (await fetch(`https://raw.githubusercontent.com/DhakadG/lyricdock/main/extension/version.json?t=${Date.now()}`, { cache: 'no-store' })).json();
     return LS.get('lyricdock:channel') === 'beta' && /^\d+\.\d+\.\d+$/.test(j.beta ?? '') && newer(j.beta, j.version) ? j.beta : j.version;
   }
-  // Manual "Check for updates": download the new build into the loader's cache (so it's used even if Update isn't
-  // clicked), then show the update popup.
+  // Manual "Check for updates": show the update popup. Downloading and verifying is the loader's job alone (it does it
+  // on the next start, or now if Update is clicked), so this file never writes code for the loader to run.
   async function checkUpdate(btn) {
     const say = t => { if (btn) btn.textContent = t; };
     say('Checking…');
     try {
       const v = await wanted();
       if (!/^\d+\.\d+\.\d+$/.test(v) || v === VERSION) { say('Up to date'); setTimeout(() => say('Check for updates'), 3000); return; }
-      say('Downloading…');
-      saveBuild(v, await fetchBuild(v));
       window.__lyricdock.latest = v;
       dispatchEvent(new Event('lyricdock:update'));
     } catch (e) { say('Check failed - retry'); }
@@ -1529,7 +1506,7 @@
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'LyricDock update');
     el.innerHTML = `<div class="ldu-card">
-      <div class="ldu-top"><div class="ldu-app">${ICON}</div><div><h2>Update ready</h2><p>LyricDock ${esc(to)} is downloaded</p></div>
+      <div class="ldu-top"><div class="ldu-app">${ICON}</div><div><h2>Update ready</h2><p>LyricDock ${esc(to)} is ready</p></div>
         <button class="ldu-x" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
       <div class="ldu-ver"><span>${esc(VERSION)}</span><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span class="new">${esc(to)}</span></div>
       <div class="ldu-notes"><b>What's new</b><div class="ldu-list"><div class="ldu-skel" style="width:88%"></div><div class="ldu-skel" style="width:70%"></div><div class="ldu-skel" style="width:78%"></div></div></div>

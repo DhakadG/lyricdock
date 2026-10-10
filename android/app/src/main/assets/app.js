@@ -730,13 +730,13 @@ $('bar').addEventListener('click', e => {
 // so the bridge reconnects when these stop arriving.
 // Spotify reaches the phone through adb (USB, or wireless adb when the cable is out - see scripts/link.ps1),
 // always via localhost on the PC: Chromium refuses ws:// from Spotify's https page to a LAN address.
-let myIp = '', phoneModel = '';
-try { phoneModel = Dock.model(); } catch (e) {}
+let myIp = '', phoneModel = '', devBuild = false;
+try { phoneModel = Dock.model(); devBuild = Dock.dev(); } catch (e) {}
 const refreshIp = () => { try { myIp = Dock.ip(); } catch (e) {} };
 refreshIp();
 setInterval(refreshIp, 10000);
 setInterval(() => {
-  send({ type: 'alive', ip: myIp, code: Rtc.code, name: phoneModel });
+  send({ type: 'alive', ip: myIp, code: Rtc.code, name: phoneModel, ...(devBuild ? { dev: true } : {}) }); // dev: Spotify may dial the adb link
   // The computer-pairing hint, unless this screen follows a Spotify account (then it's just waiting for a song).
   if (!P.id) $('artist').textContent = S.source === 'web' || Web.loggedIn() ? '' : `In Spotify: LyricDock button → Devices → Find devices  ·  code ${Rtc.code}`;
 }, 1000);

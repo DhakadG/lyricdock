@@ -1,18 +1,6 @@
 // Dev check: real touch gestures on the phone over CDP (Input.dispatchTouchEvent), with seek / skip / like intercepted, so
 // nothing reaches Spotify. Each case says what should fire; the script reports what did.  node scripts/gesture-test.mjs
-const list = await (await fetch('http://127.0.0.1:9333/json')).json();
-const ws = new WebSocket(list.find(p => p.url.includes('android_asset')).webSocketDebuggerUrl);
-let id = 0;
-const call = (method, params = {}) => new Promise((res, rej) => {
-  const my = ++id;
-  const on = e => { const m = JSON.parse(e.data); if (m.id !== my) return; ws.removeEventListener('message', on); m.error ? rej(new Error(m.error.message)) : res(m.result); };
-  ws.addEventListener('message', on);
-  ws.send(JSON.stringify({ id: my, method, params }));
-});
-await new Promise(r => ws.addEventListener('open', r));
-const ev = async x => (await call('Runtime.evaluate', { expression: x, awaitPromise: true, returnByValue: true })).result.value;
-const sleep = t => new Promise(r => setTimeout(r, t));
-const touch = (type, x, y) => call('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+import { ev, sleep, touch, ws } from './cdp.mjs';
 async function drag(x0, y0, x1, y1, ms = 250, steps = 12) {
   await touch('touchStart', x0, y0);
   for (let i = 1; i <= steps; i++) { await sleep(ms / steps); await touch('touchMove', x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps); }
@@ -45,9 +33,8 @@ for (const [name, fn, want] of cases) {
 }
 await ev(`$('next').onclick = window.__nx; $('prev').onclick = window.__pv; $('heart').onclick = window.__ht; Lyrics.onSeek(seek); document.body.classList.remove('ui'); 1`);
 // ---- timeline and cover (their commands are caught before they reach Spotify)
-const T2 = (type, x, y) => call('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
-const drag2 = async (x0, y0, x1, y1, n = 4) => { await T2('touchStart', x0, y0); for (let i = 1; i <= n; i++) { await sleep(15); await T2('touchMove', x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n); } await T2('touchEnd'); };
-const tap2 = async (x, y) => { await T2('touchStart', x, y); await sleep(60); await T2('touchEnd'); };
+const drag2 = async (x0, y0, x1, y1, n = 4) => { await touch('touchStart', x0, y0); for (let i = 1; i <= n; i++) { await sleep(15); await touch('touchMove', x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n); } await touch('touchEnd'); };
+const tap2 = async (x, y) => { await touch('touchStart', x, y); await sleep(60); await touch('touchEnd'); };
 await ev(`(() => { window.__g = []; const g = window.__g;
   window.__ds = Dock.send; try { Dock.send = s => { const m = JSON.parse(s); if (m.type === 'cmd') g.push(m.cmd); else window.__ds.call(Dock, s); }; } catch (e) {}
   window.__rs = Rtc.send; Rtc.send = s => { const m = JSON.parse(s); if (m.type === 'cmd') g.push(m.cmd); else window.__rs(s); };

@@ -2,14 +2,8 @@
 // (Settings -> Animation speed), then grabs a burst of frames of the seconds cards and tiles them into one image.
 //   node scripts/flip-frames.mjs <out.png> [theme: light|dark] [anim]      (needs the adb forward, see cdp.mjs)
 import fs from 'node:fs';
+import { call, ev, sleep, ws } from './cdp.mjs';
 const [, , out = 'android/build/flip-frames.png', theme = 'light', anim = ''] = process.argv;
-const list = await (await fetch('http://127.0.0.1:9333/json')).json();
-const ws = new WebSocket(list.find(p => p.url.includes('android_asset')).webSocketDebuggerUrl);
-let id = 0;
-const call = (m, p = {}) => new Promise(r => { const my = ++id; const on = e => { const x = JSON.parse(e.data); if (x.id !== my) return; ws.removeEventListener('message', on); r(x.result); }; ws.addEventListener('message', on); ws.send(JSON.stringify({ id: my, method: m, params: p })); });
-await new Promise(r => ws.addEventListener('open', r));
-const ev = async x => (await call('Runtime.evaluate', { expression: x, returnByValue: true, awaitPromise: true })).result.value;
-const sleep = t => new Promise(r => setTimeout(r, t));
 const before = await ev(`JSON.stringify({ layout: Settings.S.layout, theme: Settings.S.clockTheme, secs: Settings.S.clockSeconds, speed: Settings.S.animSpeed, anim: Settings.S.clockAnim })`);
 await ev(`Settings.set('layout', 'clock'); Settings.set('clockTheme', '${theme}'); Settings.set('clockSeconds', true); Settings.set('animSpeed', 0.5); ${anim ? `Settings.set('clockAnim', '${anim}');` : ''} 1`);
 await sleep(9000); // the airport-board entry rolls in first

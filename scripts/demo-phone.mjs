@@ -5,18 +5,8 @@
 //   node scripts/demo-phone.mjs at <posMs>
 //   node scripts/demo-phone.mjs stop                   back to the real song
 import fs from 'node:fs';
+import { ev as run, ws } from './cdp.mjs';
 const [, , cmd = 'start', a1, a2] = process.argv;
-const list = await (await fetch('http://127.0.0.1:9333/json')).json();
-const ws = new WebSocket(list.find(p => p.url.includes('android_asset')).webSocketDebuggerUrl);
-let id = 0;
-const call = (method, params = {}) => new Promise((res, rej) => {
-  const my = ++id;
-  const on = e => { const m = JSON.parse(e.data); if (m.id !== my) return; ws.removeEventListener('message', on); m.error ? rej(new Error(m.error.message)) : res(m.result); };
-  ws.addEventListener('message', on);
-  ws.send(JSON.stringify({ id: my, method, params }));
-});
-await new Promise(r => ws.addEventListener('open', r));
-const run = async expr => { const r = await call('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text); return r.result.value; };
 
 if (cmd === 'start') {
   // the demo data from the preview driver, minus its fake Dock and its own timers

@@ -8,11 +8,10 @@
 //                       or the session cookie (web app; also renews the cookie, so people who use LyricDock stay signed in).
 //                       Renewal stops AUTH_MAX after the last real Google sign-in (claim `at`): a stolen token can't live forever.
 //   /logout?rd=<url>    clears the session everywhere (POST; GET shows a confirm button)
-//   /me                 the signed-in user as JSON (CORS for our own subdomains, with credentials)
 // The session is an ES256 JWT in a cookie on lyricdock.losthusky.qzz.io, so every LyricDock subdomain (and none of the
 // other losthusky.qzz.io sites) receives it and checks it with
 // the public key in ../sso.js. Only this Worker holds the private key (secret SSO_PRIVATE_JWK).
-import { AUTH, COOKIE, b64u, cookie, verify } from '../sso.js';
+import { AUTH, COOKIE, b64u, cookie, verify, same } from '../sso.js';
 import { ICON_LINKS, icon } from '../brand.js';
 
 const ROOT = 'lyricdock.losthusky.qzz.io'; // the session cookie's domain, and the only sites sign-in returns to
@@ -64,12 +63,6 @@ function safeRd(raw) {
 
 const rand = n => b64u.enc(crypto.getRandomValues(new Uint8Array(n)));
 const sha256 = async s => b64u.enc(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
-function same(a, b) { // constant-time string compare
-  a = String(a); b = String(b);
-  let d = a.length ^ b.length;
-  for (let i = 0; i < Math.max(a.length, b.length); i++) d |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
-  return d === 0;
-}
 const allowed = (env, email) => { const l = String(env.ALLOWED_EMAILS || '').toLowerCase().split(/[\s,]+/).filter(Boolean); return !l.length || l.includes(email); };
 
 let signKey;
@@ -156,15 +149,15 @@ async function callback(req, env, url) {
   return st.app ? backToApp(req, env, me, st.app, cookies) : redirect(st.rd, cookies);
 }
 
-function cors(req, open) {
+function cors(req) {
   const o = req.headers.get('origin') || '';
   if (o && safeRd(`${o}/`) === `${o}/`) return { 'access-control-allow-origin': o, 'access-control-allow-credentials': 'true', vary: 'origin' };
-  return open ? { 'access-control-allow-origin': '*', vary: 'origin' } : { vary: 'origin' };
+  return { 'access-control-allow-origin': '*', vary: 'origin' };
 }
 
 // An app token. Form body (a "simple" request: no CORS preflight) with code + verifier, or token; else the cookie.
 async function token(req, env) {
-  const h = { ...SEC, ...cors(req, true), 'content-type': 'application/json' };
+  const h = { ...SEC, ...cors(req), 'content-type': 'application/json' };
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...h, 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' } });
   const out = (body, status = 200, cookies = []) => new Response(JSON.stringify(body), { status, headers: withCookies(h, cookies) });
   if (req.method !== 'POST') return out({ error: 'POST only' }, 405);
@@ -208,11 +201,6 @@ export default {
           if (!me) return redirect(rd);
           return page(`${who(me)}<h1>Sign out?</h1><p>This signs <b>${esc(me.email)}</b> out of LyricDock in this browser.</p>
 <form method=post action="/logout?rd=${encodeURIComponent(rd)}" class=acts><button class="b w">Sign out</button><a class="b g" href="${esc(rd === `${AUTH}/` ? APP : rd)}">Cancel</a></form>`);
-        }
-        case '/me': {
-          const me = await verify(cookie(req, COOKIE));
-          return new Response(JSON.stringify(me ? { email: me.email, name: me.name, pic: me.pic, exp: me.exp } : null),
-            { status: me ? 200 : 401, headers: { ...SEC, ...cors(req), 'content-type': 'application/json' } });
         }
         case '/': {
           const me = await verify(cookie(req, COOKIE));

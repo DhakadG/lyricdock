@@ -2,23 +2,9 @@
 // Spotify captured instead (nothing is skipped for real). Checks which song lands, the commands sent, that no card or
 // inline style is left behind, and saves a screenshot mid-drag.   node scripts/swipe-test.mjs [outDir]
 import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { call, ev, sleep, touch, screencap, ws } from './cdp.mjs';
 const out = process.argv[2] ?? 'android/build/swipe-test';
 fs.mkdirSync(out, { recursive: true });
-const ADB = process.env.ADB ?? 'C:/Users/lost_husky/Downloads/Programs/ADB_AppControl/adb/adb.exe';
-const list = await (await fetch('http://127.0.0.1:9333/json')).json();
-const ws = new WebSocket(list.find(p => p.url.includes('android_asset')).webSocketDebuggerUrl);
-let id = 0;
-const call = (method, params = {}) => new Promise((res, rej) => {
-  const my = ++id;
-  const on = e => { const m = JSON.parse(e.data); if (m.id !== my) return; ws.removeEventListener('message', on); m.error ? rej(new Error(m.error.message)) : res(m.result); };
-  ws.addEventListener('message', on);
-  ws.send(JSON.stringify({ id: my, method, params }));
-});
-await new Promise(r => ws.addEventListener('open', r));
-const ev = async x => { const r = await call('Runtime.evaluate', { expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description); return r.result.value; };
-const sleep = t => new Promise(r => setTimeout(r, t));
-const touch = (type, x, y) => call('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
 async function drag(x0, y0, dx, ms = 260, steps = 14, hold) {
   await touch('touchStart', x0, y0);
   for (let i = 1; i <= steps; i++) { await sleep(ms / steps); await touch('touchMove', x0 + dx * i / steps, y0 + i * 0.6); }
@@ -26,7 +12,7 @@ async function drag(x0, y0, dx, ms = 260, steps = 14, hold) {
   await touch('touchEnd');
 }
 const tap = async (x, y) => { await touch('touchStart', x, y); await sleep(50); await touch('touchEnd'); };
-const shot = f => fs.writeFileSync(`${out}/${f}`, execFileSync(ADB, ['exec-out', 'screencap', '-p'], { maxBuffer: 64e6 }));
+const shot = f => screencap(`${out}/${f}`);
 
 const orig = await ev('Settings.S.layout');
 // capture outgoing commands: Dock.send / Rtc.send are swapped for a recorder (Dock's other calls still go through)

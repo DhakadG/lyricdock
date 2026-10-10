@@ -344,16 +344,6 @@ const Settings = (() => {
   try { saved = JSON.parse(localStorage.getItem(window.LYRICDOCK_MINI ? 'dock:settings' : KEY)); } catch (e) {} // the miniplayer starts from the screen's look
   const fresh = !saved; // first run on this phone: take the desktop's last settings when the bridge sends them
   const S = { ...defaults, ...saved };
-  if (typeof S.clockHaptic === 'boolean') S.clockHaptic = S.clockHaptic ? 'light' : 'off'; // was a toggle
-  // One time: the progress bar now defaults to "Under the cover"; phones that still had the old default (bottom edge) move over.
-  try {
-    if (saved && !localStorage.getItem('dock:m17b')) {
-      if (S.progress === 'bottom') S.progress = saved.progress = 'art';
-      S.blurLines = saved.blurLines = false; // crisp, translucent upcoming lines are the new look
-      localStorage.setItem(KEY, JSON.stringify(saved));
-      localStorage.setItem('dock:m17b', '1');
-    }
-  } catch (e) {}
   const listeners = [];
   let presets = {}, presetHook = () => {};
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };

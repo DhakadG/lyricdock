@@ -2,18 +2,9 @@
 // problems: named blocks ([data-block]) that overlap when they shouldn't, text cut off by its box, blocks off screen.
 //   node scripts/screen-audit.mjs <outDir>          (needs adb forward tcp:9333, see scripts/cdp.mjs; run demo-phone first)
 import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { ev, sleep, screencap as shot, ws } from './cdp.mjs';
 const out = process.argv[2] ?? 'android/build/audit';
 fs.mkdirSync(out, { recursive: true });
-const ADB = process.env.ADB ?? 'C:/Users/lost_husky/Downloads/Programs/ADB_AppControl/adb/adb.exe';
-const list = await (await fetch('http://127.0.0.1:9333/json')).json();
-const ws = new WebSocket(list.find(p => p.url.includes('android_asset')).webSocketDebuggerUrl);
-let id = 0;
-const call = (m, p = {}) => new Promise(r => { const my = ++id; const on = e => { const x = JSON.parse(e.data); if (x.id !== my) return; ws.removeEventListener('message', on); r(x.result); }; ws.addEventListener('message', on); ws.send(JSON.stringify({ id: my, method: m, params: p })); });
-await new Promise(r => ws.addEventListener('open', r));
-const ev = async x => { const r = await call('Runtime.evaluate', { expression: x, returnByValue: true, awaitPromise: true }); return r.exceptionDetails ? 'ERR ' + r.exceptionDetails.exception?.description : r.result.value; };
-const sleep = t => new Promise(r => setTimeout(r, t));
-const shot = f => fs.writeFileSync(f, execFileSync(ADB, ['exec-out', 'screencap', '-p'], { maxBuffer: 64e6 }));
 
 // Pairs that may legitimately overlap (containers and their children, overlays that sit on the cover...).
 const CHECK = `(() => {
