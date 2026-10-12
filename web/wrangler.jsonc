@@ -8,6 +8,8 @@
   "workers_dev": false,
   "routes": [{ "pattern": "app.lyricdock.losthusky.qzz.io", "custom_domain": true }],
   // /turn: at most 10 credential requests per signed-in account per minute (src/worker.js)
-  "ratelimits": [{ "name": "TURN_LIMIT", "namespace_id": "1101", "simple": { "limit": 10, "period": 60 } }],
+  // /lyrics: at most 40 lookups per signed-in account per minute (the song, the next two, skips)
+  "ratelimits": [{ "name": "TURN_LIMIT", "namespace_id": "1101", "simple": { "limit": 10, "period": 60 } },
+    { "name": "LYRICS_LIMIT", "namespace_id": "1102", "simple": { "limit": 40, "period": 60 } }],
   "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true, "not_found_handling": "single-page-application", "html_handling": "auto-trailing-slash" }
 }

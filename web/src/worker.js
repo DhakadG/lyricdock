@@ -25,12 +25,35 @@ async function turn(req, env) {
   return new Response(JSON.stringify({ iceServers: clean }), { headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' } });
 }
 
+// Word / syllable-synced lyrics for the web app, so nobody needs their own key: the Spicy Lyrics developer API with
+// LyricDock's secret key, kept here (its terms: "running your own server that calls the API and serves results to your
+// own users is expected and fine"). Signed-in users only - never a public endpoint (that would be redistribution) - with a
+// per-account limit, and an edge cache of 7 days (the terms cap stored data at 30). Secret: SPICY_KEY (sl_sk_...,
+// developers.spicylyrics.org -> your application -> secret key). The page credits the source under the lyrics (lyrics.js).
+async function lyrics(req, env, ctx, id) {
+  const no = (status, e) => new Response(JSON.stringify({ error: e }), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  if (!/^[A-Za-z0-9]{22}$/.test(id)) return no(400, 'bad id');
+  const me = await session(req);
+  if (!me) return no(401, 'sign in');
+  if (!env.SPICY_KEY) return no(503, 'lyrics not configured');
+  const key = new Request(`https://lyrics.cache.invalid/v1/${id}`), hit = await caches.default.match(key);
+  if (hit) return new Response(hit.body, { status: hit.status, headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' } });
+  if (env.LYRICS_LIMIT && !(await env.LYRICS_LIMIT.limit({ key: me.email })).success) return no(429, 'slow down');
+  const r = await fetch(`https://api.spicylyrics.org/v1/lyrics/${id}`, { headers: { authorization: `Bearer ${env.SPICY_KEY}`, accept: 'application/json' } }).catch(() => null);
+  if (!r) return no(502, 'lyrics unreachable');
+  const body = await r.text();
+  // Found (7 days) and "no lyrics" (1 day: a sync may get uploaded) are kept; errors and rate limits never are.
+  if (r.ok || r.status === 404) ctx.waitUntil(caches.default.put(key, new Response(body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': `max-age=${r.ok ? 7 * 86400 : 86400}` } })));
+  return new Response(body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' } });
+}
+
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const { pathname } = new URL(req.url);
     const ic = icon(pathname); // /favicon.ico etc. -> /icons/ (public)
     if (ic) return ic;
     if (pathname === '/turn') return turn(req, env);
+    if (pathname.startsWith('/lyrics/')) return lyrics(req, env, ctx, pathname.slice(8));
     if (pathname === '/manifest.webmanifest' || pathname === '/sw.js' || pathname.startsWith('/icons/') || (await session(req))) return env.ASSETS.fetch(req);
     return signIn(req);
   },

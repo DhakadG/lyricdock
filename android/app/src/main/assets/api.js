@@ -15,7 +15,8 @@ const Api = (() => {
     try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch (e) { cache = {}; }
   };
 
-  const enabled = () => /^sl_pk_[\w-]+$/.test(Settings.S.apiKey || '');
+  const own = () => /^sl_pk_[\w-]+$/.test(Settings.S.apiKey || '');
+  const enabled = () => own() || !!window.LYRICDOCK_WEB; // the web app has it built in (its server's /lyrics, shim.js)
 
   // Resolves to normalized lyrics or null. Never rejects; de-duplicates concurrent requests per track.
   function get(id) {
@@ -46,7 +47,7 @@ const Api = (() => {
     }
     Api.lastStatus = m.status;
     if (m.status === 429) notice('Spicy Lyrics API is rate-limiting - using other lyrics sources for now');
-    else if (m.status === 401 || m.status === 403) notice('Spicy Lyrics API key was refused - check it in Settings → Lyrics');
+    else if ((m.status === 401 || m.status === 403) && own()) notice('Spicy Lyrics API key was refused - check it in Settings → Lyrics');
     done(m.id, lyr);
   }
 

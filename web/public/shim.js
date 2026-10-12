@@ -69,12 +69,15 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
     else toPage({ type: 'update', state: 'error', version: 'install failed' });
   }
 
-  // Optional Spicy Lyrics API (api.js), the phone's LyricsFetch.java in a browser. The browser sends an Origin header,
-  // so the key must allow this site's origin in the Spicy Lyrics developer dashboard.
+  // Spicy Lyrics API (api.js), the phone's LyricsFetch.java in a browser: by default through this site's own /lyrics
+  // (src/worker.js, LyricDock's key, signed-in users), or straight to Spicy with the user's own publishable key - the
+  // browser sends an Origin header, so that key must allow this site's origin in the Spicy Lyrics developer dashboard.
   async function fetchLyrics(id, key) {
-    if (!/^[A-Za-z0-9]{22}$/.test(id || '') || !/^sl_pk_[\w-]{8,200}$/.test(key || '')) return;
+    if (!/^[A-Za-z0-9]{22}$/.test(id || '')) return;
+    const own = /^sl_pk_[\w-]{8,200}$/.test(key || '');
     try {
-      const r = await fetch(`https://api.spicylyrics.org/v1/lyrics/${id}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
+      const r = own ? await fetch(`https://api.spicylyrics.org/v1/lyrics/${id}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } })
+        : await fetch(`/lyrics/${id}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       toPage({ type: 'api', id, status: r.status, text: await r.text() });
     } catch (e) { toPage({ type: 'api', id, status: 0, text: '' }); }
   }

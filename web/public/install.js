@@ -108,7 +108,7 @@
       tip('dock:tipAway', `Spotify is playing on ${on.name || 'another device'}. Control it with this computer's media keys?`, 'Turn on', () => Settings.set('mediaNotif', true));
     // Word timing comes from Spotify on a computer (the extension reads Spicy Lyrics' cache) or a Spicy Lyrics key;
     // following the account alone gets line-synced lyrics (LRCLIB...).
-    else if (P.source === 'web' && P.lyrics?.kind === 'line' && !Rtc.open() && !/^sl_pk_/.test(S.apiKey || ''))
+    else if (P.source === 'web' && P.lyrics?.kind === 'line' && !Rtc.open() && Api.lastStatus !== 200)
       tip('dock:tipWords', 'Word-by-word lyrics come from Spotify on your computer: in Spotify, open LyricDock → Devices → Find devices, then Allow here.', 'How', () => window.Setup?.open('pc'));
     else if (window.lyricdockMini?.supported && P.shown)
       tip('dock:tipMini', 'Keep the lyrics on top of your other windows: the miniplayer (or press M)', 'Open', () => window.lyricdockMini());
