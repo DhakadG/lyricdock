@@ -145,7 +145,19 @@ const Lyrics = (() => {
     return lines.length ? { kind, lines, writers: L.SongWriters ?? [], source: provider(L.source),
       contributors: contributors(L.UploadAttribution) } : null;
   }
-  const rank = l => ({ word: 3, line: 2, static: 1 })[l?.kind] ?? 0;
+  // Which lyrics win: Settings -> Lyrics -> Lyrics sources, a list of source x sync type, most wanted first (Better
+  // Lyrics' provider list). Disabled entries ('-' prefix) score 0 = never shown. A source the list doesn't name (Spicy's
+  // 'Local DB') sits just under the first named entry of its sync type.
+  const SOURCES = ['Apple Music', 'Spicy Lyrics', 'Spotify', 'LRCLIB'];
+  function rank(l) {
+    if (!l?.lines?.length || !['word', 'line', 'static'].includes(l.kind)) return 0;
+    const o = Settings.S.srcOrder ?? [], score = i => o.length - i;
+    if (SOURCES.includes(l.source)) { const i = o.indexOf(`${l.source}:${l.kind}`); return i < 0 ? 0 : score(i); }
+    const i = o.findIndex(k => k.endsWith(':' + l.kind) && k[0] !== '-');
+    return i < 0 ? 0.5 : score(i) - 0.5;
+  }
+  const best = list => list.reduce((b, l) => (rank(l) > rank(b) ? l : b), null);
+  const top = () => (Settings.S.srcOrder ?? []).filter(k => k[0] !== '-').length; // the best score anything can get
 
   // ---- scrolling: a critically damped spring on #lines' transform (Spicy's smooth scroll). Unlike a CSS transition it keeps
   // its velocity when the target changes mid-flight, so quick line changes read as one glide, and it moves in sub-pixels.
@@ -344,9 +356,29 @@ const Lyrics = (() => {
     const frac = document.body.classList.contains('layout-cinema') ? 0.5 : Settings.S.anchor;
     const y = BOX.clientHeight * frac - el.offsetTop - el.offsetHeight / 2;
     if (instant) { sc.sp.set(y, true); sc.on = false; curY = y; writeY(y); return; }
+    if (Settings.S.scroll === 'cascade' && CASCADE) return cascade(i, y);
     if (!sc.on) sc.sp.set(curY, true); // start from wherever the list really is, at rest
     sc.sp.set(y);
     sc.on = true;
+  }
+
+  // Cascade (Better Lyrics' line scroll): the list jumps to the target at once and every nearby line glides in from
+  // where it was on its own clock. Lines behind the travel direction take 750 ms + 20 ms a line (up to 6), the ones
+  // ahead 750 ms + ln(d + 2) x 80 ms + (d + 1) x 20 ms, so the far lines trail and the scroll reads as a ripple.
+  // Additive animations: a new scroll mid-flight stacks on the running ones, so nothing jumps. Needs composite 'add'
+  // on transform (Chrome 112+); older WebViews keep the spring.
+  const CASCADE = (() => { try { document.createElement('div').animate([{ transform: 'none' }], { composite: 'add' }).cancel(); return CSS.supports('translate', '0 1px'); } catch (e) { return false; } })();
+  const EASE = 'cubic-bezier(.86, 0, .2, 1)';
+  function cascade(i, y) {
+    const off = curY - y; // where each line was, relative to where it now sits
+    sc.on = false; sc.sp.set(y, true); curY = y; writeY(y);
+    if (Math.abs(off) < 1) return;
+    const k = Settings.S.animSpeed, n = Math.min(Settings.S.renderDistance, 10);
+    for (let j = Math.max(0, i - n); j <= Math.min(lines.length - 1, i + n); j++) {
+      const r = j - i, d = Math.abs(r), ahead = off > 0 ? r > 0 : r < 0; // off > 0: the list moved up, line i + 1 is ahead
+      const ms = (ahead || !r ? 750 + Math.log(d + 2) * 80 + (d + 1) * 20 : 750 + Math.min(d, 6) * 20) / k;
+      lines[j].el.animate([{ translate: `0 ${off.toFixed(1)}px`, easing: EASE }, { translate: '0 0' }], { duration: ms, composite: 'add' });
+    }
   }
 
   // How busy the vocals are around p, 0..1 (null without synced lyrics): drives 'Move with the music' now that
@@ -380,6 +412,8 @@ const Lyrics = (() => {
     lineAt,
     fromSpicy,
     rank,
+    best,
+    top,
     rebuild: () => build(data),
     refresh: () => synced && scrollTo(anchor, true),
     isFree,

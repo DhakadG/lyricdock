@@ -50,12 +50,31 @@ body.mini.bar #mb{opacity:1;transform:none;pointer-events:auto}
 #mini [data-k=pp]{width:40px;height:40px;background:#fff;color:#000}#mini [data-k=pp]:hover{background:#ddd}
 #mVol.muted{opacity:.35}#mHead.on{opacity:1}
 #mLike path.fill{opacity:0}#mLike.on path.fill{opacity:1;color:rgb(var(--acc,30,215,96))}
-body.mini.short #mh,body.mini.nohead #mh{display:none}body.mini.narrow #mini .s{display:none}
-body.mini.slim #mNav{grid-template-columns:auto}body.mini.slim #mNav .side{display:none}`;
+body.mini.short #mh,body.mini.nohead:not(.wide) #mh{display:none}body.mini.narrow #mini .s{display:none}
+body.mini.slim #mNav{grid-template-columns:auto}body.mini.slim #mNav .side{display:none}
+body.mini.noprog #mTl{display:none!important}
+#mh #mCov,#mh #mMv{display:none}.mGhost{position:fixed;z-index:52;object-fit:cover;pointer-events:none}
+#mT .w,#mA .w{display:inline-block;white-space:pre}
+/* Big cover (Better Lyrics' horizontal floating window): cover on the left with the controls on it, the timeline under it,
+   the song above the lyrics. --g gap, --aw cover size (fit()). */
+body.mini.wide #wrap{padding:var(--mh) var(--g) var(--g) calc(var(--aw) + var(--g) * 2)!important}
+body.mini.wide #mh{left:calc(var(--aw) + var(--g) * 2);right:0;padding:var(--g) var(--g) 0 0;background:none;align-items:flex-start}
+body.mini.wide #mh div{gap:3px}body.mini.wide #mT{font-size:clamp(18px,4.2vh,30px);letter-spacing:-.02em}body.mini.wide #mA{font-size:clamp(13px,2.6vh,18px);opacity:.62;font-weight:600}
+body.mini.wide #mArt,body.mini.wide #mCov{position:fixed;left:var(--g);top:var(--g);width:var(--aw);height:var(--aw);border-radius:calc(var(--aw) * .07)}
+body.mini.wide #mh #mMv{display:block;position:fixed;left:var(--g);top:var(--g);width:var(--aw);height:var(--aw);border-radius:calc(var(--aw) * .07);overflow:hidden;z-index:52;pointer-events:none}
+body.mini.wide #mArt{z-index:51;box-shadow:0 10px 34px rgba(0,0,0,.45)}
+body.mini.wide #mh #mCov{z-index:53;display:flex;align-items:center;justify-content:center;gap:calc(var(--aw) * .06);background:rgba(0,0,0,.28);opacity:0;transition:opacity .2s}
+body.mini.wide #mCov:hover,body.mini.wide #mCov:focus-within,body.mini.wide.paused #mCov{opacity:1}
+body.mini.wide #mCov button{width:calc(var(--aw) * .17);height:calc(var(--aw) * .17);background:rgba(40,40,40,.55);backdrop-filter:blur(8px)}
+body.mini.wide #mCov button svg{width:45%;height:45%}
+body.mini.wide #mCov [data-k=pp]{width:calc(var(--aw) * .27);height:calc(var(--aw) * .27);background:#fff;color:#000}
+body.mini.wide #mTl{position:fixed;z-index:51;left:var(--g);width:var(--aw);top:calc(var(--g) + var(--aw) + 10px);flex-wrap:wrap;gap:4px 0;font-size:12px;opacity:.8}
+body.mini.wide #mTl #mPr{flex:1 0 100%;order:-1;height:4px}body.mini.wide #mTl #mDur{margin-left:auto}
+body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid-template-columns:1fr auto}body.mini.wide #mNav .main{display:none}`;
     document.head.append(st);
     const ui = document.createElement('div');
     ui.id = 'mini';
-    ui.innerHTML = `<header id="mh"><img id="mArt" alt=""><div><b id="mT"></b><span id="mA"></span></div><button id="mLike" data-k="heart" aria-label="Like">${svg('heart')}</button></header>
+    ui.innerHTML = `<header id="mh"><img id="mArt" alt=""><div id="mMv"></div><div id="mCov"><button data-k="prev" aria-label="Previous">${svg('prev')}</button><button data-k="pp" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path/></svg></button><button data-k="next" aria-label="Next">${svg('next')}</button></div><div><b id="mT" class="mq"></b><span id="mA" class="mq"></span></div><button id="mLike" data-k="heart" aria-label="Like">${svg('heart')}</button></header>
 <footer id="mb"><div id="mTl"><span id="mCur">0:00</span><input id="mPr" type="range" min="0" max="1" value="0" aria-label="Seek"><span id="mDur">0:00</span></div>
 <nav id="mNav"><div class="side l"><button data-x="smaller" aria-label="Smaller lyrics" title="Smaller lyrics">A−</button><button data-x="bigger" aria-label="Bigger lyrics" title="Bigger lyrics">A+</button></div>
 <div class="main"><button class="s" data-k="shuf" aria-label="Shuffle">${svg('shuf')}</button><button data-k="prev" aria-label="Previous">${svg('prev')}</button><button data-k="pp" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path/></svg></button><button data-k="next" aria-label="Next">${svg('next')}</button><button class="s" data-k="rep" aria-label="Repeat">${svg('rep')}</button></div>
@@ -91,22 +110,82 @@ body.mini.slim #mNav{grid-template-columns:auto}body.mini.slim #mNav .side{displ
     q('mb').onpointerenter = () => { overBar = true; wake(); };
     q('mb').onpointerleave = () => { overBar = false; wake(); };
     document.documentElement.addEventListener('pointerleave', () => { overBar = false; clearTimeout(barT); barT = setTimeout(() => P.playing && !drag && document.body.classList.remove('bar'), 600); });
+    const B = document.body.classList;
     const fit = () => {
       const short = innerHeight < 160;
-      document.body.classList.toggle('short', short);
-      document.body.classList.toggle('narrow', innerWidth < 300);
-      document.body.classList.toggle('slim', innerWidth < 440 || innerHeight > innerWidth); // no room beside the controls
-      document.body.style.setProperty('--mh', `${short || document.body.classList.contains('nohead') ? 12 : q('mh').offsetHeight}px`);
+      // Big cover: asked for, or Auto in a window that is clearly landscape with room for a real cover.
+      const wide = S.miniLayout === 'wide' ? innerHeight >= 150 : S.miniLayout !== 'bar' && innerWidth >= 460 && innerWidth >= innerHeight * 1.5 && innerHeight >= 200;
+      B.toggle('wide', wide);
+      B.toggle('noprog', !S.miniProgress);
+      B.toggle('short', short && !wide);
+      B.toggle('narrow', innerWidth < 300);
+      B.toggle('slim', innerWidth < 440 || innerHeight > innerWidth); // no room beside the controls
+      (wide ? ui : q('mb')).prepend(q('mTl')); // big cover: the timeline lives under it, always visible
+      if (wide) {
+        const g = Math.round(Math.min(24, innerHeight * 0.07));
+        document.body.style.setProperty('--g', `${g}px`);
+        document.body.style.setProperty('--aw', `${Math.round(Math.min(innerHeight - g * 2 - (S.miniProgress ? 34 : 0), innerWidth * 0.4))}px`);
+      }
+      document.body.style.setProperty('--mh', `${!wide && (short || B.contains('nohead')) ? 12 : q('mh').offsetHeight + (wide ? 6 : 0)}px`);
     };
+    // Song changes, Better Lyrics' floating window style (Settings -> miniplayer title / cover change).
+    function swapText(el, text) {
+      el.textContent = text;
+      window.marquee?.(el); // scrolls when it doesn't fit (Settings -> Scroll long titles)
+      if (!text || S.miniTitle === 'none') return;
+      const box = el.firstElementChild || el;
+      if (S.miniTitle === 'fade') return box.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+      box.replaceChildren(...text.split(/(\s+)/).filter(Boolean).map((w, i) => {
+        if (/^\s+$/.test(w)) return w;
+        const s = document.createElement('span');
+        s.className = 'w';
+        s.textContent = w;
+        s.animate([{ opacity: 0, transform: 'translateY(.55em) scale(.96)' }, { opacity: 1, transform: 'none' }],
+          { duration: 560, delay: Math.min(i, 16) * 22, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
+        return s;
+      }));
+    }
+    let artJob = 0;
+    function swapArt(url) {
+      const a = q('mArt'), job = ++artJob, had = a.getAttribute('src');
+      if (!url) return a.removeAttribute('src');
+      if (!had || S.miniArt === 'none' || !a.offsetWidth) { a.src = url; return; }
+      const im = new Image();
+      im.src = url;
+      im.decode().catch(() => {}).then(() => {
+        if (job !== artJob) return;
+        const r = a.getBoundingClientRect(), ghost = a.cloneNode();
+        ghost.removeAttribute('id');
+        ghost.className = 'mGhost';
+        Object.assign(ghost.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: getComputedStyle(a).borderRadius });
+        document.body.append(ghost);
+        a.src = url; // the new cover is under the old one already: no empty frame
+        const shuffle = S.miniArt === 'shuffle';
+        ghost.animate(shuffle ? [{ transform: 'none', opacity: 1 }, { transform: 'translate(-38%, 6%) rotate(-11deg) scale(.82)', opacity: 0 }] : [{ opacity: 1 }, { opacity: 0 }],
+          { duration: shuffle ? 460 : 380, easing: shuffle ? 'cubic-bezier(.5,0,.75,0)' : 'ease-in-out', fill: 'forwards' }).onfinish = () => ghost.remove();
+        if (shuffle) a.animate([{ transform: 'translate(14%, 3%) rotate(6deg) scale(.88)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], { duration: 620, easing: 'cubic-bezier(.2,.9,.25,1.15)' });
+      });
+    }
     addEventListener('resize', fit);
     fit();
     wake();
     (function frame() {
-      const t = $('title').textContent, a = $('artist').textContent, real = pos();
-      if (t !== last.t) q('mT').textContent = last.t = t;
-      if (a !== last.a) q('mA').textContent = last.a = a;
-      if (P.art !== last.art) { last.art = P.art; if (P.art) q('mArt').src = P.art; else q('mArt').removeAttribute('src'); }
-      if (P.playing !== last.pl) { last.pl = P.playing; ui.querySelector('[data-k="pp"] path').setAttribute('d', P.playing ? PAUSE : PLAY); if (!P.playing) document.body.classList.add('bar'); else wake(); }
+      // Big cover: "Artist • Album · Year" under the title, like Better Lyrics' window.
+      const al = B.contains('wide') ? $('album').textContent : '';
+      const t = $('title').textContent, a = [$('artist').textContent, al].filter(Boolean).join(' • '), real = pos();
+      if (t !== last.t) { swapText(q('mT'), last.t = t); requestAnimationFrame(fit); }
+      if (a !== last.a) swapText(q('mA'), last.a = a);
+      if (P.art !== last.art) swapArt(last.art = P.art);
+      // The animated cover (features.js motionTick, #mv) moves onto the big cover and back (Better Lyrics mirrors its
+      // page's cover video the same way): the same <video>, so nothing is downloaded or decoded twice.
+      const mv = $('mv'), home = B.contains('wide') ? q('mMv') : $('art');
+      if (mv && mv.parentElement !== home) home.prepend(mv);
+      if (P.playing !== last.pl) {
+        last.pl = P.playing;
+        ui.querySelectorAll('[data-k="pp"] path').forEach(p => p.setAttribute('d', P.playing ? PAUSE : PLAY));
+        B.toggle('paused', !P.playing);
+        if (!P.playing) B.add('bar'); else wake();
+      }
       for (const k of ['heart', 'shuf', 'rep']) {
         const b = ui.querySelector(`[data-k="${k}"]`), c = $(k).classList;
         b.classList.toggle('on', c.contains('on')); b.classList.toggle('one', c.contains('one'));

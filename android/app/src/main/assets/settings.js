@@ -101,6 +101,9 @@ const Settings = (() => {
     { k: 'bgDim', label: 'Dim', type: 'range', min: 0, max: 0.8, step: 0.05, def: 0.2, when: s => s.bg !== 'black', help: 'Darkens the background so white lyrics stay readable on bright covers or artist photos.' },
 
     { group: 'Lyrics', icon: 'text', cat: 'View', desc: 'Font, size, spacing, colours and the Spicy-style word effects.' },
+    // Lyrics sources (Better Lyrics' provider list): drag to reorder, switch off to never use. Ranked by Lyrics.rank.
+    { k: 'srcOrder', label: 'Lyrics sources', desc: 'Source preference, priority, order, LRCLIB, Spotify, Apple Music, Spicy Lyrics', type: 'custom', render: () => window.sourceList?.(), def: ['Apple Music:word', 'Spicy Lyrics:word', 'Apple Music:line', 'Spicy Lyrics:line',
+      'Spotify:line', 'LRCLIB:line', 'Apple Music:static', 'Spicy Lyrics:static', 'Spotify:static', 'LRCLIB:static'] },
     { k: 'roman', label: 'Romanization', desc: 'Smart keeps Hindi (Devanagari) as is and romanizes everything else',
       type: 'choice', def: 'smart', opts: [['smart', 'Smart (keep Hindi)'], ['always', 'Always'], ['off', 'Original script']],
       help: 'Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization.' },
@@ -150,8 +153,8 @@ const Settings = (() => {
     { k: 'ppAnim', label: 'Play / pause', type: 'choice', def: 'both', opts: [
       ['both', 'Pulse + shrink'], ['pulse', 'Pulse'], ['shrink', 'Shrink art'], ['ripple', 'Ripple'], ['none', 'None']],
       help: 'Feedback when playback pauses or resumes. Shrink makes the cover smaller while paused.' },
-    { k: 'scroll', label: 'Lyrics scroll', type: 'choice', def: 'smooth', opts: [['smooth', 'Smooth'], ['spring', 'Springy'], ['snappy', 'Snappy']],
-      help: 'How the lyrics glide to the next line. Springy overshoots a little.' },
+    { k: 'scroll', label: 'Lyrics scroll', type: 'choice', def: 'smooth', opts: [['smooth', 'Smooth'], ['spring', 'Springy'], ['snappy', 'Snappy'], ['cascade', 'Cascade']],
+      help: 'How the lyrics glide to the next line. Springy overshoots a little. Cascade (Better Lyrics\' scroll): each line follows on its own, the ones further ahead a little later, like a ripple.' },
     { k: 'animSpeed', label: 'Animation speed', type: 'range', min: 0.5, max: 2, step: 0.1, def: 1, unit: '×', help: 'Speeds up or slows down every UI animation.' },
 
     { group: 'Screen', icon: 'phone', cat: 'Device', desc: 'Keep-awake, brightness, night mode, burn-in protection and the phone\'s buttons.' },
@@ -278,6 +281,13 @@ const Settings = (() => {
       help: 'Hides the browser bars until you press Esc (or swipe on a phone).' },
     { label: 'Miniplayer', type: 'action', text: () => 'Open', run: () => window.lyricdockMini?.(), when: () => !!window.lyricdockMini?.supported,
       help: 'A small always-on-top window with the cover, the line being sung and the controls. Also: press M.' },
+    { k: 'miniLayout', label: 'Miniplayer layout', type: 'choice', def: 'auto', opts: [['auto', 'Auto'], ['wide', 'Big cover beside the lyrics'], ['bar', 'Song bar on top']], when: () => !!window.lyricdockMini?.supported,
+      help: 'Big cover: the cover on the left with play / pause, previous and next on it (hover), the timeline under it and the song above the lyrics. Song bar: a small cover, title and like button along the top. Auto picks the big cover when the window is wide enough. Applies the next time the miniplayer opens.' },
+    { k: 'miniProgress', label: 'Miniplayer progress bar', type: 'toggle', def: true, when: () => !!window.lyricdockMini?.supported, help: 'The timeline under the cover (big cover layout) or in the bottom bar.' },
+    { k: 'miniArt', label: 'Miniplayer cover change', type: 'choice', def: 'shuffle', opts: [['shuffle', 'Shuffle'], ['fade', 'Fade'], ['none', 'None']], when: () => !!window.lyricdockMini?.supported,
+      help: 'How the cover changes with the song. Shuffle: the old cover is dealt away like a card while the new one comes up from behind.' },
+    { k: 'miniTitle', label: 'Miniplayer title change', type: 'choice', def: 'spring', opts: [['spring', 'Spring'], ['fade', 'Fade'], ['none', 'None']], when: () => !!window.lyricdockMini?.supported,
+      help: 'How the song title and artist change. Spring: the words pop up one after another.' },
     { label: 'LyricDock app', type: 'action', text: () => 'Check now', run: () => window.checkUpdate?.(true), info: () => window.updateStatus?.() ?? '',
       help: 'Check for a new version now and install it if there is one.' },
     { label: 'Changelog', type: 'action', text: () => 'What\'s new', run: () => window.showChangelog?.(), help: 'Release notes for this and earlier versions, from GitHub.' },
@@ -614,7 +624,7 @@ const Settings = (() => {
   }
 
   // Serializable copy of the schema for the desktop panel (functions dropped; actions/info/presets are phone-only).
-  const schema = () => SCHEMA.filter(x => x.group || (x.k && x.type !== 'info'))
+  const schema = () => SCHEMA.filter(x => x.group || (x.k && x.type !== 'info' && x.type !== 'custom'))
     .filter((x, i, a) => !x.group || (a[i + 1] && !a[i + 1].group)) // drop sections with nothing editable (Presets, Connection)
     .map(({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon, cat }) =>
       ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon: ICONS[icon], tint: TINTS[icon], cat }));

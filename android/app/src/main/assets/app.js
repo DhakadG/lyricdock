@@ -294,11 +294,29 @@ function bloom(url, im, x, y) {
   }, () => {});
 }
 
-// The bridge sends Spicy-cache results raw ({spicy}) and Spotify/LRCLIB ones already normalized.
-const norm = l => l?.spicy ? Lyrics.fromSpicy(l.spicy) ?? { kind: 'none', lines: [] } : l ?? null;
+// Every version of a song's lyrics seen so far (the bridge's, the alternatives it sends along, the API's, the device
+// copy), so Settings -> Lyrics sources can pick among them - also again when the order changes. The bridge sends
+// Spicy-cache results raw ({spicy}) and Spotify/LRCLIB ones already normalized.
+const pool = new Map(); // id -> [lyrics]
+function collect(id, l) {
+  if (!l) return null;
+  const one = x => x?.spicy ? Lyrics.fromSpicy(x.spicy) : x;
+  const have = pool.get(id) ?? [];
+  const flat = x => x ? [one(x), ...(x.alts ?? []).flatMap(flat)] : [];
+  for (const x of flat(l)) if (x?.lines?.length && !have.some(h => h.source === x.source && h.kind === x.kind)) have.push(x);
+  pool.delete(id); pool.set(id, have);
+  if (pool.size > 8) pool.delete(pool.keys().next().value);
+  return Lyrics.best(have) ?? { kind: 'none', lines: [] };
+}
+Settings.onChange(k => { // a new order (or a source switched off): re-pick for the song on screen
+  if (k !== 'srcOrder' && k !== '*' || !P.id || !pool.has(P.id)) return;
+  const b = Lyrics.best(pool.get(P.id)) ?? { kind: 'none', lines: [] };
+  if (b !== P.lyrics) { P.lyrics = b; Lyrics.build(b); }
+});
 
-// Show lyrics for the playing song, but only if they beat what is on screen (word > line > static > none).
+// Show lyrics for the playing song, but only if they beat what is on screen (Settings -> Lyrics sources).
 function offerLyrics(id, lyr) {
+  lyr = collect(id, lyr);
   if (!lyr || id !== P.id || (P.lyrics && Lyrics.rank(lyr) <= Lyrics.rank(P.lyrics))) return;
   const first = !P.lyrics;
   P.lyrics = lyr;
@@ -311,12 +329,12 @@ function offerLyrics(id, lyr) {
 
 // Fill the gap from the API while the desktop has nothing better than line-synced lyrics.
 function topUp(id) {
-  if (Api.enabled() && Lyrics.rank(P.lyrics) < 3) Api.get(id).then(l => offerLyrics(id, l));
+  if (Api.enabled() && Lyrics.rank(P.lyrics) < Lyrics.top()) Api.get(id).then(l => offerLyrics(id, l));
 }
 
 async function onTrack(m) {
   if (!/^https:\/\/[^"'()\\\s]+$/.test(m.art || '')) m.art = null;
-  m.lyrics = norm(m.lyrics);
+  m.lyrics = collect(m.id, m.lyrics);
   // A cover swipe over several songs: Spotify reports each song it passes through - those never reach the screen.
   const sk = P.skip && performance.now() < P.skip.until ? P.skip : (P.skip = null);
   if (sk?.pass.has(m.id)) return;
@@ -375,13 +393,13 @@ function artFadeFrom(url, dur) {
 }
 
 function onPreload(m) {
-  m.lyrics = norm(m.lyrics);
+  m.lyrics = collect(m.id, m.lyrics);
   pre.set(m.id, m);
   if (pre.size > 6) pre.delete(pre.keys().next().value);
   art(m.art).then(im => { try { if (im) colours(im); } catch (e) {} }); // warm the decode and the colours now
   window.afterPreload?.(m);
   // Warm the API cache for the next song too, and keep whichever is better for when it starts.
-  if (Api.enabled() && Lyrics.rank(m.lyrics) < 3) Api.get(m.id).then(l => { if (Lyrics.rank(l) > Lyrics.rank(m.lyrics)) m.lyrics = l; });
+  if (Api.enabled() && Lyrics.rank(m.lyrics) < Lyrics.top()) Api.get(m.id).then(l => { m.lyrics = collect(m.id, l) ?? m.lyrics; });
 }
 
 // ---- liked + audio quality (sent with every heartbeat)

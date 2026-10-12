@@ -23,6 +23,7 @@
       el.classList.add('mq-on');
     });
   }
+  window.marquee = marquee; // the miniplayer's song bar too (mini.js)
   const remarquee = () => ['title', 'artist', 'album'].forEach(id => marquee($(id)));
 
   // ---- track details: album · year, source badge, heart placement.
@@ -640,6 +641,60 @@
     // the portrait carousel opens on the current layout
     requestAnimationFrame(() => { const c = g.querySelector('.lp-card.on'); if (c && g.scrollWidth > g.clientWidth) g.scrollLeft = c.getBoundingClientRect().left - g.getBoundingClientRect().left + g.scrollLeft - (g.clientWidth - c.offsetWidth) / 2; });
     return g;
+  };
+  // Settings -> Lyrics -> Lyrics sources (Better Lyrics' provider list): drag a row by its grip to reorder, the switch
+  // turns that source off. Saved as S.srcOrder ('-' in front = off); Lyrics.rank reads it, app.js re-picks on change.
+  const SYNC = { word: ['Word', 'w'], line: ['Line', 'l'], static: ['Unsynced', 's'] };
+  const GRIP = '<svg viewBox="0 0 10 16" aria-hidden="true"><circle cx="3" cy="3" r="1.3"/><circle cx="7" cy="3" r="1.3"/><circle cx="3" cy="8" r="1.3"/><circle cx="7" cy="8" r="1.3"/><circle cx="3" cy="13" r="1.3"/><circle cx="7" cy="13" r="1.3"/></svg>';
+  window.sourceList = () => {
+    const box = document.createElement('div'), rows = document.createElement('div');
+    box.className = 'src-list';
+    box.innerHTML = '<div class="src-head"><b>Lyrics sources</b><small>Drag to reorder: higher sources win. Switch one off to never use it.</small></div>';
+    rows.className = 'src-rows';
+    box.append(rows);
+    const order = () => [...rows.children].map(r => (r.querySelector('input').checked ? '' : '-') + r.dataset.k);
+    const save = () => { const o = order(); if (o.join() !== S.srcOrder.join()) Settings.set('srcOrder', o, false); };
+    for (const raw of S.srcOrder) {
+      const k = raw.replace(/^-/, ''), [src, kind] = k.split(':'), sy = SYNC[kind];
+      if (!sy) continue;
+      const r = document.createElement('div');
+      r.className = 'src-row';
+      r.dataset.k = k;
+      r.innerHTML = `<span class="src-grip" role="button" aria-label="Drag to reorder">${GRIP}</span><label class="sl-sp-toggle"><input type="checkbox"${raw[0] === '-' ? '' : ' checked'}><span class="sl-sp-toggle-track"></span></label><b></b><i class="src-sync s-${sy[1]}">${sy[0]}</i>`;
+      r.querySelector('b').textContent = src;
+      r.querySelector('input').onchange = save;
+      rows.append(r);
+    }
+    rows.addEventListener('pointerdown', e => {
+      const grip = e.target.closest('.src-grip');
+      if (!grip) return;
+      e.preventDefault();
+      const row = grip.parentElement;
+      let y0 = e.clientY;
+      row.classList.add('drag');
+      // Listened on window, not captured on the grip: moving the row in the DOM drops pointer capture.
+      const move = ev => {
+        if (ev.pointerId !== e.pointerId) return;
+        const top = row.offsetTop;
+        const next = [...rows.children].find(s => s !== row && ev.clientY < s.getBoundingClientRect().top + s.offsetHeight / 2);
+        if (next !== row.nextElementSibling) rows.insertBefore(row, next ?? null);
+        y0 += row.offsetTop - top; // the row moved in the list: keep it under the finger
+        row.style.transform = `translateY(${ev.clientY - y0}px)`;
+      };
+      const end = ev => {
+        if (ev.pointerId !== e.pointerId) return;
+        removeEventListener('pointermove', move);
+        removeEventListener('pointerup', end);
+        removeEventListener('pointercancel', end);
+        row.classList.remove('drag');
+        row.style.transform = '';
+        save();
+      };
+      addEventListener('pointermove', move);
+      addEventListener('pointerup', end);
+      addEventListener('pointercancel', end);
+    });
+    return box;
   };
   let qMode = 'settings';
   function renderQuick() {

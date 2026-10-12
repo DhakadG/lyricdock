@@ -807,7 +807,13 @@
     preloadNext();
     setTimeout(preloadNext, 3000); // Spotify's queue can lag the song change by a moment
     extras(it, base.id);
-    if (spicy) return;
+    if (spicy) {
+      // Spicy's word-synced lyrics usually win; fetch the fallbacks too only if the phone ranks one of them higher.
+      if (!['Spotify', 'LRCLIB'].some(s => prefers(s, ['Apple Music', 'Spicy Lyrics']))) return;
+      const fb = await fetchLyrics(it, base.id);
+      if (item()?.uri === it.uri && fb !== NONE) { track = { ...track, lyrics: withAlt(spicy, fb) }; send(track); }
+      return;
+    }
     if (!track.lyrics) {
       const lyrics = await fetchLyrics(it, base.id);
       if (item()?.uri !== it.uri) return; // skipped meanwhile
@@ -818,12 +824,26 @@
 
   // Fallback lyrics (Spotify, then LRCLIB), fetched once per song - for the upcoming songs too, so a song change
   // never waits on the network. Ads have no lyrics; local files and podcasts can't use Spotify's endpoint.
+  // The phone's Settings -> Lyrics sources ('Source:kind', '-' = off): does it rank source a above every b entry?
+  // Then a is fetched even when b has lyrics, and sent along as an alternative (lyrics.alts) for the phone to pick.
+  const prefers = (a, b) => {
+    const o = readJson(SETTINGS_KEY, {}).srcOrder;
+    if (!Array.isArray(o)) return false;
+    const i = o.findIndex(k => k.startsWith(a + ':')), j = o.findIndex(k => b.some(s => k.startsWith(s + ':')));
+    return i >= 0 && (j < 0 || i < j);
+  };
+  const withAlt = (a, b) => (a && b ? { ...a, alts: [b] } : a ?? b);
   const lyricJobs = new Map(); // id -> Promise<lyrics> (.done once settled)
   function fetchLyrics(it, id) {
     if (lyricJobs.has(id)) return lyricJobs.get(id);
     const kind = it.uri.split(':')[1];
-    const job = (async () => kind === 'ad' ? NONE
-      : (kind === 'track' ? await spotifyLyrics(id).catch(() => null) : null) ?? (kind !== 'episode' ? await lrclib(it.metadata || {}).catch(() => null) : null) ?? NONE)().catch(() => NONE);
+    const job = (async () => {
+      if (kind === 'ad') return NONE;
+      const sp = kind === 'track' ? await spotifyLyrics(id).catch(() => null) : null;
+      const lrFirst = prefers('LRCLIB', ['Spotify']); // by default LRCLIB is asked only when Spotify has none
+      const lr = kind !== 'episode' && (!sp || lrFirst) ? await lrclib(it.metadata || {}).catch(() => null) : null;
+      return (lrFirst ? withAlt(lr, sp) : withAlt(sp, lr)) ?? NONE;
+    })().catch(() => NONE);
     job.then(L => { job.done = true; if (L === NONE && kind !== 'ad') setTimeout(() => lyricJobs.get(id) === job && lyricJobs.delete(id), 60000); }); // retry "none" after a minute (may have been the network)
     lyricJobs.set(id, job);
     if (lyricJobs.size > 30) lyricJobs.delete(lyricJobs.keys().next().value);

@@ -746,6 +746,25 @@ body:not(.bg-video) #yt { display: none; }
 
 /* Settings -> Connection status card */
 .st-custom { padding: 14px 14px 12px; }
+
+/* Settings -> Lyrics -> Lyrics sources (features.js sourceList) */
+.src-list { width: 100%; }
+.src-head b { display: block; font-size: 1rem; font-weight: 700; letter-spacing: -.01em; }
+.src-head small { display: block; color: var(--t2); font-size: .78rem; margin: 2px 0 10px; }
+.src-rows { display: flex; flex-direction: column; gap: 6px; }
+.src-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 4px; border-radius: 12px; background: rgba(255, 255, 255, .05);
+  box-shadow: inset 0 0 0 1px var(--hair); position: relative; }
+.src-row.drag { z-index: 2; background: rgba(60, 60, 64, .96); box-shadow: inset 0 0 0 1px var(--hair), 0 8px 24px rgba(0, 0, 0, .45); }
+.src-row:has(input:not(:checked)) b { opacity: .45; }
+.src-grip { flex: none; display: grid; place-items: center; width: 28px; height: 32px; touch-action: none; cursor: grab; }
+.src-grip svg { width: 10px; height: 16px; fill: var(--t2); }
+.src-row.drag .src-grip { cursor: grabbing; }
+.src-row b { flex: 1; min-width: 0; font-size: .92rem; font-weight: 600; }
+.src-sync { flex: none; font: 700 .62rem/1 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; font-style: normal;
+  padding: 5px 8px; border-radius: 6px; }
+.src-sync.s-w { color: #ffd479; background: rgba(255, 196, 0, .16); }
+.src-sync.s-l { color: #7ee2a8; background: rgba(48, 209, 88, .16); }
+.src-sync.s-s { color: rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .08); }
 .cc { width: 100%; }
 .cc-top { display: flex; gap: 12px; align-items: flex-start; }
 .cc-top b { display: block; font-size: 1rem; font-weight: 700; letter-spacing: -.01em; }
