@@ -144,7 +144,7 @@ const Settings = (() => {
       help: 'Nudge if lyrics run early or late (e.g. Bluetooth speaker delay: try +150 to +300 ms).' },
     { k: 'apiKey', label: 'Spicy Lyrics API key (optional)', type: 'text', def: '', placeholder: 'sl_pk_…',
       desc: 'Your own publishable key with "No origin header" allowed. Fills gaps the desktop cache misses.',
-      help: 'Get one at developers.spicylyrics.org → your application → Client access (no backend) → publishable key (sl_pk_…), with "No origin header" allowed. Never paste a secret key (sl_sk_…). Needed for word-synced lyrics in Spotify-account mode on the phone; the web app has it built in, so a key of your own is optional there.' },
+      help: 'Get one at developers.spicylyrics.org → your application → Client access (no backend) → publishable key (sl_pk_…), with "No origin header" allowed. Never paste a secret key (sl_sk_…). Optional: LyricDock signed in gets word-synced lyrics through LyricDock\'s own server, on the phone and the web app. A key of your own is used instead when set.' },
 
     { group: 'Animations', icon: 'spark', cat: 'View', desc: 'How songs change, how play / pause feels and how the lyrics glide.' },
     { k: 'trackAnim', label: 'Next / previous', type: 'choice', def: 'slide', opts: [

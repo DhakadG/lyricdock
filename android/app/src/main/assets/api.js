@@ -16,7 +16,10 @@ const Api = (() => {
   };
 
   const own = () => /^sl_pk_[\w-]+$/.test(Settings.S.apiKey || '');
-  const enabled = () => own() || !!window.LYRICDOCK_WEB; // the web app has it built in (its server's /lyrics, shim.js)
+  // Built in: LyricDock's server (web/src/worker.js /lyrics) for the web app (its session cookie, shim.js) and for a
+  // signed-in phone (its app token); a publishable key of the user's own goes straight to Spicy instead.
+  const enabled = () => own() || !!window.LYRICDOCK_WEB || !!window.Account?.user();
+  const SERVER = 'https://app.lyricdock.losthusky.qzz.io/lyrics/';
 
   // Resolves to normalized lyrics or null. Never rejects; de-duplicates concurrent requests per track.
   function get(id) {
@@ -26,7 +29,9 @@ const Api = (() => {
     if (waiting.has(id)) return new Promise(r => waiting.get(id).push(r));
     return new Promise(r => {
       waiting.set(id, [r]);
-      try { Dock.fetchLyrics(id, Settings.S.apiKey); } catch (e) { done(id, null); }
+      if (own() || window.LYRICDOCK_WEB) try { Dock.fetchLyrics(id, Settings.S.apiKey); } catch (e) { done(id, null); }
+      else fetch(SERVER + id, { headers: { Accept: 'application/json', ...(window.Account?.headers() ?? {}) } })
+        .then(async r => onResponse({ id, status: r.status, text: await r.text() }), () => done(id, null));
       setTimeout(() => done(id, null), 8000); // no answer in 8s: give up quietly
     });
   }
