@@ -127,7 +127,7 @@ const Settings = (() => {
     { k: 'lift', label: 'Lift sung words', type: 'toggle', def: true, help: 'Each word rises and grows slightly as it is sung, then settles.' },
     { k: 'liftAmount', label: 'Lift amount', type: 'range', min: 0.2, max: 2, step: 0.1, def: 1, unit: '×', when: s => s.lift, help: 'How far words rise and grow.' },
     { k: 'letters', label: 'Letter-by-letter on long notes', desc: 'Held words glow and lift one letter at a time', type: 'toggle', def: true,
-      help: 'When a short word is held for a long time ("foreverrr"), each letter lights up in turn with extra lift and glow - Spicy Lyrics\' emphasis.' },
+      help: 'When a word is held for a long time ("foreverrr"), each letter lights up in turn with extra lift and glow - Spicy Lyrics\' emphasis.' },
     { k: 'lettersMin', label: 'Long note length', type: 'range', min: 500, max: 3000, step: 100, def: 1000, unit: ' ms', when: s => s.letters,
       help: 'How long a word must be held to get the letter-by-letter treatment.' },
     { k: 'dots', label: 'Interlude dots', type: 'toggle', def: true, help: 'Three breathing dots fill instrumental gaps and pop just before singing resumes.' },

@@ -1500,7 +1500,10 @@
   function showUpdate() {
     const to = window.__lyricdock?.latest;
     if (!to || to === VERSION || VERSION === 'dev' || document.querySelector('.ldu')) return;
-    const cmd = 'iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex';
+    // macOS / Linux: the shell installer; there is no lyricdock-updater:// handler there, so no Run button either.
+    const win = /Win/.test(navigator.platform);
+    const cmd = win ? 'iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex'
+      : 'curl -fsSL https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.sh | bash';
     const el = document.createElement('div');
     el.className = 'ldu';
     el.setAttribute('role', 'dialog');
@@ -1513,9 +1516,9 @@
       <div class="ldu-actions"><small>Update reloads Spotify's window, about a second. Later loads it next time Spotify starts.</small>
         <button class="ldu-btn ghost" data-a="later">Later</button><button class="ldu-btn primary" data-a="update">Update now</button></div>
       <details><summary><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>LyricDock missing after a Spotify update?</summary>
-        <div class="ldu-fix">Spotify updates can remove Spicetify. Run the updater (installed with LyricDock), or paste this into PowerShell.
+        <div class="ldu-fix">Spotify updates can remove Spicetify. ${win ? 'Run the updater (installed with LyricDock), or paste this into PowerShell.' : 'Paste this into Terminal.'}
           <div class="ldu-cmd"><code>${esc(cmd)}</code><button data-a="copy">Copy</button></div>
-          <button class="ldu-btn ghost" data-a="run">Run updater</button></div></details>
+          ${win ? '<button class="ldu-btn ghost" data-a="run">Run updater</button>' : ''}</div></details>
     </div>`;
     const close = () => { el.remove(); removeEventListener('keydown', key, true); };
     const key = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };

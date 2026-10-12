@@ -139,6 +139,7 @@ body.blurlines .ln[data-d="3"] { filter: blur(calc(var(--blur) * 2)); }
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   transform: translate3d(0, .01em, 0) scale(.95); } /* idle pose: what the springs rest at, so a line activating never snaps its words */
 .sy.lt { transform: translate3d(0, .02em, 0) scale(.95); }
+.sy.lt.sp { white-space: pre; min-width: .3ch; } /* a space inside a held syllable ("oh no"): inline-block would collapse it to 0 px */
 .ln.sung .sy { --gp: 100%; transform: none; } /* (the springs' inline styles win while a line is cooling down) */
 body.no-lift .sy, body.no-lift .sy.lt { transform: none; }
 /* Glow: a transparent copy of the word carrying a fixed shadow; only its opacity (--go) animates, on the compositor. */

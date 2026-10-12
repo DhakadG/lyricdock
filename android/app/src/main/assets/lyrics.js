@@ -51,25 +51,34 @@ const Lyrics = (() => {
   const pick = (s = '', r, m, cap = true) => (window.cleanWords ?? (t => t))(
     m === 'orig' ? (s || r || '') : (r ?? (Roman.isIndic(s) ? Roman.translit(s, cap) : s)));
 
-  // Spicy's letter mode: a long-held short word glows and lifts letter by letter, each letter owning an equal
-  // slice of the word's time. Scripts with combining marks (Indic, Arabic...) stay whole - splitting breaks them.
-  const letterable = (text, x) => Settings.S.letters && x.e - x.t >= Settings.S.lettersMin && !x.p && !(x.i > 0 && x.prevP) &&
-    /^[\p{L}\p{N}'’!?,.-]{2,12}$/u.test(text) && !/\p{M}/u.test(text);
+  // Spicy's letter mode: any syllable held at least Settings -> Long note length glows and lifts letter by letter,
+  // each letter owning an equal slice of its time (Spicy: >= 1000 ms, no length cap). Split by grapheme, so a
+  // Devanagari consonant keeps its matra; RTL scripts stay whole (Spicy excludes them too: joined letters break).
+  const seg = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  const graphemes = t => seg ? Array.from(seg.segment(t), s => s.segment) : /\p{M}/u.test(t) ? null : Array.from(t);
+  const letterable = (text, x) => Settings.S.letters && x.e - x.t >= Settings.S.lettersMin && /\S/.test(text) && !RTL.test(text);
 
   function syllables(container, syls, m) {
     const out = [];
     let group = null;
     syls.forEach((x, i) => {
       const text = pick(x.s, x.r, m, i === 0);
-      if (letterable(text, { ...x, i, prevP: syls[i - 1]?.p })) {
-        const g = document.createElement('span'), ch = Array.from(text);
+      // IsPartOfWord joins a syllable to the next one: keep the word together, no space.
+      let parent = container;
+      if (x.p || (syls[i - 1]?.p && group)) {
+        if (!group) { group = document.createElement('span'); group.className = 'wg'; container.append(group); }
+        parent = group;
+      }
+      const ch = letterable(text, x) && graphemes(text.trim()); // edge spaces are layout, not letters with a time slice
+      if (ch && ch.length > 1) {
+        const g = document.createElement('span');
         // The letters share [start, end - 250 ms] (Spicy): the last one has landed before the word is over.
         const end = x.e - 250 > x.t + 300 ? x.e - 250 : x.e, step = (end - x.t) / ch.length;
         const grp = { ls: [], t: x.t, e: end, at: NaN, act: -1, pct: 0 };
         g.className = 'wg lw';
         ch.forEach((c, k) => {
           const el = document.createElement('span');
-          el.className = 'sy lt';
+          el.className = 'sy lt' + (/^\s+$/.test(c) ? ' sp' : '') + (k === 0 && syls[i - 1]?.p ? ' pn' : '') + (k === ch.length - 1 && x.p ? ' pw' : '');
           el.textContent = c;
           el.dataset.t = c; // the glow copy (style.css .sy::after)
           g.append(el);
@@ -77,22 +86,17 @@ const Lyrics = (() => {
           grp.ls.push(L);
           out.push(L);
         });
-        container.append(g);
-        if (i < syls.length - 1) container.append(' ');
-        return;
+        parent.append(g);
+      } else {
+        const el = document.createElement('span');
+        el.className = 'sy' + (x.p ? ' pw' : '') + (syls[i - 1]?.p ? ' pn' : ''); // joined pieces of one word (see style.css)
+        el.textContent = text;
+        el.dataset.t = text;
+        parent.append(el);
+        out.push({ el, t: x.t, e: x.e });
       }
-      const el = document.createElement('span');
-      el.className = 'sy' + (x.p ? ' pw' : '') + (syls[i - 1]?.p ? ' pn' : ''); // joined pieces of one word (see style.css)
-      el.textContent = text;
-      el.dataset.t = text;
-      // IsPartOfWord joins a syllable to the next one: keep the word together, no space.
-      if (x.p || (syls[i - 1]?.p && group)) {
-        if (!group) { group = document.createElement('span'); group.className = 'wg'; container.append(group); }
-        group.append(el);
-        if (!x.p) group = null;
-      } else container.append(el);
+      if (!x.p) group = null;
       if (!x.p && i < syls.length - 1) container.append(' ');
-      out.push({ el, t: x.t, e: x.e });
     });
     return out;
   }

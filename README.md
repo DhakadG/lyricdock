@@ -175,8 +175,14 @@ Lyrics has already loaded (no extra requests), which gives the best word-synced 
 iwr -useb https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.ps1 | iex
 ```
 
+macOS (or Linux) — Terminal, not with `sudo`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DhakadG/lyricdock/main/updater/install.sh | bash
+```
+
 It checks Spicetify, closes Spotify, installs the auto-updating LyricDock loader, registers the
-`lyricdock-updater://` link (used by the Update button) and re-applies Spicetify. Spotify restarts with a
+`lyricdock-updater://` link (used by the Update button; Windows only) and re-applies Spicetify. Spotify restarts with a
 **LyricDock button** (screen icon) in the top bar. Re-run the same line any time to repair — for example after a
 Spotify update wiped Spicetify.
 
