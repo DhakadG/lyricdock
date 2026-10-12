@@ -754,10 +754,20 @@ body:not(.bg-video) #yt { display: none; }
   color: #fff; font: 600 max(12px, 1.9vmin)/1 var(--font, system-ui), sans-serif; white-space: nowrap;
   transition: opacity .3s, transform .45s var(--spring), visibility 0s .3s; }
 body.ui #srcPill.has { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, calc(-100% - 2.5vmin)); transition: opacity .3s, transform .45s var(--spring), visibility 0s; }
+/* Miniplayer (web mini.js): shown with its hover bar, sitting above it */
+body.mini.bar #srcPill.has { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity .3s, transform .45s var(--spring), visibility 0s; }
+body.mini #srcPill, body.mini.bar #srcPill.has { transform: translate(-50%, calc(-100% - 70px)); font-size: 12px; }
 #srcPill button { display: grid; place-items: center; width: max(30px, 5vmin); height: max(30px, 5vmin); border: 0; border-radius: 50%; background: rgba(255, 255, 255, .08); color: #fff; padding: 0; }
 #srcPill button:active { background: rgba(255, 255, 255, .22); }
 #srcPill svg { width: 55%; height: 55%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 #srcPill span { display: flex; align-items: center; gap: 1vmin; padding: 0 .6vmin; }
+.pp-src, .pp-off { display: flex; align-items: center; gap: .6vmin; }
+.pp-off { padding-left: 1vmin; margin-left: .4vmin; border-left: 1px solid rgba(255, 255, 255, .14); }
+#srcPill.no-src .pp-src, #srcPill.no-off .pp-off { display: none; }
+#srcPill.no-src .pp-off { padding-left: .4vmin; margin-left: 0; border-left: 0; }
+.pp-clk { display: grid; place-items: center; width: max(18px, 3vmin); height: max(18px, 3vmin); opacity: .7; }
+.pp-clk svg { width: 100%; height: 100%; }
+#srcPill .pp-val { width: auto; min-width: 5.2em; padding: 0 .4em; border-radius: 99px; background: none; font: inherit; font-variant-numeric: tabular-nums; }
 #srcPill small { opacity: .55; font-variant-numeric: tabular-nums; }
 #srcPill .src-sync { padding: .5vmin .9vmin; }
 

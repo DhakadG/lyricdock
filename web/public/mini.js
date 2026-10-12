@@ -29,7 +29,7 @@
     const svg = id => $(id).querySelector('svg').outerHTML;
     const icon = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
     const st = document.createElement('style');
-    st.textContent = `body.mini #left,body.mini #ctl,body.mini #gear,body.mini #qs,body.mini #qpanel,body.mini #stat,body.mini #nextChip,body.mini #bar,body.mini #times,body.mini #clockPane,body.mini #signin{display:none!important}
+    st.textContent = `body.mini #left,body.mini #ctl,body.mini #gear,body.mini #qs,body.mini #qpanel,body.mini #stat,body.mini #nextChip,body.mini #bar,body.mini #times,body.mini #clockPane,body.mini #signin,body.mini #news{display:none!important}
 body.mini #wrap{padding:var(--mh) 16px 14px!important}
 body.mini #lines{filter:drop-shadow(0 1px 5px rgba(0,0,0,.45))}
 #mh,#mb{position:fixed;left:0;right:0;z-index:50;display:flex;align-items:center;gap:10px;padding:10px 14px;color:#fff;font:14px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif}

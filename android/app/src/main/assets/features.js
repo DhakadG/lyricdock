@@ -58,25 +58,35 @@
   });
   addEventListener('resize', fitArt);
   Settings.onChange(() => fitArt());
-  // ---- per-song source switcher (Better Lyrics' "‹ LRCLib 2/9 ›" pill): with the controls up, steps through every version
-  // of this song's lyrics that came in (app.js pool), best-ranked first. The pick holds for the song (app.js picked).
+  // ---- lyrics pill (Better Lyrics' toolbar): with the controls up, at the bottom of the lyrics pane.
+  //   ‹ Line LRCLIB 2/4 ›   steps through every version of this song's lyrics that came in (app.js pool), best-ranked first;
+  //                          the pick holds for the song (app.js picked). Only when there are at least two.
+  //   🕒 − 0.0s +           Settings -> Sync offset, 0.1 s a tap (tap the value for 0). Whenever the lyrics are synced.
   const SYN = { word: ['Word', 'w'], line: ['Line', 'l'], static: ['Unsynced', 's'] };
+  const chev = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
   const pillEl = document.createElement('div');
   pillEl.id = 'srcPill';
-  pillEl.innerHTML = '<button data-d="-1" aria-label="Previous lyrics source"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><span></span><button data-d="1" aria-label="Next lyrics source"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>';
+  pillEl.innerHTML = `<div class="pp-src"><button data-d="-1" aria-label="Previous lyrics source">${chev('M15 5l-7 7 7 7')}</button><span></span><button data-d="1" aria-label="Next lyrics source">${chev('M9 5l7 7-7 7')}</button></div>`
+    + `<div class="pp-off"><i class="pp-clk">${chev('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2')}</i><button data-o="-100" aria-label="Lyrics earlier">${chev('M6 12h12')}</button>`
+    + `<button class="pp-val" data-o="0" aria-label="Reset sync offset" title="Sync offset (tap for 0)"></button><button data-o="100" aria-label="Lyrics later">${chev('M6 12h12M12 6v12')}</button></div>`;
   document.body.append(pillEl);
   const versions = () => [...(pool.get(P.id) ?? [])].sort((a, b) => Lyrics.rank(b) - Lyrics.rank(a));
   let pillSig = '';
   function pill() {
-    const v = versions(), i = v.indexOf(P.lyrics), on = v.length > 1 && i >= 0;
-    const r = $('lyrics').getBoundingClientRect(), sig = `${on}|${P.id}|${i}|${v.length}|${r.left | 0}|${r.width | 0}|${r.bottom | 0}`;
+    const v = versions(), i = v.indexOf(P.lyrics), src = v.length > 1 && i >= 0, off = ['word', 'line'].includes(P.lyrics?.kind);
+    const r = $('lyrics').getBoundingClientRect(), sig = `${src}|${off}|${S.offset}|${P.id}|${i}|${v.length}|${r.left | 0}|${r.width | 0}|${r.bottom | 0}`;
     if (sig === pillSig) return;
     pillSig = sig;
-    pillEl.classList.toggle('has', on);
-    if (!on) return;
-    const sy = SYN[P.lyrics.kind] ?? ['', 's'], span = pillEl.querySelector('span');
-    span.innerHTML = `<i class="src-sync s-${sy[1]}">${sy[0]}</i><b></b><small>${i + 1}/${v.length}</small>`;
-    span.querySelector('b').textContent = P.lyrics.source || 'Lyrics';
+    pillEl.classList.toggle('has', src || off);
+    pillEl.classList.toggle('no-src', !src);
+    pillEl.classList.toggle('no-off', !off);
+    if (src) {
+      const sy = SYN[P.lyrics.kind] ?? ['', 's'], span = pillEl.querySelector('.pp-src span');
+      span.innerHTML = `<i class="src-sync s-${sy[1]}">${sy[0]}</i><b></b><small>${i + 1}/${v.length}</small>`;
+      span.querySelector('b').textContent = P.lyrics.source || 'Lyrics';
+    }
+    const o = S.offset / 1000;
+    pillEl.querySelector('.pp-val').textContent = `${o > 0 ? '+' : ''}${o.toFixed(1)}s`;
     pillEl.style.left = `${r.left + r.width / 2}px`;
     pillEl.style.top = `${r.bottom}px`;
   }
@@ -86,6 +96,12 @@
     const b = e.target.closest('button');
     if (!b) return;
     e.stopPropagation();
+    window.showUi?.(true); // keep the controls (and the pill) up while using it
+    if (b.dataset.o !== undefined) {
+      const step = +b.dataset.o, v = step ? Math.max(-1000, Math.min(1000, S.offset + step)) : 0; // the setting's own range
+      if (v !== S.offset) Settings.set('offset', v, false);
+      return pill();
+    }
     const v = versions(), i = v.indexOf(P.lyrics), n = v[(i + +b.dataset.d + v.length) % v.length];
     if (!n || n === P.lyrics) return;
     picked.set(P.id, `${n.source}:${n.kind}`);
@@ -94,7 +110,6 @@
     $('lines').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(260), easing: 'ease-out' });
     badge();
     pill();
-    window.showUi?.(true); // keep the controls (and the pill) up while stepping
   };
   function badge() {
     const src = P.lyrics?.source;
