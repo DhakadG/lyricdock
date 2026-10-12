@@ -298,6 +298,10 @@ function bloom(url, im, x, y) {
 // copy), so Settings -> Lyrics sources can pick among them - also again when the order changes. The bridge sends
 // Spicy-cache results raw ({spicy}) and Spotify/LRCLIB ones already normalized.
 const pool = new Map(); // id -> [lyrics]
+// A version picked by hand with the source pill (features.js) holds for that song: a better-ranked one arriving later,
+// or a new order, doesn't take it away.
+const picked = new Map(); // id -> 'Source:kind'
+const choose = id => { const have = pool.get(id) ?? [], k = picked.get(id); return (k && have.find(h => `${h.source}:${h.kind}` === k)) || Lyrics.best(have); };
 function collect(id, l) {
   if (!l) return null;
   const one = x => x?.spicy ? Lyrics.fromSpicy(x.spicy) : x;
@@ -305,12 +309,12 @@ function collect(id, l) {
   const flat = x => x ? [one(x), ...(x.alts ?? []).flatMap(flat)] : [];
   for (const x of flat(l)) if (x?.lines?.length && !have.some(h => h.source === x.source && h.kind === x.kind)) have.push(x);
   pool.delete(id); pool.set(id, have);
-  if (pool.size > 8) pool.delete(pool.keys().next().value);
-  return Lyrics.best(have) ?? { kind: 'none', lines: [] };
+  if (pool.size > 8) { const old = pool.keys().next().value; pool.delete(old); picked.delete(old); }
+  return choose(id) ?? { kind: 'none', lines: [] };
 }
 Settings.onChange(k => { // a new order (or a source switched off): re-pick for the song on screen
   if (k !== 'srcOrder' && k !== '*' || !P.id || !pool.has(P.id)) return;
-  const b = Lyrics.best(pool.get(P.id)) ?? { kind: 'none', lines: [] };
+  const b = choose(P.id) ?? { kind: 'none', lines: [] };
   if (b !== P.lyrics) { P.lyrics = b; Lyrics.build(b); }
 });
 

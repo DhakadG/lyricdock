@@ -747,6 +747,20 @@ body:not(.bg-video) #yt { display: none; }
 /* Settings -> Connection status card */
 .st-custom { padding: 14px 14px 12px; }
 
+/* Per-song source switcher (features.js pill): bottom centre of the lyrics pane, only with the controls up */
+#srcPill { position: fixed; z-index: 6; display: flex; align-items: center; gap: .6vmin; padding: .6vmin; border-radius: 99px;
+  transform: translate(-50%, calc(-100% - 2.5vmin)) scale(.94); opacity: 0; visibility: hidden; pointer-events: none;
+  background: rgba(30, 30, 32, .62); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1);
+  color: #fff; font: 600 max(12px, 1.9vmin)/1 var(--font, system-ui), sans-serif; white-space: nowrap;
+  transition: opacity .3s, transform .45s var(--spring), visibility 0s .3s; }
+body.ui #srcPill.has { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, calc(-100% - 2.5vmin)); transition: opacity .3s, transform .45s var(--spring), visibility 0s; }
+#srcPill button { display: grid; place-items: center; width: max(30px, 5vmin); height: max(30px, 5vmin); border: 0; border-radius: 50%; background: rgba(255, 255, 255, .08); color: #fff; padding: 0; }
+#srcPill button:active { background: rgba(255, 255, 255, .22); }
+#srcPill svg { width: 55%; height: 55%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+#srcPill span { display: flex; align-items: center; gap: 1vmin; padding: 0 .6vmin; }
+#srcPill small { opacity: .55; font-variant-numeric: tabular-nums; }
+#srcPill .src-sync { padding: .5vmin .9vmin; }
+
 /* Settings -> Lyrics -> Lyrics sources (features.js sourceList) */
 .src-list { width: 100%; }
 .src-head b { display: block; font-size: 1rem; font-weight: 700; letter-spacing: -.01em; }

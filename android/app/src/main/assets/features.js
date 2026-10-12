@@ -58,6 +58,44 @@
   });
   addEventListener('resize', fitArt);
   Settings.onChange(() => fitArt());
+  // ---- per-song source switcher (Better Lyrics' "‹ LRCLib 2/9 ›" pill): with the controls up, steps through every version
+  // of this song's lyrics that came in (app.js pool), best-ranked first. The pick holds for the song (app.js picked).
+  const SYN = { word: ['Word', 'w'], line: ['Line', 'l'], static: ['Unsynced', 's'] };
+  const pillEl = document.createElement('div');
+  pillEl.id = 'srcPill';
+  pillEl.innerHTML = '<button data-d="-1" aria-label="Previous lyrics source"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><span></span><button data-d="1" aria-label="Next lyrics source"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>';
+  document.body.append(pillEl);
+  const versions = () => [...(pool.get(P.id) ?? [])].sort((a, b) => Lyrics.rank(b) - Lyrics.rank(a));
+  let pillSig = '';
+  function pill() {
+    const v = versions(), i = v.indexOf(P.lyrics), on = v.length > 1 && i >= 0;
+    const r = $('lyrics').getBoundingClientRect(), sig = `${on}|${P.id}|${i}|${v.length}|${r.left | 0}|${r.width | 0}|${r.bottom | 0}`;
+    if (sig === pillSig) return;
+    pillSig = sig;
+    pillEl.classList.toggle('has', on);
+    if (!on) return;
+    const sy = SYN[P.lyrics.kind] ?? ['', 's'], span = pillEl.querySelector('span');
+    span.innerHTML = `<i class="src-sync s-${sy[1]}">${sy[0]}</i><b></b><small>${i + 1}/${v.length}</small>`;
+    span.querySelector('b').textContent = P.lyrics.source || 'Lyrics';
+    pillEl.style.left = `${r.left + r.width / 2}px`;
+    pillEl.style.top = `${r.bottom}px`;
+  }
+  setInterval(pill, 250);
+  addEventListener('resize', () => { pillSig = ''; pill(); });
+  pillEl.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    e.stopPropagation();
+    const v = versions(), i = v.indexOf(P.lyrics), n = v[(i + +b.dataset.d + v.length) % v.length];
+    if (!n || n === P.lyrics) return;
+    picked.set(P.id, `${n.source}:${n.kind}`);
+    P.lyrics = n;
+    Lyrics.build(n);
+    $('lines').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(260), easing: 'ease-out' });
+    badge();
+    pill();
+    window.showUi?.(true); // keep the controls (and the pill) up while stepping
+  };
   function badge() {
     const src = P.lyrics?.source;
     $('srcBadge').textContent = S.sourceBadge && src ? src : '';
