@@ -14,17 +14,42 @@ display hit it ("limit reached: daily message quota reached"), so pairing codes 
 | File | What |
 |---|---|
 | `ntfy/wrangler.jsonc` | Worker `ntfy`, custom domain, the container (image `binwiederhier/ntfy:v2.28.0`, `lite` instance, one instance) |
-| `ntfy/src/index.js` | `Container` class (entrypoint `ntfy serve`, settings as env vars) + the Worker that forwards every request to the one server |
+| `ntfy/src/index.js` | `Container` class (entrypoint `ntfy serve` + its settings as flags) + the Worker that forwards every request to the one server |
 | `ntfy/package.json` | `@cloudflare/containers` |
 
-Settings (env vars in `src/index.js`):
+Settings: flags to `ntfy serve` (the `entrypoint` in `src/index.js`). Not the Container's `envVars`: `NTFY_*` env
+vars set there never took effect (checked 2026-10-15: a freshly started server still had the default limits).
 
-| Setting | Value | Meaning |
+| Flag | Value | Meaning |
 |---|---|---|
-| `NTFY_BASE_URL` | `https://ntfy.losthusky.qzz.io` | |
-| `NTFY_BEHIND_PROXY` | `true` | rate limits per real visitor (the Worker passes `X-Forwarded-For`) |
-| `NTFY_CACHE_DURATION` | `12h` | in memory: clients reconnecting with `?since=` get what they missed |
-| `NTFY_ENABLE_SIGNUP` / `NTFY_ENABLE_LOGIN` | `false` | open, anonymous topics (pick unguessable topic names) |
+| `--base-url` | `https://ntfy.losthusky.qzz.io` | |
+| `--behind-proxy` | | rate limits per real visitor (the Worker passes `X-Forwarded-For`) |
+| `--cache-duration` | `12h` | in memory: clients reconnecting with `?since=` get what they missed |
+| `--enable-signup` / `--enable-login` | `false` | open, anonymous topics (pick unguessable topic names) |
+| `--visitor-request-limit-burst` | `300` | requests a visitor IP may make at once (ntfy default 60) |
+| `--visitor-request-limit-replenish` | `200ms` | then one more per 200 ms = 5/s (default 5 s). Also sets the daily message cap: one day / 200 ms = 432,000 (default 17,280) |
+| `--visitor-subscription-limit` | `150` | open subscriptions per visitor IP (default 30) |
+
+### Rate limits (HTTP 429)
+
+ntfy limits per **visitor IP** (the Worker sets `X-Forwarded-For` to `CF-Connecting-IP`); the Worker itself has no
+limit. Every request counts against the bucket: a WebSocket/SSE subscribe, a publish, a poll. When it's empty ntfy
+answers `429 {"code":42901,"error":"limit reached: too many requests"}`, and a browser only logs
+`WebSocket connection to 'wss://ntfy.../ld…/ws' failed`.
+
+With ntfy's defaults (60 burst, then 1 per 5 s) one home behind one IP ran dry (seen 2026-10-15: a screen stuck on
+"Reconnecting…", its topic sockets failing every 3 s, the update-ping SSE refused too):
+
+- Spotify dials every paired screen that isn't connected every 10 s: a subscribe + an offer post = 1 request per 5 s
+  per offline screen, the whole default budget on its own;
+- each screen keeps 2-3 topic sockets (pairing code, network lobby, account lobby) plus the update ping;
+- a screen retried a refused socket every 3 s for ever, so the bucket never refilled.
+
+Fixes: the limits above (5/s sustained covers ~25 offline paired screens plus the screens' sockets), and `rtc.js`
+backs off a refused handshake 3 s, 6 s, 12 s … 2 min with jitter, back to 3 s once a socket opens
+(`tests/rtc-backoff.test.mjs`). The update ping already backed off (5 s doubling to 5 min, `app.js`).
+Check from a shell in that home: `curl -s "https://ntfy.losthusky.qzz.io/ld000000000000000000000000/json?poll=1"`
+returns nothing (200) when fine, the 42901 JSON when the bucket is empty.
 
 ## Use it
 
@@ -50,6 +75,7 @@ In the ntfy phone app: Settings → Default server → `https://ntfy.losthusky.q
 | Task | Command (in `ntfy/`) |
 |---|---|
 | Deploy / update the image tag | `npm i && npx wrangler deploy` |
+| Apply changed settings | deploy, then restart the server (a deploy doesn't): `curl -X POST -H "Authorization: Bearer $env:LYRICDOCK_PUBLISH_TOKEN" https://ntfy.losthusky.qzz.io/v1/restart`. Check: `/v1/stats` (owner token) `messages` starts again from 0 |
 | Logs | `npx wrangler tail` |
 | Health | `curl https://ntfy.losthusky.qzz.io/v1/health` → `{"healthy":true}` |
 

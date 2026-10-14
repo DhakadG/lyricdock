@@ -92,16 +92,27 @@ const Rtc = (() => {
   }
   const post = (r, t, body) => fetch(`${r}/${t}`, { method: 'POST', body, headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
 
-  // ---- subscriptions: one WebSocket per (relay, topic), re-opened when dropped, closed when no longer wanted
+  // ---- subscriptions: one WebSocket per (relay, topic), re-opened when dropped, closed when no longer wanted.
+  // A refused handshake (the relay's per-IP limit answers 429, or it is down) backs off 3 s, 6 s, ... 2 min with
+  // jitter: a fixed 3 s retry on every topic kept the home's request budget empty, so it never recovered.
   const subs = new Map(); // `${relay} ${topic}` -> ws
+  const fails = new Map(); // `${relay} ${topic}` -> handshakes refused in a row
   function subscribe(r, t, onMessage) {
     const k = `${r} ${t}`;
     if (subs.has(k)) return;
     const ws = new WebSocket(`${wsOf(r)}/${t}/ws`);
     subs.set(k, ws);
     ws.again = () => subscribe(r, t, onMessage);
+    let up = false;
+    ws.onopen = () => { up = true; fails.delete(k); };
     ws.onmessage = e => { let ev; try { ev = JSON.parse(e.data); } catch (x) { return; } if (ev.event === 'message') onMessage(ev.message, r, t); };
-    ws.onclose = () => { if (subs.get(k) === ws) { subs.delete(k); setTimeout(() => want.has(k) && subscribe(r, t, onMessage), 3000); } };
+    ws.onclose = () => {
+      if (subs.get(k) !== ws) return;
+      subs.delete(k);
+      const n = up ? 0 : (fails.get(k) || 0) + 1;
+      fails.set(k, n);
+      setTimeout(() => want.has(k) && subscribe(r, t, onMessage), Math.min(120e3, 3000 * 2 ** n) * (0.5 + Math.random() / 2));
+    };
   }
   // A phone that dozed comes back with sockets that look open but are dead (no close event), so it stopped answering
   // Find devices until the app restarted. Timers stand still during a doze: a 15 s tick that arrives over a minute late
@@ -117,7 +128,8 @@ const Rtc = (() => {
   const want = new Set();
   function sync(list) { // list: [[relay, topic, handler]]
     const keys = new Set(list.map(([r, t]) => `${r} ${t}`));
-    for (const [k, ws] of subs) if (!keys.has(k)) { want.delete(k); subs.delete(k); try { ws.close(); } catch (e) {} }
+    // Over want, not subs: a topic waiting out its backoff isn't in subs but must stop being wanted too.
+    for (const k of want) if (!keys.has(k)) { want.delete(k); const ws = subs.get(k); subs.delete(k); try { ws?.close(); } catch (e) {} }
     for (const [r, t, h] of list) { want.add(`${r} ${t}`); subscribe(r, t, h); }
   }
 

@@ -7,16 +7,24 @@ import { same } from '../../auth/sso.js';
 export class Ntfy extends Container {
   defaultPort = 80;
   sleepAfter = '2h'; // open subscriptions keep it awake; an idle server stops and starts again on the next request
-  entrypoint = ['ntfy', 'serve'];
-  envVars = {
-    NTFY_BASE_URL: 'https://ntfy.losthusky.qzz.io',
-    NTFY_LISTEN_HTTP: ':80',
-    NTFY_BEHIND_PROXY: 'true', // rate limits per real visitor (X-Forwarded-For below), not per Worker
-    NTFY_CACHE_DURATION: '12h', // in memory: missed messages are replayed to clients that reconnect with ?since=
-    NTFY_ENABLE_SIGNUP: 'false',
-    NTFY_ENABLE_LOGIN: 'false',
-    NTFY_LOG_LEVEL: 'warn',
-  };
+  // Settings as command-line flags, not env vars: NTFY_* env vars set here never showed up in ntfy (a freshly started
+  // server still cut a visitor off at the default 60 requests), while the entrypoint demonstrably runs.
+  entrypoint = ['ntfy', 'serve',
+    '--base-url', 'https://ntfy.losthusky.qzz.io',
+    '--listen-http', ':80',
+    '--behind-proxy', // rate limits per real visitor (X-Forwarded-For below), not per Worker
+    '--cache-duration', '12h', // in memory: missed messages are replayed to clients that reconnect with ?since=
+    '--enable-signup=false',
+    '--enable-login=false',
+    '--log-level', 'warn',
+    // Per visitor IP. ntfy's defaults (60-request burst, then 1 per 5 s; 30 open subscriptions) fit one phone, not a
+    // home behind one IP: Spotify re-dialing an offline paired screen every 10 s (subscribe + post) is 1 per 5 s on
+    // its own, so screens' subscriptions got HTTP 429. 300 burst, 5/s sustained (also sets the daily message cap:
+    // one day / 200 ms = 432k), 150 open subscriptions.
+    '--visitor-request-limit-burst', '300',
+    '--visitor-request-limit-replenish', '200ms',
+    '--visitor-subscription-limit', '150',
+  ];
 }
 
 // Who may use what. Not a public ntfy: anything that isn't LyricDock's own traffic needs the owner token (secret
@@ -49,8 +57,12 @@ async function allowed(req, env, path) {
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-    if (!(await allowed(req, env, new URL(req.url).pathname)))
+    const path = new URL(req.url).pathname;
+    if (!(await allowed(req, env, path)))
       return new Response('Owner only', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="ntfy owner", charset="UTF-8"', 'cache-control': 'no-store' } });
+    // The settings above reach a running server only when it starts again (a deploy doesn't restart it): stop it, and
+    // the next request starts it with them. Owner only (allowed() above); /v1/ is ntfy's API space, never a topic.
+    if (path === '/v1/restart' && req.method === 'POST') { await getContainer(env.NTFY, 'main').stop(); return new Response('Restarting\n'); }
     const fwd = new Request(req);
     fwd.headers.delete('authorization'); // ours, not ntfy's (ntfy would reject an unknown token)
     fwd.headers.set('X-Forwarded-For', req.headers.get('CF-Connecting-IP') || '');
