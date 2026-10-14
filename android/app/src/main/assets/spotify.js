@@ -176,6 +176,8 @@ const Web = (() => {
     return reason === 'PREMIUM_REQUIRED' ? 'Spotify only lets Premium accounts be controlled from other apps - this account can be followed, not controlled'
       : reason === 'NO_ACTIVE_DEVICE' || r.status === 404 ? 'No active Spotify device - press play in Spotify first'
       : reason === 'VOLUME_CONTROL_DISALLOW' ? 'This device sets its own volume (iPhones do) - change it there'
+      // An iPhone / iPad whose Spotify lost the sound to another app (a call, a video) won't start again from the background.
+      : r.status === 403 && /^(Smartphone|Tablet)$/.test(state.dtype || '') ? `${state.device || 'That device'} won't start playing from the background - press play in Spotify there once`
       : `Spotify refused that (${r.status}${e.message ? `: ${e.message}` : ''})`;
   };
   async function control(cmd, arg, retried) {

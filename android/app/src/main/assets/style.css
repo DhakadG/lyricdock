@@ -49,7 +49,7 @@ body.bg-black #dim { opacity: 1; background: #000; }
 body.art-right #wrap { flex-direction: row-reverse; } /* Settings -> Cover side */
 #left { flex: 0 0 38%; display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 0; }
 #artbox { position: relative; width: min(100%, 68vmin); }
-#art { position: relative; width: 100%; aspect-ratio: 1; border-radius: 2.4vmin; background: #1a1a1d center/cover;
+#art { position: relative; width: 100%; aspect-ratio: 1 / var(--art-h); border-radius: 2.4vmin; background: #1a1a1d center/cover;
   box-shadow: 0 3vmin 8vmin -1vmin rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .06), 0 2vmin 9vmin -3vmin rgba(var(--acc), .35);
   transition: transform calc(.6s / var(--as)) var(--ease), box-shadow .6s, border-radius .4s; }
 body.paused.pp-both #art, body.paused.pp-shrink #art { transform: scale(.88); box-shadow: 0 1vmin 3vmin rgba(0, 0, 0, .5); }
@@ -66,11 +66,18 @@ body.paused.pp-both #art, body.paused.pp-shrink #art { transform: scale(.88); bo
 #heart.on .fill { opacity: 1; }
 body.show-liked #heart { display: block; }
 body.heart-liked-only:not(.ui) #heart:not(.on) { display: none; } /* unliked: only while the controls are up */
-#mv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; opacity: 0; transition: opacity .6s; pointer-events: none; }
+/* Animated cover: dissolves in over the still on a long, soft curve (Apple's), and out the same way (.mv-old, features.js
+   retire). */
+#mv, .mv-old { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; opacity: 0; pointer-events: none;
+  transition: opacity .9s cubic-bezier(.32, .72, 0, 1); }
 #mv.on { opacity: 1; }
-/* Tall animated cover (3:4): the cover box follows the video while it plays (portrait: same width, more height). */
-body.cover-tall #art { aspect-ratio: 3 / 4; }
-body.fit-art.cover-tall #artbox { max-width: calc(var(--art-max, 100vh) * .75); }
+.mv-old { transition-duration: .6s; }
+/* Tall animated cover (3:4): the cover box follows the video while it plays (portrait: same width, more height). The
+   box morphs between square and tall (--art-h = height / width, registered so it animates; without @property it just
+   switches), the video inside cropped to it as it opens up. */
+@property --art-h { syntax: '<number>'; inherits: true; initial-value: 1; }
+body { --art-h: 1; transition: --art-h .8s cubic-bezier(.32, .72, 0, 1); }
+body.cover-tall { --art-h: 1.33333; }
 /* Padding guide (Settings): where content stops on each edge; the notch side in the accent colour. */
 #padGuide { position: fixed; inset: 0; z-index: 100000; pointer-events: none; opacity: 0; transition: opacity .3s; }
 body.pad-guide #padGuide { opacity: 1; }
@@ -996,7 +1003,7 @@ body.art-ctl.ui #meta { opacity: 0; transform: translateY(3vmin); pointer-events
 
 /* ---- left column fit (fitArt): clear of the times + bar, cover capped to what's left */
 body.fit-art #left { box-sizing: border-box; justify-content: flex-start; padding: var(--left-pt, 4vmin) 0 var(--left-pb, 4vmin); }
-body.fit-art #artbox { width: 100%; max-width: var(--art-max, none); margin-top: auto; }
+body.fit-art #artbox { width: 100%; max-width: calc(var(--art-max, 100vh) / var(--art-h)); margin-top: auto; }
 body.fit-art #meta { margin: auto 0; }
 /* ---- no lyrics: Default / TV centre the cover and say so under the title, quietly; elsewhere the note is centred */
 body.nolyrics.layout-split #lyrics, body.nolyrics.layout-tv #lyrics { display: none; }

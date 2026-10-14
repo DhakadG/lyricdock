@@ -444,6 +444,13 @@ function setPlaying(p, animate) {
 function onPos(m) {
   if (performance.now() < P.optimistic && +m.pos > 3000) return onMeta(m);
   if (performance.now() < P.seekUntil && Math.abs(+m.pos - (P.seekTo + (P.playing ? performance.now() - P.seekAt : 0))) > 1200) return onMeta(m);
+  // A beat over half a second behind the running clock is nearly always a late one: the Web API's progress lags at times,
+  // a WebRTC beat can arrive after a newer one, a source switch replays its last beat. Following it pulled the lyrics a
+  // second back, then forward again on the next beat. A real jump back (a seek on the computer, the song restarted) is
+  // taken once the next beat says the same. Not right after a song change: the first beats there correct the start.
+  const t = performance.now(), back = P.playing && m.playing && P.at > 0 && t - (P.curAt || 0) > 2500 ? P.pos + t - P.at - (+m.pos || 0) : 0;
+  if (back > 500 && !(P.backAt && Math.abs(P.backPos + t - P.backAt - +m.pos) < 400)) { P.backPos = +m.pos; P.backAt = t; return onMeta(m); }
+  P.backAt = 0;
   const had = P.at > 0;
   P.pos = +m.pos || 0;
   P.at = performance.now();

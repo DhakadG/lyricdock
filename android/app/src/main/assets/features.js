@@ -619,6 +619,11 @@
       run: () => { const i = ROT.indexOf(ROT.includes(S.orientation) ? S.orientation : screen.orientation?.type); Settings.set('orientation', ROT[(i + 1) % 4]);
         window.notice?.('Rotation locked - Settings → Orientation → Auto-rotate to undo', 2600); } },
   };
+  // Web: full screen in the rotate button's place (web/public/install.js; corners in, while full screen, to leave it).
+  const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  QB.full = { html: () => SVG(isFull() ? '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>' : '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+    tip: 'Full screen', on: isFull, run: () => window.lyricdockFullscreen?.() };
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => renderQs());
   const ROT = ['landscape-primary', 'portrait-primary', 'landscape-secondary', 'portrait-secondary']; // a quarter turn apart, in order
   const QBAR = { split: ['swap', 'roman', 'rotate', 'layout', 'tune'], tv: ['swap', 'roman', 'rotate', 'layout', 'tune'], player: ['roman', 'rotate', 'layout', 'tune'],
     lyrics: ['roman', 'rotate', 'layout', 'tune'], compact: ['roman', 'rotate', 'layout', 'tune'], cinema: ['roman', 'rotate', 'layout', 'tune'], nowbar: ['roman', 'rotate', 'layout', 'tune'],
@@ -633,7 +638,10 @@
     clocksplit: ['artSide', ...CLK], clock: [...CLK, ...STATUS],
   };
   function renderQs() {
-    const box = $('qs'), ids = (QBAR[S.layout] || ['layout', 'tune']).filter(id => id !== 'rotate' || !window.LYRICDOCK_WEB); // a browser can't turn its screen
+    // A browser can't turn its screen: full screen goes there instead (not in an installed app that already is full screen).
+    const full = !matchMedia('(display-mode: fullscreen)').matches && navigator.standalone !== true;
+    const box = $('qs'), ids = (QBAR[S.layout] || ['layout', 'tune']).map(id => id === 'rotate' && window.LYRICDOCK_WEB ? 'full' : id)
+      .filter(id => id !== 'full' || (full && !window.LYRICDOCK_MINI));
     box.replaceChildren(...ids.map(id => {
       const q = QB[id], b = document.createElement('button');
       b.dataset.q = id; b.title = q.tip; b.setAttribute('aria-label', q.tip);
@@ -934,7 +942,11 @@
     return [shape, `${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${Math.round(shown * q)}${S.motionQuality === 'max' ? '&q=max' : ''}${warm ? '&warm=1' : ''}${who()}`];
   };
   async function lookup(t, slot, warm) {
-    const [asked, url] = lookupUrl(t, slot, warm), r = await cloud(url, 15000), j = r.ok ? await r.json() : null;
+    const [asked, url] = lookupUrl(t, slot, warm), r = await cloud(url, 15000);
+    // Only 404 means "no animated cover". 401 (the sign-in token not there yet on a first start), 429 or 5xx used to count
+    // as none too, for the rest of the session: they're asked again (motionFor / warm).
+    if (!r.ok && r.status !== 404) throw new Error(`cover ${r.status}`);
+    const j = r.ok ? await r.json() : null;
     const shape = j?.shape || asked; // a tall request falls back to square when the album has no tall cover
     return typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video) ? { url: j.video, key: `${j.album.id}/${shape}/${j.variant.n}`, shape } : null;
   }
@@ -952,7 +964,7 @@
       const w = await lookup(t, slot, true);
       warmed.set(k, w);
       if (w && (S.motionKeep === 'first' || (S.motionKeep === 'second' && (vcIdx()[vcId(w.key)]?.[2] || 0) >= 1))) save(w.url, w.key);
-    } catch (e) { warmed.delete(k); }
+    } catch (e) { setTimeout(() => warmed.delete(k), 15000); } // offline / refused: try again in a while, not every second
     while (warmed.size > 8) warmed.delete(warmed.keys().next().value);
   }
   async function motionFor(t, slot) {
@@ -964,7 +976,7 @@
       if (w) cloud(lookupUrl(t, slot)[1], 15000).catch(() => {}); // already known: just count the play
       else w = await lookup(t, slot);
       if (w) { motion.set(k, await playable(w.url, w.key)); tallOf.set(k, w.shape === 'tall'); }
-    } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 60000); } // offline / slow: ask again in a minute
+    } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 15000); } // offline / slow / refused: ask again soon
     while (motion.size > 12) { const old = motion.keys().next().value; if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old)); motion.delete(old); }
     motionTick(); canvasTick();
   }
@@ -981,9 +993,11 @@
     try { c = await caches.open('dock-videos'); } catch (err) { return url; } // no Cache Storage: stream
     const hit = await c.match(id).catch(() => null);
     if (hit) return URL.createObjectURL(await hit.blob());
-    if (!inflight.has(id) && (S.motionKeep === 'never' || (S.motionKeep !== 'first' && e[2] < 2))) return url; // stream this time
-    const blob = await save(url, key);
-    return blob ? URL.createObjectURL(blob) : url; // too slow / failed: stream it instead of showing nothing
+    // Not on the device yet: stream it now, and save a copy in the background when the keep setting says so. Waiting for
+    // the copy first kept the still cover up for the whole download - on an iPad that's a 1662x2216 HEVC at 17 Mbit/s,
+    // so a song started directly (not warmed as "next") often never showed its animated cover.
+    if (S.motionKeep === 'first' || (S.motionKeep === 'second' && e[2] >= 2)) save(url, key);
+    return url;
   }
   const inflight = new Map(); // device id -> Promise<Blob | null>
   function save(url, key) {
@@ -1010,16 +1024,22 @@
     return inflight.get(id);
   }
 
+  // A video that goes (setting off, night, a new file for the same song) dissolves away the way it came (style.css
+  // .mv-old), never just vanishes. Song changes fade theirs out in app.js showArt.
+  const retire = v => { if (!v) return; v.removeAttribute('id'); if (!v.classList.contains('on')) return v.remove(); v.className = 'mv-old'; setTimeout(() => v.remove(), 1000); };
   function motionTick() {
-    const want = S.motionArt && !document.body.classList.contains('night') ? motion.get(`cover:${P.id}`) : '';
+    const k = `cover:${P.id}`, on = S.motionArt && !document.body.classList.contains('night'), want = on ? motion.get(k) : '';
     let v = $('mv');
     const live = !!want && !!v?.classList.contains('on') && v.dataset.src === want;
     $('art').classList.toggle('animated', live);
-    const tall = live && !!tallOf.get(`cover:${P.id}`);
+    // Square <-> tall morphs (style.css --art-h) together with the video fading in. Through a song change from one tall
+    // video to another (known from warming) the box stays tall for a moment instead of shrinking and growing again.
+    const hold = on && !live && document.body.classList.contains('cover-tall') && warmed.get(k)?.shape === 'tall' && performance.now() - (P.curAt || 0) < 4000;
+    const tall = (live && !!tallOf.get(k)) || hold;
     if (tall !== document.body.classList.contains('cover-tall')) { document.body.classList.toggle('cover-tall', tall); fitArt(); }
-    if (!want) { v?.remove(); return; }
+    if (!want) { retire(v); return; }
     if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
-    v?.remove();
+    retire(v);
     v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
     v.dataset.src = want;
     // Fades in only once the song change has settled (app.js showArt): never pops in mid-transition.
@@ -1304,7 +1324,8 @@
     const b = S.bright === 'system' ? -1 : S.bright === 'schedule' && inNight ? S.brightNight : S.brightDay;
     if (b !== window.__bright) { window.__bright = b; call('brightness', b); }
     if (S.mediaNotif && S.lockLyric) return; // the lyric loop below owns the notification (the line replaces the artist)
-    const mk = S.mediaNotif && P.id ? `${P.id}|${!!P.playing}|${$('title').textContent}` : '';
+    // (+ where Spotify plays: the web shim keeps its audio off while Spotify plays on this iPad / iPhone)
+    const mk = S.mediaNotif && P.id ? `${P.id}|${!!P.playing}|${$('title').textContent}|${window.Web?.playingOn?.().type}` : '';
     if (mk !== mediaKey) { mediaKey = mk; call('media', mk ? $('title').textContent : '', $('artist').textContent, P.art || '', !!P.playing); }
   }
   setInterval(() => hardware(new Date().getHours()), 1000);

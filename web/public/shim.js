@@ -22,6 +22,12 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
   }
   document.addEventListener('visibilitychange', holdAwake);
 
+  // iPhone / iPad give the sound to one app at a time (every browser there is Safari underneath): the loop below
+  // starting paused Spotify playing on this same iPad, and Spotify in the background then refused to play again (403
+  // "Restriction violated", seen 2026-10-15). Spotify is in Control Center there anyway, so with Spotify on a phone or
+  // tablet the loop stays off; it still plays while Spotify is on a computer or a speaker.
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  window.lyricdockIosHere = () => ios && /^(Smartphone|Tablet)$/.test(window.Web?.playingOn?.().type || '');
   let silence = null, mediaOn = false;
   function quiet() {
     if (silence) return silence;
@@ -49,7 +55,7 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
   // What Spotify's "Find devices" list shows for this screen.
   function model() {
     const ua = navigator.userAgent;
-    const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows'
+    const os = /iPad/.test(ua) || (ios && !/iPhone|iPod/.test(ua)) ? 'iPad' : ios ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows'
       : /Mac OS X/.test(ua) ? 'Mac' : /Linux|CrOS/.test(ua) ? 'Linux' : 'Web';
     return `${os} browser`;
   }
@@ -138,7 +144,7 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
       ms.playbackState = playing ? 'playing' : 'paused';
       try { if (P.dur) ms.setPositionState({ duration: P.dur / 1000, position: Math.max(0, Math.min(pos(), P.dur)) / 1000, playbackRate: 1 }); } catch (e) {}
       const a = quiet();
-      if (!playing) return a.pause();
+      if (!playing || window.lyricdockIosHere()) return a.pause();
       // Autoplay rules: sound needs one click on the page first.
       a.play().catch(() => addEventListener('pointerdown', () => mediaOn && a.play().catch(() => {}), { once: true, capture: true }));
     },

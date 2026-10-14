@@ -118,6 +118,21 @@ const Lyrics = (() => {
     return el;
   }
 
+  // 3 · 2 · 1: each number rises in, and the last one drifts up and dissolves as the first line starts.
+  const SOFT = 'cubic-bezier(.32, .72, 0, 1)';
+  function countdown(x, v) {
+    const cd = x.cd;
+    if (cd.textContent === v || x.cdOut) return;
+    if (!v) {
+      x.cdOut = cd.animate([{ opacity: .8, transform: 'none', filter: 'blur(0)' }, { opacity: 0, transform: 'translateY(-.5em)', filter: 'blur(.15em)' }],
+        { duration: 500, easing: SOFT });
+      x.cdOut.onfinish = x.cdOut.oncancel = () => { cd.textContent = ''; x.cdOut = null; };
+      return;
+    }
+    cd.textContent = v;
+    cd.animate([{ opacity: 0, transform: 'translateY(.35em)', filter: 'blur(.1em)' }, { opacity: .8, transform: 'none', filter: 'blur(0)' }], { duration: 420, easing: SOFT });
+  }
+
   // ---- normalization shared by the desktop cache (via the bridge) and the Spicy Lyrics API (api.js).
   const PROVIDERS = [['spicy_lyrics', 'Spicy Lyrics'], ['apple_music', 'Apple Music'], ['spotify', 'Spotify'],
     ['spl', 'Spicy Lyrics'], ['aml', 'Apple Music'], ['spt', 'Spotify'], ['ldb', 'Local DB']];
@@ -275,6 +290,7 @@ const Lyrics = (() => {
         x.state = state;
         x.el.classList.toggle('on', state === 'on');
         x.el.classList.toggle('sung', state === 'sung');
+        if (x.cd && was === 'on') countdown(x, ''); // singing starts: the last number leaves (it used to stay there)
         if (was === 'on') {
           if (state === 'sung' && (x.syl || x.lk)) { x.cool = p + COOL; x.el.classList.add('cool'); } // let the glow settle
           else settle(x, false);
@@ -289,7 +305,7 @@ const Lyrics = (() => {
         Anim.line(x, p, dt, opts);
       } else if (x.dots) {
         Anim.dotGroup(x.grp, p, dt);
-        if (x.cd) { const r = Math.ceil((x.e - p) / 1000), v = S.countdown && r <= 3 && r > 0 ? String(r) : ''; if (x.cd.textContent !== v) x.cd.textContent = v; }
+        if (x.cd) { const r = Math.ceil((x.e - p) / 1000); countdown(x, S.countdown && r <= 3 && r > 0 ? String(r) : ''); }
         for (const d of x.dd) Anim.dot(d, p, dt);
       }
     }

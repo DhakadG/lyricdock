@@ -104,7 +104,7 @@
     const p = P.source === 'bridge' && Rtc.open() ? Rtc.path() : null, on = Web.playingOn();
     if (S.mediaNotif && p && !p.relayed && p.rtt != null && p.rtt < 0.0015)
       tip('dock:tipSame', 'Spotify is playing on this computer and already shows in its media controls. Turn off LyricDock\'s copy?', 'Turn off', () => Settings.set('mediaNotif', false));
-    else if (!S.mediaNotif && P.source === 'web' && on.type && on.type !== 'Computer')
+    else if (!S.mediaNotif && P.source === 'web' && on.type && on.type !== 'Computer' && !window.lyricdockIosHere?.())
       tip('dock:tipAway', `Spotify is playing on ${on.name || 'another device'}. Control it with this computer's media keys?`, 'Turn on', () => Settings.set('mediaNotif', true));
     // Word timing comes from Spotify on a computer (the extension reads Spicy Lyrics' cache) or a Spicy Lyrics key;
     // following the account alone gets line-synced lyrics (LRCLIB...).
@@ -146,15 +146,19 @@
   const pcSeen = () => { try { return !!localStorage.getItem('dock:pcSeen'); } catch (e) { return false; } };
   setTimeout(() => { if (Settings.S.source !== 'web' && !window.Setup?.isOpen() && (!window.Web?.loggedIn() || pcSeen())) ensure(); }, 1000);
 
-  // ---- full screen (desktop / Android browsers; a gesture is required, so it's offered, not forced). Safari before
-  // 16.4 only has the webkit-prefixed call (iPhone has none for pages).
-  window.lyricdockFullscreen = () => {
-    const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
-    else el.webkitRequestFullscreen?.();
-  };
+  // ---- full screen, on and off (the quick bar's button, Settings, F). A click is required, so it's offered, not forced.
+  //  - Chrome, Edge, Brave, Opera, Firefox, Safari 16.4+ (Mac, iPad): the standard call. Older Safari: webkit-prefixed.
+  //  - iPhone, and Chrome / Edge / Firefox on iPhone and iPad (Safari's engine without its full screen): no page can go
+  //    full screen there, so the button explains Add to Home Screen, which opens without browser bars.
   const fullscreenEl = () => document.fullscreenElement || document.webkitFullscreenElement;
-  const exitFullscreen = () => (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+  window.lyricdockFullscreen = () => {
+    const d = document, el = d.documentElement;
+    if (fullscreenEl()) return Promise.resolve((d.exitFullscreen || d.webkitExitFullscreen)?.call(d)).catch(() => {});
+    const no = () => window.notice?.(ios || ipad ? 'Full screen here: Share → "Add to Home Screen", then open LyricDock from your Home Screen'
+      : 'This browser won\'t go full screen from a page - use its own menu (View → Full screen)', 6000);
+    if (!(d.fullscreenEnabled || d.webkitFullscreenEnabled)) return no();
+    try { Promise.resolve(el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen()).catch(no); } catch (e) { no(); }
+  };
 
   // ---- mouse / trackpad: moving the pointer shows the controls (they fade, and the cursor hides, after the usual delay).
   let moved = 0;
@@ -182,7 +186,7 @@
       v.dispatchEvent(new Event('input'));
       window.notice?.(`Volume ${v.value}%`, 1200);
     }
-    else if (e.key === 'f' || e.key === 'F') fullscreenEl() ? exitFullscreen() : window.lyricdockFullscreen();
+    else if (e.key === 'f' || e.key === 'F') window.lyricdockFullscreen();
   });
 
   // ---- anonymous usage: opened (with how), and errors (message + file:line only, never user data)
