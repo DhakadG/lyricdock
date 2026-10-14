@@ -1443,7 +1443,38 @@
   }
   // isRight: Spicetify gives right-side buttons the class of Spotify's own round action buttons (left ones sit
   // small among the back/forward arrows), so this matches the native top-bar buttons.
-  safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel, false, true).element.classList.add('ld-topbar'));
+  // On the left, beside back / forward, in front of the app icons (Marketplace, Listening Stats...).
+  const tb = safe(() => new Spicetify.Topbar.Button('LyricDock', ICON, openPanel, false, false));
+  tb?.element.classList.add('ld-topbar');
+  // Spicetify only places top-bar buttons once it finds Spotify's back/forward buttons by class. Spotify 1.3.4 renamed
+  // that container (main-globalNav-historyButtonsWrapper) and Spicetify 2.45.3 waits for the old name forever, so the
+  // button never showed ("LyricDock vanished", 2026-10-15). So LyricDock places it itself, and again whenever Spotify
+  // redraws the top bar: just before the app icons' row, looking like them (outside their scroller, which is only as wide
+  // as its icons: inside it, the last icon slid behind a scroll arrow); else after back / forward; else on the right
+  // beside Spotify's own round buttons.
+  setInterval(() => {
+    const el = tb?.element;
+    if (!el) return;
+    // (not LyricDock's own button: it takes the same class)
+    const app = [...document.querySelectorAll('.main-globalNav-historyButtonsWrapper .main-globalNav-navLink, .main-globalNav-historyButtons .main-globalNav-navLink')].find(b => !el.contains(b));
+    const row = app?.closest('.custom-navlinks-scrollable_container');
+    // Already where it belongs, or placed and nothing better yet (the app icons render a moment after back / forward).
+    if (el.isConnected && (!app || (row ? row.previousElementSibling === el : el.parentElement === app.parentElement))) return;
+    const back = document.querySelector('.main-globalNav-historyButtonsWrapper [data-encore-id=buttonTertiary], .main-globalNav-historyButtons [data-encore-id=buttonTertiary]');
+    const right = document.querySelector('.main-actionButtons .main-actionButtons-button');
+    const like = app || back || right;
+    if (!like) return;
+    tb.button.className = like.className.replace(/\s*(main-globalNav-navLinkActive|custom-navlink)\b/g, '');
+    if (app) {
+      // Spotify's own icon-button size: Spicetify's .spicetify-topbar-button rule squeezes buttons to 32 px.
+      el.classList.remove('spicetify-topbar-button');
+      el.style.cssText = 'display:flex;align-items:center';
+      const wrap = app.firstElementChild?.tagName === 'SPAN' ? `<span class="${app.firstElementChild.className}" aria-hidden="true">` : '<span aria-hidden="true">';
+      tb.button.innerHTML = wrap + ICON.replace('width="16" height="16"', 'width="24" height="24"') + '</span>';
+      tb.button.setAttribute('aria-label', 'LyricDock');
+      if (row) row.before(el); else app.parentElement.prepend(el);
+    } else like.parentElement.append(el);
+  }, 1000);
 
   // Which build should run: a pinned version, else the channel's newest (version.json: {version, beta}).
   const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
