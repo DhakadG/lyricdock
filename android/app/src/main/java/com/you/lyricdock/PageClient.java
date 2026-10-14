@@ -24,7 +24,7 @@ class PageClient extends WebViewClient {
             String html = "<!doctype html><html><head><meta name=referrer content=origin><style>html,body{margin:0;height:100%;background:#000;overflow:hidden}"
                     + "iframe{position:absolute;inset:0;width:100%;height:100%;border:0}</style></head><body>"
                     + "<iframe id=p allow=\"autoplay; encrypted-media\" src=\"https://www.youtube-nocookie.com/embed/" + id
-                    + "?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&loop=1&playlist=" + id + "&playsinline=1&rel=0&iv_load_policy=3&enablejsapi=1"
+                    + "?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&loop=1&playlist=" + id + "&playsinline=1&rel=0&iv_load_policy=3&cc_load_policy=0&enablejsapi=1"
                     + "&origin=https://video.lyricdock.app&start=" + start + "\"></iframe>"
                     + "<script>addEventListener('message',function(e){var p=document.getElementById('p');if(e.source===parent)p.contentWindow.postMessage(e.data,'*')})</script></body></html>";
             Map<String, String> h = new HashMap<String, String>();

@@ -1,7 +1,7 @@
 // Account sync: what a LyricDock sign-in carries to every screen signed in with the same Google account (phone, web,
 // installed app). Kept in LyricDock's cloud (art.lyricdock.../v1/sync, encrypted at rest), keyed by the account.
-// Settings -> Playback source -> Sync with your LyricDock account:
-//   all  (default) settings + keys + Spotify sign-in; never this device's own screen, performance and storage settings
+// Settings -> Account -> Sync with your LyricDock account:
+//   all  (default) settings + keys + Spotify sign-in; never this device's own settings (screen, performance, storage, connection: 'local' in the schema)
 //   keys the Spicy Lyrics key, the video key, the Spotify Client ID and the Spotify sign-in only
 //   off  nothing leaves this screen
 // Last writer wins: a screen pulls on start, when it comes back on screen and every 10 min, and pushes 2 s after a
@@ -11,20 +11,13 @@
 const Sync = (() => {
   const API = 'https://art.lyricdock.losthusky.qzz.io/v1/sync', SEEN = 'dock:syncSeen';
   const KEYS = ['apiKey', 'videoKey', 'spClientId'];
-  const LOCAL_GROUPS = new Set(['Screen', 'Performance', 'Storage']); // this device's hardware, not the person's taste
-  const LOCAL_KEYS = new Set(['syncScope', 'orientation', 'edgeMode', 'notchPad', 'edgePad', 'cornerPad', 'linkPath', 'relay', 'relayUrl', 'ice']);
   let pulled = false, applying = false, pushT = 0, busy = null;
   const scope = () => Settings.S.syncScope || 'all';
   const seen = () => +(localStorage.getItem(SEEN) || 0);
   const setSeen = v => { try { localStorage.setItem(SEEN, String(v)); } catch (e) {} };
 
-  // Which settings travel: walk the schema's groups (the keys it lists under Screen / Performance / Storage stay here).
-  const shared = () => {
-    let g = '';
-    const out = [];
-    for (const x of Settings.schema()) { if (x.group) g = x.group; else if (x.k && !LOCAL_GROUPS.has(g) && !LOCAL_KEYS.has(x.k)) out.push(x.k); }
-    return out;
-  };
+  // Which settings travel: every one the schema doesn't mark as this device's own (local: hardware, network).
+  const shared = () => Settings.schema().filter(x => x.k && !x.local).map(x => x.k);
   const pack = () => {
     const S = Settings.S, sc = scope();
     const keys = sc === 'all' ? shared() : KEYS;

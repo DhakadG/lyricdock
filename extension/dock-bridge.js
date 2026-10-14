@@ -100,7 +100,10 @@
     const pos = safe(() => P.getProgress(), 0), playing = safe(() => P.isPlaying(), false);
     last = { pos, at: Date.now(), playing };
     const b = { type: 'pos', pos, playing, dur: safe(() => P.getDuration(), 0), liked: safe(() => P.getHeart(), undefined), quality: quality(),
-      volume: safe(() => Math.round(P.getVolume() * 100), undefined), shuffle: safe(() => P.getShuffle(), undefined), repeat: safe(() => P.getRepeat(), undefined) };
+      volume: safe(() => Math.round(P.getVolume() * 100), undefined), shuffle: safe(() => P.getShuffle(), undefined), repeat: safe(() => P.getRepeat(), undefined),
+      // Where Spotify plays (Computer, Smartphone, Tablet, Speaker...): a browser on an iPhone / iPad must not play its own
+      // audio while Spotify plays on that same device (web shim.js).
+      dtype: safe(() => { const d = Spicetify.Platform.ConnectAPI.state.activeDevice; return d.isLocal ? 'Computer' : d.type || ''; }, '') };
     for (const l of openLinks()) sendTo(l, { ...b, via: l.kind });
   }
 
@@ -979,17 +982,19 @@
   };
   // Section icons / colours / categories built in, so the sidebar is right even before the phone sends its schema.
   const META = {
-    'Layout': ['M3.5 4.5h17v15h-17zM9.5 4.5v15', '#0A84FF', 'View', 'Where the cover, title, controls and lyrics sit, and which gestures work.'],
-    'Now playing': ['M9 18V5.5l11-2V16M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z', '#FF375F', 'View', 'The song details around the lyrics.'],
+    'Layout': ['M3.5 4.5h17v15h-17zM9.5 4.5v15', '#0A84FF', 'View', 'Where the cover, song and lyrics sit.'],
+    'Now playing': ['M9 18V5.5l11-2V16M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z', '#FF375F', 'View', 'The cover and the song details around the lyrics.'],
+    'Lyrics': ['M4 6h16M4 11h11M4 16h14M4 20.5h8', '#FF9F0A', 'View', 'Font, size, colours, romanization and where the lyrics come from.'],
+    'Animations': ['M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5', '#64D2FF', 'View', 'How the lyrics move and glow, and how songs change.'],
     'Background': ['M3.5 5h17v14h-17zM3.5 16l5-5 4 4 3-3 5 5M15.5 9.5h.01', '#BF5AF2', 'View', 'What moves behind the lyrics.'],
-    'Lyrics': ['M4 6h16M4 11h11M4 16h14M4 20.5h8', '#FF9F0A', 'View', 'Font, size, spacing, colours and word effects.'],
-    'Animations': ['M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5', '#64D2FF', 'View', 'How songs change and how the lyrics glide.'],
-    'Screen': ['M7 2.5h10v19H7zM11 18.5h2', '#8E8E93', 'Device', 'Keep-awake, brightness, night mode and the phone\'s buttons.'],
+    'Controls': ['M9.5 11.5V5a1.5 1.5 0 0 1 3 0v6M12.5 10.5a1.5 1.5 0 0 1 3 0v1M15.5 11a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1-6 6h-1a6 6 0 0 1-4.9-2.6l-2.4-3.5a1.5 1.5 0 0 1 2.4-1.8l1.4 1.9v-4', '#66D4CF', 'Device', 'The buttons that appear on a tap, and the gestures.'],
+    'Screen': ['M7 2.5h10v19H7zM11 18.5h2', '#8E8E93', 'Device', 'Keep-awake, brightness, night mode and the status corner.'],
     'Clock': ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3.2 2', '#5E5CE6', 'Device', 'The flip clock.'],
-    'Performance': ['M4 17a8 8 0 1 1 16 0M12 17l4.2-5.3M3 17h2M19 17h2', '#30D158', 'Device', 'Trade looks for smoothness on slower phones.'],
-    'Playback source': ['M4 15v-3a8 8 0 0 1 16 0v3M4 14.5h3v6H4zM17 14.5h3v6h-3z', '#FF453A', 'Source', 'Follow Spotify on the computer, your account, or both.'],
-    'Updates': ['M12 3.5v11M7 10l5 5 5-5M4.5 20h15', '#0A84FF', 'Ops', 'Automatic updates and release notes.'],
-    'Connection': ['M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1', '#30D158', 'Ops', 'How the phone and Spotify find each other.'],
+    'Account': ['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5', '#FF453A', 'Account', 'Sign-ins and where playback comes from.'],
+    'Updates': ['M12 3.5v11M7 10l5 5 5-5M4.5 20h15', '#0A84FF', 'System', 'Automatic updates and release notes.'],
+    'Storage': ['M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3', '#64D2FF', 'System', 'What LyricDock keeps on the phone.'],
+    'Advanced': ['M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4', '#8E8E93', 'System', 'Fine-tuning.'],
+    'Developer': ['M8.5 7l-5 5 5 5M15.5 7l5 5-5 5M13.5 4.5l-3 15', '#636366', 'System', 'Aids for debugging.'],
   };
   const svgIcon = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${/^[MmLlHhVvCcSsQqTtAaZz0-9\s,.\-eE]+$/.test(d ?? '') ? d : ''}"/></svg>`;
   const CSS = `.ldx{--hair:rgba(255,255,255,.07);--sub:rgba(255,255,255,.6);--g:#1ed760;position:fixed;inset:0;z-index:9999;display:grid;place-items:center;

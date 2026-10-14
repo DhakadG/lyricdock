@@ -138,7 +138,7 @@ const Web = (() => {
       state = { playing: s.is_playing, device: s.device?.name, dtype: s.device?.type, volume: vol, shuffle: s.shuffle_state, repeat: { off: 0, context: 1, track: 2 }[s.repeat_state] ?? 0 };
       if (it.id !== cur?.id) newTrack(it);
       out({ type: 'pos', pos: s.progress_ms + (s.is_playing ? r.rtt / 2 : 0), playing: s.is_playing, dur: it.duration_ms,
-        liked: cur.liked, volume: state.volume, device: state.device, shuffle: state.shuffle, repeat: state.repeat });
+        liked: cur.liked, volume: state.volume, device: state.device, dtype: state.dtype, shuffle: state.shuffle, repeat: state.repeat });
       delay = s.is_playing ? 1000 : 3000;
     } else if (r) { state = { playing: false }; delay = 5000; }
     if (wanted && my === pollGen) { timer = setTimeout(poll, delay); dueAt = Date.now() + delay; }
@@ -181,7 +181,7 @@ const Web = (() => {
       : `Spotify refused that (${r.status}${e.message ? `: ${e.message}` : ''})`;
   };
   async function control(cmd, arg, retried) {
-    if (!loggedIn()) return window.notice?.('Not signed in to Spotify - Settings → Playback source');
+    if (!loggedIn()) return window.notice?.('Not signed in to Spotify - Settings → Account');
     let r = null;
     // toggle / shuffle / like flip the known state before the request: two quick taps used to both read the last poll
     // and send the same request twice (pause, pause). A failure or the next poll puts the real state back.
@@ -282,7 +282,7 @@ const Web = (() => {
   }
 
   async function list(which, arg) {
-    if (!loggedIn()) return { items: [], error: 'Sign in to your Spotify account first (Settings → Playback source).' };
+    if (!loggedIn()) return { items: [], error: 'Sign in to your Spotify account first (Settings → Account).' };
     if (which === 'friends') return { items: [], error: 'Friend activity is only available through Spotify on your computer (desktop mode).' };
     if (which === 'tracks') return arg ? browse(arg) : { items: [] };
     if (which === 'search') return arg ? search(arg) : { items: [] };

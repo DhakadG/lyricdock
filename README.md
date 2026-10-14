@@ -67,12 +67,12 @@ The display app is the same everywhere; these are independent choices you can mi
 
 | Choice | Options | Where to set it |
 |---|---|---|
-| Playback source | **Auto** · Desktop only · Spotify account only | Phone: Settings → Playback source |
+| Playback source | **Auto** · Desktop only · Spotify account only | Phone: Settings → Account |
 | Connection to the PC | **Wireless** (Wi-Fi/LAN) · Wired (USB tethering) · adb (developers) | automatic; see [guides](#setup-guides) |
 | How the app runs | **Normal app** · **Kiosk** (dedicated dock: full screen, boots into it, silent updates) | Install method; leave kiosk in Settings → Connection |
 | Pairing with the PC | **Pairing code** (once) · **Automatic via your Spotify account** · several phones per PC | Spotify: LyricDock button → Phones |
 | Signalling (connection setup) | **LyricDock's own ntfy** (always) · plus your own ntfy server or the Helper's local relay | Phone: Settings → Connection → Signalling server |
-| Lyrics source | Desktop Spicy cache → Spotify → LRCLIB · Spicy Lyrics API (your key) → LRCLIB | automatic; add a key in Settings → Lyrics |
+| Lyrics source | Desktop Spicy cache → Spotify → LRCLIB · Spicy Lyrics API (your key) → LRCLIB | automatic; add a key in Settings → Advanced |
 | Device | Phone · tablet · Android TV box · custom Android build (e.g. Raspberry Pi + LineageOS) | see [What you need](#what-you-need) |
 | Look | 7 layouts × 7 backgrounds (incl. Spotify Canvas and music video) × all settings, or a preset | Settings (phone) or the LyricDock panel in Spotify |
 
@@ -133,7 +133,7 @@ Your own Spotify "app" lets the phone read your playback from Spotify's Web API.
    Ignore the client secret — LyricDock doesn't use one.
 4. **Other people's accounts:** new apps are in *Development mode*, limited to **5 users**. To let someone else sign
    in, add their Spotify e-mail under **User Management** in the app's settings. You don't need to add yourself.
-5. On the phone: **Settings (⚙) → Playback source → Spotify Client ID** → paste → **Spotify account → Sign in** →
+5. On the phone: **Settings (⚙) → Account → Spotify Client ID** → paste → **Spotify account → Sign in** →
    log in on Spotify's page → **Agree**. The status shows *Signed in · <device>* when something plays.
 
 ### Spicy Lyrics API key (optional)
@@ -145,7 +145,7 @@ Word-synced lyrics in standalone mode, and a fallback in desktop mode when the S
 3. Open it → **Client access (no backend)** → create a **publishable key** (starts with `sl_pk_`).
 4. Under the key's allowed origins, enable **No origin header** (the phone app calls the API natively, without a
    browser origin).
-5. On the phone: **Settings → Lyrics → Spicy Lyrics API key** → paste.
+5. On the phone: **Settings → Advanced → Spicy Lyrics API key** → paste.
    **Never** paste a secret key (`sl_sk_…`) — those are for servers only.
 
 Lyrics are cached on the phone for 7 days. The provider (and, for community syncs, the uploader and maker) is always
@@ -223,7 +223,7 @@ For networks that block device-to-device traffic, or if you prefer a cable. No a
 2. Create a [Spotify Client ID](#spotify-client-id-standalone-mode) and sign in on the phone.
 3. Recommended: add a [Spicy Lyrics API key](#spicy-lyrics-api-key-optional) for word-synced lyrics (without it,
    LRCLIB provides line-synced lyrics for most songs).
-4. Settings → Playback source → **Source: Spotify account** (or leave **Auto**).
+4. Settings → Account → **Source: Spotify account** (or leave **Auto**).
 5. Play Spotify anywhere (phone, speaker, web player). The display follows within a second or two; its controls
    control that device (Premium).
 
@@ -262,7 +262,7 @@ Anything that runs Android 8+ with Google's Android System WebView:
 - Install the APK (sideload via browser, `adb install`, or a file manager).
 - For a wall/desk build, use kiosk (E) so it boots straight into LyricDock.
 - Raspberry Pi 4/5: flash an Android build such as [KonstaKANG's LineageOS](https://konstakang.com/devices/rpi4/)
-  with GApps/WebView, attach a touchscreen, then install as above. Choose **Settings → Performance → Smooth** preset
+  with GApps/WebView, attach a touchscreen, then install as above. Choose **Settings → Presets → Smooth** preset
   if frames drop.
 - No touchscreen (TV box): the display works; use a mouse or the Spotify app to control playback, and the LyricDock
   panel in Spotify (desktop mode) to change settings.
@@ -375,7 +375,7 @@ config (the `def` values in [`settings.js`](android/app/src/main/assets/settings
 
 | Setting | Default | What it does |
 |---|---|---|
-| Layout | Default | Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds; tap again for the controls). Options: Default / Player card / Lyrics only / Compact / TV view / Cinema / Now Bar / Cover + clock / Flip clock. |
+| Layout | Default | Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds; tap again for the controls). Options: Default / Player card / Lyrics only / Compact / TV view / Cinema / Now Bar / Cover + clock / Flip clock. |
 | Cover side | Cover left, lyrics right | Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top. Options: Cover left, lyrics right / Lyrics left, cover right. |
 | Progress bar | Bottom | Where the song progress bar sits. Tap it (while the controls are showing) to seek. Options: Bottom / Top / Off. |
 | Show times | Off | Shows 1:23 / 3:45 above the ends of the progress bar. |

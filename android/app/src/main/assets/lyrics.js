@@ -181,6 +181,7 @@ const Lyrics = (() => {
   let curY = 0, free = false, backT = 0, drag = null, fling = 0;
   const writeY = y => { LIST.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`; };
   function scrollStep(dt) {
+    if (flow.size) flowStep(dt);
     if (!sc.on || free) return;
     const [f, d] = FEEL[Settings.S.scroll] ?? FEEL.smooth;
     sc.sp.f = f * Settings.S.animSpeed; sc.sp.d = d;
@@ -193,7 +194,7 @@ const Lyrics = (() => {
     data = lyr;
     lines = [];
     anchor = -2;
-    sc.on = false; sc.sp.set(0, true); curY = 0;
+    sc.on = false; sc.sp.set(0, true); curY = 0; still();
     BOX.classList.remove('static', 'placeholder');
     document.body.classList.toggle('nolyrics', !!lyr && (lyr.kind === 'none' || !lyr.lines?.length));
     window.fitArt?.();
@@ -371,8 +372,9 @@ const Lyrics = (() => {
     if (!el) return;
     const frac = document.body.classList.contains('layout-cinema') ? 0.5 : Settings.S.anchor;
     const y = BOX.clientHeight * frac - el.offsetTop - el.offsetHeight / 2;
-    if (instant) { sc.sp.set(y, true); sc.on = false; curY = y; writeY(y); return; }
+    if (instant) { still(); sc.sp.set(y, true); sc.on = false; curY = y; writeY(y); return; }
     if (Settings.S.scroll === 'cascade' && CASCADE) return cascade(i, y);
+    if (Settings.S.scroll === 'fluid' && FLUID) return fluid(i, y);
     if (!sc.on) sc.sp.set(curY, true); // start from wherever the list really is, at rest
     sc.sp.set(y);
     sc.on = true;
@@ -396,6 +398,37 @@ const Lyrics = (() => {
       lines[j].el.animate([{ translate: `0 ${off.toFixed(1)}px`, easing: EASE }, { translate: '0 0' }], { duration: ms, composite: 'add' });
     }
   }
+
+  // Fluid cascade: Cascade's ripple on springs. The list jumps to the target and every nearby line keeps an offset that a
+  // spring pulls home: the sung line and the ones behind first, each line ahead a little softer and ~22 ms later, so they
+  // trail like a ripple. A new scroll mid-flight adds to each line's offset and keeps its speed, so a fast passage flows
+  // as one wave instead of restarting, and it settles without a bounce. Uses the CSS translate property (Chrome 104+),
+  // which stacks on the transforms the word animations write; older WebViews get the plain spring.
+  const FLUID = CSS.supports('translate', '0 1px'), flow = new Map(); // line entry -> { sp: offset spring (goal 0), wait: s }
+  function fluid(i, y) {
+    const off = curY - y;
+    sc.on = false; sc.sp.set(y, true); curY = y; writeY(y);
+    if (Math.abs(off) < 1) return;
+    const n = Math.min(Settings.S.renderDistance, 10);
+    for (let j = Math.max(0, i - n); j <= Math.min(lines.length - 1, i + n); j++) {
+      const x = lines[j], r = j - i, d = Math.abs(r), ahead = off > 0 ? r > 0 : r < 0;
+      let f = flow.get(x);
+      if (!f) flow.set(x, f = { sp: new Anim.Spring(0, 1, 0.92), wait: 0 });
+      f.sp.p += off; f.sp.g = 0;
+      f.base = ahead ? 1.2 - Math.min(d, 6) * 0.06 : 1.3; // Hz: lines further ahead are softer, so they trail
+      f.wait = Math.max(f.wait, ahead ? Math.min(d, 8) * 0.022 : 0); // a line holds where it was until its turn
+    }
+  }
+  function flowStep(dt) {
+    for (const [x, f] of flow) {
+      if (f.wait > 0) { f.wait -= dt; continue; }
+      f.sp.f = f.base * Settings.S.animSpeed;
+      const y = f.sp.step(dt);
+      if (Math.abs(y) < 0.05 && Math.abs(f.sp.v) < 0.3) { x.el.style.translate = ''; flow.delete(x); continue; }
+      x.el.style.translate = `0 ${y.toFixed(2)}px`;
+    }
+  }
+  function still() { for (const x of flow.keys()) x.el.style.translate = ''; flow.clear(); } // a jump / new song: no ripple left over
 
   // How busy the vocals are around p, 0..1 (null without synced lyrics): drives 'Move with the music' now that
   // Spotify's audio analysis is gone. Singing = lively, faster words = livelier, instrumental gaps = calm.

@@ -1,4 +1,4 @@
-// Cover swipe. Only the cover (Default / TV view / Cover + clock) or the song card (Player card, Compact, Cinema, Now Bar)
+// Cover swipe. Only the cover (Default / Cover + clock) or the song card (Player card, Cinema, Now Bar)
 // changes songs - a sideways drag anywhere else does nothing, so scrolling or resting a hand never skips.
 //  - The cover follows the finger 1:1 on a strip of cards: up to 3 next songs on the right, 3 previous on the left
 //    (next = the preloaded song + the queue, previous = what this phone showed). Drag further to reach further;
@@ -15,7 +15,7 @@
 //    plays / pauses.
 (() => {
   const $ = id => document.getElementById(id), body = document.body, S = Settings.S;
-  const COVER = ['split', 'tv', 'clocksplit'], CARD = ['player', 'compact', 'cinema', 'nowbar'];
+  const COVER = ['split', 'clocksplit'], CARD = ['player', 'cinema', 'nowbar'];
   const coverMode = () => COVER.includes(S.layout);
   const zone = () => coverMode() ? $('artbox') : CARD.includes(S.layout) ? (S.layout === 'player' ? $('meta') : $('left')) : null;
   const artEl = $('art'), box = $('artbox');
@@ -59,19 +59,24 @@
     peeks.forEach((p, i) => { const a = list[i]?.art || ''; if (p.dataset.u !== a) { p.dataset.u = a; p.style.backgroundImage = url(a); } p.classList.toggle('blank', !a); });
   }
 
-  // Draw the strip at offset x (px, negative = towards next).
-  function render(x, k) {
+  // Draw the strip at offset x (px, negative = towards next). fade (0..1): how far a committed swipe has settled - every
+  // card but the chosen one fades out with it, so nothing is left to vanish when the strip hands over (land).
+  const smooth = t => t * t * (3 - 2 * t);
+  function render(x, k, fade = 0) {
     if (g.cov) {
       const side = x < 0 ? 1 : x > 0 ? -1 : g.side || 1;
       fillPeeks(side);
-      const card = (el, X, lit) => {
+      // The neighbours fade in with the pull instead of popping up at 45 % on the first pixel - and fade out the same
+      // way on a spring back. At the middle they're invisible, which is also when the other side's covers swap in.
+      const reveal = smooth(clamp(Math.abs(x) / (g.step * 0.3), 0, 1));
+      const card = (el, X, lit, shown) => {
         const p = Math.min(2, Math.abs(X) / g.step);
-        const sc = 1 - Math.min(1, p) * 0.1, op = Math.max(0, 1 - p * 0.55 - Math.max(0, p - 1) * 0.6) * (lit ? 1 : 0.92);
+        const sc = 1 - Math.min(1, p) * 0.1, op = Math.max(0, 1 - p * 0.55 - Math.max(0, p - 1) * 0.6) * (lit ? 1 : 0.92 * (1 - fade)) * shown;
         el.style.transform = `${g.base}translateX(${X / g.s0}px) rotate(${X / g.w * 2.5}deg) scale(${sc})`;
         el.style.opacity = op.toFixed(3);
       };
-      card(artEl, x, k === 0);
-      peeks.forEach((p, i) => { const n = i + 1; if (n > depth(side)) { p.style.opacity = '0'; return; } card(p, side * n * g.step + x, Math.abs(k) === n && Math.sign(k) === side); });
+      card(artEl, x, k === 0, 1);
+      peeks.forEach((p, i) => { const n = i + 1; if (n > depth(side)) { p.style.opacity = '0'; return; } const lit = Math.abs(k) === n && Math.sign(k) === side; card(p, side * n * g.step + x, lit, lit && fade ? 1 : reveal); });
     } else {
       g.z.style.transform = `translateX(${x * 0.35}px)`;
       g.z.style.opacity = (1 - Math.min(0.45, Math.abs(x) / g.step * 0.3)).toFixed(3);
@@ -79,11 +84,15 @@
     showCue(x, k);
   }
 
+  // The tab keeps its side class while it hides: dropping it moved the tab across the screen mid-fade. live = the finger
+  // drives it (no transform transition); without it, it springs back out to the edge by itself (CSS).
+  const hideCue = () => { cue.classList.remove('on', 'live'); cue.style.setProperty('--p', '0'); };
   function showCue(x, k) {
     const side = x < 0 ? 1 : -1, p = clamp(Math.abs(x) / (g.step * 0.32), 0, 1);
-    if (Math.abs(x) < 4) { cue.className = ''; return; }
+    if (Math.abs(x) < 4) return hideCue();
+    if (run) return; // settling: the tab is already on its way out
     const r = g.z.getBoundingClientRect();
-    cue.className = `on ${side > 0 ? 'right' : 'left'}${k ? ' armed' : ''}`;
+    cue.className = `on live ${side > 0 ? 'right' : 'left'}${k ? ' armed' : ''}`;
     cue.style.top = `${Math.round(clamp(r.top + r.height / 2, 60, innerHeight - 60))}px`;
     cue.style.setProperty('--p', p.toFixed(3));
     cueWord.textContent = side > 0 ? 'Next' : 'Previous';
@@ -96,7 +105,7 @@
   function reset() {
     for (const el of [artEl, ...peeks]) { el.style.transform = ''; el.style.opacity = ''; }
     if (g?.z && !g.cov) { g.z.style.transform = ''; g.z.style.opacity = ''; g.z.style.transition = ''; }
-    cue.className = '';
+    hideCue();
     requestAnimationFrame(() => requestAnimationFrame(() => body.classList.remove('art-dragging')));
   }
 
@@ -111,26 +120,37 @@
     others().forEach((el, i) => { const to = +getComputedStyle(el).opacity; if (Math.abs(to - from[i]) > 0.01) el.animate([{ opacity: from[i] }, { opacity: to }], { duration: ms(320), easing: 'cubic-bezier(.2,.8,.2,1)' }); });
   };
 
+  // A damped spring (SwiftUI's response + damping fraction) from `from` to `to`, starting at the finger's speed v (px/ms):
+  // the strip keeps the flick's momentum instead of restarting on a fixed curve. x(t) in seconds, end = settled.
+  function spring(from, to, v, response, damping) {
+    const w = 2 * Math.PI / response, z = damping, x0 = from - to, v0 = v * 1000, wd = w * Math.sqrt(1 - z * z), b = (v0 + z * w * x0) / wd;
+    const x = t => to + Math.exp(-z * w * t) * (x0 * Math.cos(wd * t) + b * Math.sin(wd * t));
+    const end = Math.log(Math.max(1, (Math.abs(x0) + Math.abs(b)) / 0.5)) / (z * w); // the envelope is under half a pixel
+    return { x, end: clamp(end, 0.12, response * 2.5) };
+  }
+
   // Settle from the current offset to the chosen card (k) - or back to the middle (k = 0).
   function settle(k) {
-    const s = g, from = s.x, to = s.cov ? -k * s.step : 0, dist = Math.abs(to - from), v = Math.max(Math.abs(s.v), 0.6);
-    // an ease-out starts at 3x its average speed: pick the time that makes that the release speed
-    const d = ms(k ? clamp(3 * dist / v, 200, 420) : 380), t0 = performance.now();
-    const ease = k ? (t => 1 - Math.pow(1 - t, 3)) : (t => { const c = 1.25; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }); // back: a tiny overshoot
+    const s = g, from = s.x, to = s.cov ? -k * s.step : 0, t0 = performance.now();
+    // Commit: quick, nearly critically damped (a hair of overshoot as the card lands). Back: a touch springier.
+    // The song card (no strip) springs home from where it was, without the throw.
+    const sp = spring(from, to, s.cov || !k ? s.v : 0, ms(k ? 380 : 420) / 1000, k ? 0.86 : 0.74);
     let song = null;
-    if (k) { song = window.swipeTo?.(k) ?? null; dim(d * 0.7); }
+    if (k) { song = window.swipeTo?.(k) ?? null; dim(sp.end * 600); }
     const done = () => {
       run = null;
       if (k) land(k, song, s); else reset();
       g = null;
     };
     const frame = now => {
-      const t = Math.min(1, (now - t0) / d), x = from + (to - from) * ease(t);
-      s.x = x; render(x, k);
+      const t = Math.min(1, (now - t0) / 1000 / sp.end), x = t < 1 ? sp.x((now - t0) / 1000) : to;
+      s.x = x; render(x, k, k ? smooth(t) : 0);
       if (t < 1) run.raf = requestAnimationFrame(frame); else done();
     };
-    if (!s.cov && k) cue.classList.add('armed');
-    run = { raf: requestAnimationFrame(frame), finish: () => { cancelAnimationFrame(run.raf); s.x = to; render(to, k); done(); } };
+    // The tab lets go of the finger: back out to its edge by itself - solid white first when it changes the song.
+    if (k) cue.classList.add('armed');
+    hideCue();
+    run = { raf: requestAnimationFrame(frame), finish: () => { cancelAnimationFrame(run.raf); s.x = to; render(to, k, 1); done(); } };
   }
 
   // The chosen card is exactly where the cover was: hand over in one frame.

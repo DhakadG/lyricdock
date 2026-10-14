@@ -52,7 +52,7 @@ const Api = (() => {
     }
     Api.lastStatus = m.status;
     if (m.status === 429) notice('Spicy Lyrics API is rate-limiting - using other lyrics sources for now');
-    else if ((m.status === 401 || m.status === 403) && own()) notice('Spicy Lyrics API key was refused - check it in Settings → Lyrics');
+    else if ((m.status === 401 || m.status === 403) && own()) notice('Spicy Lyrics API key was refused - check it in Settings → Advanced');
     done(m.id, lyr);
   }
 

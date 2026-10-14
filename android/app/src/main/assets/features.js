@@ -38,7 +38,7 @@
   // Cover + title in the left column (Default / TV, landscape): the column is padded clear of the song times and
   // progress bar, and the cover is capped so cover + title + artist + album always fit between them.
   window.fitArt = () => requestAnimationFrame(() => {
-    const st = document.documentElement.style, on = innerWidth > innerHeight && ['split', 'tv'].includes(S.layout);
+    const st = document.documentElement.style, on = innerWidth > innerHeight && S.layout === 'split';
     document.body.classList.toggle('fit-art', on);
     if (!on) return;
     // Auto margins (style.css) split the spare height evenly: above the cover, above the title block, below it. The empty
@@ -159,7 +159,7 @@
   let down = null, lastTap = 0;
   // While the clock is up it owns every tap (seconds, double-tap to leave): no double-tap like.
   const clockUp = () => document.body.classList.contains('clock');
-  const coverLayouts = ['split', 'tv', 'clocksplit'];
+  const coverLayouts = ['split', 'clocksplit'];
   addEventListener('touchstart', e => {
     const t = e.touches[0];
     if (clockUp()) { down = null; return; }
@@ -556,13 +556,12 @@
   const tlAt = e => { const r = $('tltrack').getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
   function tlMove(e) {
     tls.f = tlAt(e);
-    $('tlfill').style.transform = `translateX(${(tls.f - 1) * 100}%)`;
+    window.fillPreview(tls.f);
     $('tlcur').textContent = fmtT(tls.f * P.dur);
   }
   const tlStart = e => {
     tls.on = true;
     document.body.classList.add('tl-drag');
-    $('tlfill').style.transition = 'none';
     tlMove(e);
   };
   tlHit.addEventListener('pointerdown', e => {
@@ -589,7 +588,8 @@
     const at = Math.round(tls.f * P.dur), ok = e.type === 'pointerup';
     tls = null;
     document.body.classList.remove('tl-drag');
-    if (ok) seek(at); // the next frame re-syncs the bar from the new position
+    if (ok) seek(at);
+    fillSync(pos()); // the bar leaves the finger: from the new position (or back to where the song is)
     call('vibrate', 30);
   };
   tlHit.addEventListener('pointerup', tlEnd);
@@ -625,16 +625,16 @@
     tip: 'Full screen', on: isFull, run: () => window.lyricdockFullscreen?.() };
   for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => renderQs());
   const ROT = ['landscape-primary', 'portrait-primary', 'landscape-secondary', 'portrait-secondary']; // a quarter turn apart, in order
-  const QBAR = { split: ['swap', 'roman', 'rotate', 'layout', 'tune'], tv: ['swap', 'roman', 'rotate', 'layout', 'tune'], player: ['roman', 'rotate', 'layout', 'tune'],
-    lyrics: ['roman', 'rotate', 'layout', 'tune'], compact: ['roman', 'rotate', 'layout', 'tune'], cinema: ['roman', 'rotate', 'layout', 'tune'], nowbar: ['roman', 'rotate', 'layout', 'tune'],
+  const QBAR = { split: ['swap', 'roman', 'rotate', 'layout', 'tune'], player: ['roman', 'rotate', 'layout', 'tune'],
+    lyrics: ['roman', 'rotate', 'layout', 'tune'], cinema: ['roman', 'rotate', 'layout', 'tune'], nowbar: ['roman', 'rotate', 'layout', 'tune'],
     clocksplit: ['swap', 'theme', 'secs', 'rotate', 'layout', 'tune'], clock: ['theme', 'secs', 'h24', 'rotate', 'layout', 'tune'] };
   // Keys are Settings schema keys; a row only shows while its own "when" holds.
   const LYR = ['roman', 'size', 'align', 'weight', 'lineGap', 'lineOpacity', 'blurLines', 'glow', 'scroll'];
   const STATUS = ['timeStyle', 'battery', 'battStyle', 'statPos'];
   const CLK = ['clockTheme', 'clockSeconds', 'clock24', 'clockLayout', 'clockAnim', 'clockIntro', 'clockCards', 'clockScale', 'clockDigitGap', 'clockGroupGap', 'clockDim', 'clockSound', 'clockVolume', 'clockHaptic'];
   const QUICK = {
-    split: ['artSide', 'progress', ...LYR], tv: ['artSide', 'progress', ...LYR], player: [...LYR, ...STATUS],
-    lyrics: [...LYR, ...STATUS], compact: [...LYR, ...STATUS], cinema: [...LYR, ...STATUS], nowbar: ['spin', ...LYR, ...STATUS],
+    split: ['artSide', 'progress', ...LYR], player: [...LYR, ...STATUS],
+    lyrics: [...LYR, ...STATUS], cinema: [...LYR, ...STATUS], nowbar: ['spin', ...LYR, ...STATUS],
     clocksplit: ['artSide', ...CLK], clock: [...CLK, ...STATUS],
   };
   function renderQs() {
@@ -656,19 +656,15 @@
   // with its name; the current one is ringed. A tap switches at once and the sheet stays, so trying them is quick.
   const THUMBS = { land: { split: { cover: [8.8, 3.3, 30.5, 64.4], np: [6.7, 79.7, 35, 15.8], lyr: [43.6, 0, 50, 100], tl: [8.8, 69.7, 30.5, 2.8] },
     player: { np: [6.2, 19.4, 41.4, 18.9], lyr: [49.1, 0, 44.5, 100], tl: [8, 42.8, 37.6, 5], deck: [6.7, 40.3, 40.5, 38.9] }, lyrics: { lyr: [6.7, 0, 86.8, 100], tl: [2.5, 96.1, 95, 0.8] },
-    compact: { cover: [6.7, 3.3, 7.1, 15], np: [15.1, 4.2, 82.1, 13.3], lyr: [6.7, 21.9, 86.8, 77.5], tl: [2.5, 96.1, 95, 0.8] },
-    tv: { cover: [10.7, 3.6, 30.7, 64.7], np: [6.7, 78.9, 38.7, 16.4], lyr: [47.2, 0, 46.3, 100], tl: [10.7, 70, 30.7, 2.8] },
     cinema: { cover: [6.7, 78.3, 4.7, 10], np: [12.4, 77.8, 10.5, 11.1], lyr: [8.8, 0, 82.6, 100], tl: [2.5, 96.1, 95, 0.8] },
     nowbar: { pill: [40, 75.6, 20.7, 13.3], lyr: [6.7, 0, 86.8, 86.1], tl: [2.5, 96.1, 95, 0.8] },
     clocksplit: { cover: [9.5, 4.7, 29.3, 61.9], np: [6.7, 78.3, 35, 15.8], clock: [43.6, 0, 55.3, 100], tl: [9.5, 68.3, 29.3, 2.8] }, clock: { clock: [0, 0, 100, 100] } },
   port: { split: { cover: [18.1, 10, 61.9, 29.3], np: [5.3, 44.5, 88.1, 7.5], lyr: [5.3, 52.9, 88.1, 43.8], tl: [18.1, 40.1, 61.9, 1.3] },
     player: { np: [3.1, 10, 96.7, 10.7], lyr: [3.1, 21.7, 91.9, 61.8], tl: [6.1, 85.7, 86.1, 2.4], deck: [3.1, 84.5, 91.9, 13.6] }, lyrics: { lyr: [4.2, 10, 91.4, 90], tl: [5.3, 98.2, 89.4, 0.4] },
-    compact: { cover: [4.2, 10, 15, 7.1], np: [22.2, 10.4, 70.6, 6.3], lyr: [4.2, 18.8, 91.4, 81.2], tl: [5.3, 98.2, 89.4, 0.4] },
-    tv: { cover: [10.3, 10, 78.1, 37], np: [5.3, 52, 88.1, 7.8], lyr: [5.3, 60.8, 88.1, 35.9], tl: [10.3, 47.8, 78.1, 1.3] },
     cinema: { cover: [4.2, 90, 10, 4.7], np: [16.1, 89.7, 22.2, 5.3], lyr: [8.6, 10, 82.5, 82.4], tl: [5.3, 98.2, 89.4, 0.4] },
     nowbar: { pill: [27.2, 88.7, 43.6, 6.3], lyr: [4.2, 10, 91.4, 75.8], tl: [5.3, 98.2, 89.4, 0.4] },
     clocksplit: { cover: [18.1, 10, 61.9, 29.3], np: [5.3, 44.5, 88.1, 7.5], clock: [5.3, 52.9, 88.1, 43.8], tl: [18.1, 40.1, 61.9, 1.3] }, clock: { clock: [0, 0, 100, 100] } } };
-  const HINT = { split: 'Cover beside the lyrics', player: 'Mini player + lyrics', lyrics: 'Just the lyrics', compact: 'Song on top, lyrics below', tv: 'Big cover and type',
+  const HINT = { split: 'Cover beside the lyrics', player: 'Mini player + lyrics', lyrics: 'Just the lyrics',
     cinema: 'Huge centred lyrics', nowbar: 'Lyrics + floating pill', clocksplit: 'Cover + flip clock', clock: 'Flip clock, full screen' };
   function sketch(L) {
     const land = innerWidth > innerHeight, t = THUMBS[land ? 'land' : 'port'][L] || {}, H = land ? 47.4 : 211;
@@ -677,7 +673,7 @@
     let s = '';
     if (t.cover) s += box(t.cover, 'c').svg;
     if (t.pill) { const p = box(t.pill, 'p', t.pill[3] * H / 200); s += p.svg + `<circle class="c" cx="${p.x + p.h / 2}" cy="${p.y + p.h / 2}" r="${p.h * .34}"/>` + bar(p.x + p.h, p.y + p.h * .3, p.w * .45, p.h * .16, 't1') + bar(p.x + p.h, p.y + p.h * .56, p.w * .3, p.h * .12, 't'); }
-    if (t.np) { const n = box(t.np, 'x'), mid = ['split', 'tv', 'clocksplit'].includes(L), h = Math.min(n.h * .24, 3.2), w1 = n.w * .5, w2 = n.w * .34;
+    if (t.np) { const n = box(t.np, 'x'), mid = ['split', 'clocksplit'].includes(L), h = Math.min(n.h * .24, 3.2), w1 = n.w * .5, w2 = n.w * .34;
       s += bar(mid ? n.x + (n.w - w1) / 2 : n.x + 1, n.y + n.h * .14, w1, h, 't1') + bar(mid ? n.x + (n.w - w2) / 2 : n.x + 1, n.y + n.h * .52, w2, h * .8, 't'); }
     if (t.lyr) { const l = box(t.lyr, 'x'), h = Math.min(l.h * .07, land ? 4.2 : 6), gap = h * 1.9, cx = L === 'cinema';
       [.78, .55, .92, .6, .7, .5].forEach((f, i) => { const y = l.y + l.h * .12 + i * gap; if (y + h > l.y + l.h - 1) return; const w = l.w * f * .92; s += bar(cx ? l.x + (l.w - w) / 2 : l.x + 1, y, w, h, i === 1 ? 'l1' : 'l'); }); }
@@ -695,8 +691,8 @@
     g.addEventListener('click', e => {
       const c = e.target.closest('.lp-card');
       if (!c || c.dataset.l === S.layout || !Gesture.tap()) return;
-      Settings.set('layout', c.dataset.l);
-      $('wrap').animate([{ opacity: 0.2, scale: 0.985 }, { opacity: 1, scale: 1 }], { duration: ms(380), easing: 'cubic-bezier(.2,.8,.2,1)' });
+      Settings.set('layout', c.dataset.l); // the blocks glide to their new places (layout morph, below)
+      if (!MORPH_OK) $('wrap').animate([{ opacity: 0.2, scale: 0.985 }, { opacity: 1, scale: 1 }], { duration: ms(380), easing: 'cubic-bezier(.2,.8,.2,1)' });
       g.querySelectorAll('.lp-card').forEach(x => { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c); });
     });
     // the portrait carousel opens on the current layout
@@ -771,6 +767,45 @@
   document.addEventListener('pointerdown', e => { if (quickOpen() && !e.target.closest('#qpanel, #qs')) closeQuick(); }, true);
   window.onSettingsRender = () => { if (quickOpen()) renderQuick(); };
 
+  // ---- layout morph: switching layouts or the cover side moves each block from where it was to where it now sits
+  // (FLIP on a spring, like iOS's matched geometry). Blocks the new layout doesn't have fade out where they were; blocks
+  // it adds fade and grow into place. Text blocks only move (scaling text reads as a glitch); the cover also scales.
+  // Uses the translate / scale properties (Chrome 104+), which stack on whatever transform a block already has.
+  const MORPH = ['artbox', 'meta', 'lyrics', 'tl', 'deck', 'clockPane'], SCALES = new Set(['artbox', 'clockPane']);
+  const MORPH_OK = CSS.supports('translate', '0 1px') && CSS.supports('scale', '1');
+  const SPRINGY = 'linear(0, .009, .035 2.1%, .141 4.4%, .723 12.9%, .938 16.7%, 1.017 19.4%, 1.067, 1.077 24.1%, 1.07 26.5%, 1.045 30.4%, .997 38.3%, .983 42.9%, .993 57.1%, 1)';
+  const morphEase = CSS.supports('animation-timing-function', SPRINGY) ? SPRINGY : 'cubic-bezier(.2, .9, .25, 1.06)';
+  const shown = el => { if (!el?.isConnected) return null; const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+    return cs.display === 'none' || cs.visibility === 'hidden' || r.width < 2 || r.height < 2 || r.right < 0 || r.left > innerWidth ? null : r; };
+  function ghost(el, r) { // a still copy where the block was, fading away (a video or canvas inside can't be copied: left out)
+    const c = el.cloneNode(true);
+    c.removeAttribute('id'); c.querySelectorAll('[id], video, canvas').forEach(x => (x.matches('video, canvas') ? x.remove() : x.removeAttribute('id')));
+    Object.assign(c.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', margin: 0, zIndex: 2, pointerEvents: 'none', transform: 'none', translate: 'none', scale: 'none' });
+    $('wrap').append(c);
+    const end = () => c.remove();
+    c.animate([{ opacity: getComputedStyle(el).opacity }, { opacity: 0, scale: 0.94, filter: 'blur(6px)' }], { duration: ms(300), easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' }).finished.then(end, end);
+  }
+  let morphing = false;
+  window.beforeSet = k => {
+    if (!MORPH_OK || !['layout', 'artSide'].includes(k) || !P.shown || morphing) return;
+    for (const id of MORPH) $(id)?.getAnimations().forEach(a => a.id === 'morph' && a.finish()); // one still running: read resting places
+    const before = MORPH.map(id => [id, $(id), shown($(id))]);
+    morphing = true;
+    queueMicrotask(() => { // set() has applied the change by now (app.js apply, afterApply): read the new places
+      morphing = false;
+      for (const [id, el, a] of before) {
+        const b = shown(el);
+        if (a && b) {
+          const big = SCALES.has(id), sc = big ? Math.min(4, a.width / b.width) : 1;
+          const dx = big ? a.left + a.width / 2 - (b.left + b.width / 2) : a.left - b.left, dy = big ? a.top + a.height / 2 - (b.top + b.height / 2) : a.top - b.top;
+          if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sc - 1) < 0.01) continue;
+          el.animate([{ translate: `${dx}px ${dy}px`, scale: String(sc) }, { translate: '0 0', scale: '1' }], { duration: ms(620), easing: morphEase, id: 'morph' });
+        } else if (b) el.animate([{ opacity: 0, scale: 0.92, translate: '0 2vmin' }, { opacity: 1, scale: 1, translate: '0 0' }], { duration: ms(520), delay: ms(90), easing: morphEase, fill: 'backwards', id: 'morph' });
+        else if (a && el) ghost(el, a);
+      }
+    });
+  };
+
   // ---- block names: an overlay outlining every [data-block] (docs/layout-map.md), refreshed while it is on
   function blocks() {
     const ov = $('blkov');
@@ -827,10 +862,32 @@
   window.afterApply('*');
   addEventListener('resize', () => setTimeout(remarquee, 100));
 
-  // ---- music-video background (ivLyrics-style): the song's YouTube video, muted, cover-scaled behind the lyrics,
-  // kept in sync with the song. The blurred cover shows until (and if) a video is found.
-  const vids = new Map();
-  let vidFor = null, vidAt = 0;
+  // ---- music-video background (ivLyrics-style): the song's YouTube video, muted and kept in sync with the song, shown
+  // whole (16:9, never cropped) with its blurred thumbnail filling the rest of the screen. The blurred cover shows until
+  // (and if) a video is found. Like the animated covers, found videos are remembered across restarts and the next song's
+  // is looked up (and its thumbnail fetched) while this one plays, so a song change starts its video at once.
+  const VKEY = 'dock:ytIds', finding = new Map();
+  const vids = new Map((() => { try { return JSON.parse(localStorage.getItem(VKEY) || '[]'); } catch (e) { return []; } })());
+  const remember = (song, id) => { // a miss is kept for this session only: the search may find it another day
+    vids.delete(song); vids.set(song, id);
+    while (vids.size > 400) vids.delete(vids.keys().next().value);
+    try { localStorage.setItem(VKEY, JSON.stringify([...vids].filter(([, v]) => v))); } catch (e) {}
+  };
+  const findVid = (song, title, artist) => vids.has(song) ? Promise.resolve(vids.get(song))
+    : finding.get(song) ?? finding.set(song, findVideo(title, artist).then(id => { finding.delete(song); remember(song, id); return id; })).get(song);
+  const thumb = id => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`; // 16:9 without bars, exists for every video
+  let vidFor = null, vidAt = 0, warmedVid = '', preconnected = false;
+  function warmVideo() {
+    const n = P.next;
+    if (S.bg !== 'video' || !n?.id || !n.title || warmedVid === n.id || performance.now() - (P.curAt || 0) < 3000 || document.hidden) return;
+    warmedVid = n.id;
+    if (!preconnected) { // the player's hosts, before the first video is needed
+      preconnected = true;
+      for (const h of ['https://www.youtube-nocookie.com', 'https://i.ytimg.com'])
+        document.head.append(Object.assign(document.createElement('link'), { rel: 'preconnect', href: h, crossOrigin: '' }));
+    }
+    findVid(n.id, n.title, n.artist).then(id => { if (id) new Image().src = thumb(id); });
+  }
   // fetch with a timeout (public instances can hang forever; AbortSignal.timeout needs Chrome 103+).
   const tfetch = (u, ms = 6000) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
     return fetch(u, { signal: c.signal }).then(x => x.ok ? x.json() : null).catch(() => null).finally(() => clearTimeout(t)); };
@@ -857,23 +914,32 @@
     const want = S.bg === 'video' && !document.body.classList.contains('night') ? P.id : null;
     if (want === vidFor) return;
     vidFor = want;
-    document.getElementById('yt')?.remove();
+    const old = $('ytbox'); // the last song's video dissolves instead of blinking out
+    if (old) { old.removeAttribute('id'); old.querySelector('iframe')?.removeAttribute('id'); old.classList.remove('on'); setTimeout(() => old.remove(), ms(800)); }
     if (!want) return;
-    const title = $('title').textContent, artist = $('artist').textContent;
-    const id = vids.has(want) ? vids.get(want) : await findVideo(title, artist);
-    vids.set(want, id);
-    if (vidFor !== want || !id) { if (!id) window.notice?.('No music video found for this song'); return; }
-    const f = document.createElement('iframe');
+    const id = await findVid(want, $('title').textContent, $('artist').textContent);
+    if (vidFor !== want || !id) { if (!id && vidFor === want) window.notice?.('No music video found for this song'); return; }
+    const box = document.createElement('div'), frame = document.createElement('div'), f = document.createElement('iframe');
+    box.id = 'ytbox';
+    box.style.setProperty('--thumb', `url("${thumb(id)}")`); // the still frame shows until the player has started
+    frame.className = 'ytv';
     f.id = 'yt';
     f.allow = 'autoplay; encrypted-media';
     const host = window.LYRICDOCK_WEB ? location.origin : 'https://video.lyricdock.app'; // phone: PageClient.java; web: player.html
     f.src = `${host}/player?v=${id}&t=${Math.max(0, now() / 1000 | 0)}`;
-    $('bg').after(f); // above the blurred-cover fallback, below the dim layer and the lyrics
+    f.onload = () => setTimeout(() => box.classList.add('on'), 400);
+    frame.append(f); box.append(frame);
+    $('bg').after(box); // above the blurred-cover fallback, below the dim layer and the lyrics
+    setTimeout(() => box.classList.add('on'), 3000); // a slow player: the thumbnail comes in anyway
     vidAt = Date.now();
   }
   setInterval(() => {
     video();
-    if (!document.getElementById('yt') || !S.videoSync) return;
+    warmVideo();
+    if (!document.getElementById('yt')) return;
+    // Muted embeds turn YouTube's automatic captions on; unloading the module keeps them off (cc_load_policy alone
+    // doesn't). Cheap to repeat: the player may load late, and a no-op once they're gone.
+    ytCmd('unloadModule', ['captions']); ytCmd('unloadModule', ['cc']);
     // The embed reports nothing without the IFrame API handshake; re-seek every 20s (and on pause/play) to stay close.
     if (P.playing) { ytCmd('playVideo'); if (Date.now() - vidAt > 20000) { vidAt = Date.now(); ytCmd('seekTo', [now() / 1000, true]); } }
     else ytCmd('pauseVideo');
@@ -1406,7 +1472,7 @@
     if (b !== window.__bright) { window.__bright = b; call('brightness', b); }
     if (S.mediaNotif && S.lockLyric) return; // the lyric loop below owns the notification (the line replaces the artist)
     // (+ where Spotify plays: the web shim keeps its audio off while Spotify plays on this iPad / iPhone)
-    const mk = S.mediaNotif && P.id ? `${P.id}|${!!P.playing}|${$('title').textContent}|${window.Web?.playingOn?.().type}` : '';
+    const mk = S.mediaNotif && P.id ? `${P.id}|${!!P.playing}|${$('title').textContent}|${window.playingOnType()}` : '';
     if (mk !== mediaKey) { mediaKey = mk; call('media', mk ? $('title').textContent : '', $('artist').textContent, P.art || '', !!P.playing); }
   }
   setInterval(() => hardware(new Date().getHours()), 1000);

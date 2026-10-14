@@ -5,188 +5,134 @@ const Settings = (() => {
   // (tap on the phone, hover in Spotify's panel). Defaults here ARE the shipped default config ("Reset all").
   const dyn = s => s.bg === 'dynamic' || s.bg === 'artist';
   const app = !window.LYRICDOCK_WEB; // the Android app (the web shim sets LYRICDOCK_WEB before this runs): phone-only rows
+  // The tree (2026-10 cleanup): everyday sections hold what most people change; fine-tuning lives in Advanced (with
+  // sub-headings) and debugging aids in Developer. `local`: this device's hardware or network, never synced (sync.js).
+  const mot = s => s.motionArt || s.bg === 'motion' || s.bg === 'motionblur';
+  const flipUp = s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout);
   const SCHEMA = [
-    { group: 'Layout', icon: 'layout', cat: 'View', desc: 'Where the cover, title, controls and lyrics sit, and which gestures work.' },
+    { group: 'Layout', icon: 'layout', cat: 'View', desc: 'Where the cover, song and lyrics sit.' },
     { type: 'custom', render: () => window.layoutGrid?.() }, // the layout picker: a sketch of every layout (features.js)
     { k: 'layout', label: 'Layout', type: 'choice', def: 'split', opts: [
-      ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['compact', 'Compact'], ['tv', 'TV view'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['clocksplit', 'Cover + clock'], ['clock', 'Flip clock']],
-      help: 'Default: cover + title beside the lyrics. Lyrics only: full-width lyrics. Compact: small cover row on top. TV view: bigger cover and text for across-the-room viewing. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds, double-tap to go back to the layout before).' },
+      ['split', 'Default'], ['player', 'Player card'], ['lyrics', 'Lyrics only'], ['cinema', 'Cinema'], ['nowbar', 'Now Bar'], ['clocksplit', 'Cover + clock'], ['clock', 'Flip clock']],
+      help: 'Default: cover + title beside the lyrics. Player card: an always-visible player (progress, shuffle, repeat, volume) beside the lyrics, like an Apple Music mini player. Lyrics only: full-width lyrics. Cinema: huge centred lyrics with a small badge. Now Bar: lyrics with a floating pill at the bottom. Cover + clock: the cover and song on one side, a big flip clock (hours and minutes) on the other. Flip clock: the flip clock full screen all the time (tap for seconds, double-tap to go back to the layout before).' },
     { k: 'artSide', label: 'Cover side', type: 'choice', def: 'left', opts: [['left', 'Cover left, lyrics right'], ['right', 'Lyrics left, cover right']],
-      when: s => ['split', 'tv', 'clocksplit'].includes(s.layout), help: 'Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top.' },
+      when: s => ['split', 'clocksplit'].includes(s.layout), help: 'Swap which side the album art and the lyrics sit on (landscape). In portrait the cover is always on top.' },
     { k: 'progress', label: 'Progress bar', type: 'choice', def: 'art', opts: [['art', 'Under the cover'], ['bottom', 'Bottom edge'], ['top', 'Top edge'], ['off', 'Off']],
-      help: 'Under the cover: a slim bar with the times right below the album art (Default, TV and Cover + clock; the other layouts have no cover and use the bottom edge). It frees the bottom of the screen, thickens under your finger and you can drag it to scrub. Bottom / Top edge: a thin bar along the screen edge (tap it while the controls show to seek, or press and hold to scrub). Off: none.' },
-    { k: 'times', label: 'Show times on the edge bar', desc: 'Elapsed and total time above the ends of the edge bar', type: 'toggle', def: false,
-      help: 'Shows 1:23 / 3:45 above the ends of the edge bar. The bar under the cover always shows its times.' },
-    { k: 'qsEnabled', label: 'Quick bar', desc: 'One-tap actions next to the settings button, different in each layout', type: 'toggle', def: true,
-      help: 'Tap the screen: next to the gear you get swap cover side, romanization, next layout and a Quick settings sheet holding the few settings that matter in the layout you are in (for the clock layouts: card colour, seconds, 12 / 24 h, arrangement, flip animation, sound).' },
-    { k: 'showBlocks', label: 'Show block names', desc: 'Outlines and labels every area of the screen (for talking about the design)', type: 'toggle', def: false,
-      help: 'Draws a dashed outline and a name on each block: Cover, Now playing, Timeline, Lyrics pane, Control pill, Tags, Status cluster... The names are the ones in the design file and docs/layout-map.md.' },
-    { k: 'hideAfter', label: 'Hide controls after', type: 'range', min: 2, max: 10, step: 1, def: 4, unit: 's',
-      help: 'Tap anywhere to show play/pause, next, previous, volume and the settings button. They fade out after this many seconds.' },
-    { k: 'marquee', label: 'Scroll long titles', type: 'toggle', def: true, help: 'Song titles and artist lists that do not fit scroll slowly back and forth instead of being cut off.' },
-    { k: 'showShuffle', label: 'Shuffle and repeat buttons', type: 'toggle', def: true, help: 'Adds shuffle and repeat (off / all / one) next to previous and next.' },
-    { k: 'showLists', label: 'Queue, history and friends buttons', type: 'toggle', def: true, help: 'Buttons that open the queue, recently played, your library and your friends\' listening activity.' },
-    { k: 'swipe', label: 'Swipe the cover to skip', type: 'toggle', def: true, help: 'Drag the cover (or the song card in layouts without a big cover) left for the next song, right for the previous one. Drag further to go up to 3 songs; a tab at the screen edge shows where you will land. Swiping anywhere else does nothing. (Swiping up plays / pauses, whatever this is set to.)' },
-    { k: 'doubleTapLike', label: 'Double-tap to like', type: 'toggle', def: true, help: 'Double-tap anywhere (not on a button) to add the song to Liked Songs or remove it.' },
-    { k: 'nextChip', label: 'Up next chip', type: 'toggle', def: true, help: 'Near the end of a song, a small chip shows what plays next.' },
-    { k: 'nextChipSecs', label: 'Show it for the last', type: 'range', min: 5, max: 45, step: 5, def: 15, unit: ' s', when: s => s.nextChip, help: 'How long before the end of the song the chip appears.' },
-    { k: 'showVolume', label: 'Volume slider', type: 'toggle', def: true, help: 'Show a volume slider in the controls. It changes Spotify\'s volume (not the phone\'s).' },
-    { k: 'orientation', label: 'Orientation', type: 'choice', def: 'auto', opts: [['auto', 'Auto-rotate (all 4)'], ['landscape', 'Landscape'], ['portrait', 'Portrait'],
+      help: 'Under the cover: a slim bar with the times right below the album art (Default and Cover + clock; the other layouts have no cover and use the bottom edge). It frees the bottom of the screen, thickens under your finger and you can drag it to scrub. Bottom / Top edge: a thin bar along the screen edge (tap it while the controls show to seek, or press and hold to scrub). Off: none.' },
+    { k: 'orientation', label: 'Orientation', type: 'choice', def: 'auto', local: true, opts: [['auto', 'Auto-rotate (all 4)'], ['landscape', 'Landscape'], ['portrait', 'Portrait'],
       ['landscape-primary', 'Fixed: landscape'], ['portrait-primary', 'Fixed: portrait'], ['landscape-secondary', 'Fixed: landscape, flipped'], ['portrait-secondary', 'Fixed: portrait, upside down']],
       help: 'Auto follows how the phone is standing, including upside down. Landscape / Portrait still flip with the sensor; Fixed never moves. The quick bar\'s rotate button turns the screen a quarter turn per tap and fixes it there.' },
-    { k: 'edgeMode', label: 'Notch & edge spacing', desc: 'Auto reads the camera cutout and rounded corners from the phone',
-      type: 'choice', def: 'auto', opts: [['auto', 'Auto'], ['manual', 'Manual']],
-      help: 'The camera notch is always kept clear, whichever way the phone is turned. Auto also reads the rounded corners and pulls the edge progress bar in where they would cut it. Manual lets you add side padding and set the corner inset yourself.' },
-    { k: 'notchPad', label: 'Notch side padding', type: 'range', min: 0, max: 120, step: 2, def: 36, unit: 'px', when: s => s.edgeMode === 'manual',
-      help: 'Space on the side with the camera notch (top in portrait, left or right in landscape). Lower it if your notch is small and you want the room; a line shows where content stops while you change it.' },
-    { k: 'edgePad', label: 'Side padding', type: 'range', min: 0, max: 80, step: 2, def: 0, unit: 'px', when: s => s.edgeMode === 'manual',
-      help: 'Space on the left and right edges that have no notch. 0 uses the whole screen.' },
-    { k: 'cornerPad', label: 'Progress bar corner inset', type: 'range', min: 0, max: 80, step: 2, def: 20, unit: 'px', when: s => s.edgeMode === 'manual',
-      help: 'How rounded the screen corners are: the progress bar is lifted and shortened to stay inside them.' },
 
-    { group: 'Now playing', icon: 'note', cat: 'View', desc: 'The song details around the lyrics: like button, album, quality, accent colour.' },
-    { k: 'showLiked', label: 'Show liked (heart)', desc: 'Tap the heart to like / unlike', type: 'toggle', def: true,
+    { group: 'Now playing', icon: 'note', cat: 'View', desc: 'The cover and the song details around the lyrics.' },
+    { k: 'motionArt', label: 'Animated covers (Apple Music)', type: 'toggle', def: true,
+      help: 'Albums that have an animated cover in Apple Music play it in place of the still cover (looped, silent, sized to this screen). Found through LyricDock cloud and kept on the phone, so a replayed album uses no data. Albums without one keep the still cover.' },
+    { k: 'coverShape', label: 'Animated cover shape', type: 'choice', def: 'auto', opts: [['auto', 'Auto (tall in portrait)'], ['square', 'Always square'], ['tall', 'Tall when available']], when: s => s.motionArt,
+      help: 'Some albums also have a tall (3:4) animated cover. Auto uses it in portrait, where the extra height fills the screen, and the square one in landscape. The cover only turns tall while that video plays; albums without one stay square.' },
+    { k: 'accent', label: 'Accent colour from cover', type: 'toggle', def: true,
+      help: 'Tints the progress bar, buttons and settings with a colour picked from the album art. Off: plain white.' },
+    { k: 'showLiked', label: 'Like button (heart)', desc: 'Tap the heart to like / unlike', type: 'toggle', def: true,
       help: 'Green heart = in your Liked Songs. Tapping it saves or removes the song in Spotify.' },
     { k: 'heartLikedOnly', label: 'Only on liked songs', type: 'toggle', def: true, when: s => s.showLiked,
       help: 'Keeps the cover clean: the heart shows only on songs in your Liked Songs. On other songs it appears while the controls are up (tap the screen), and double-tap still likes.' },
     { k: 'heartPos', label: 'Like button position', type: 'choice', def: 'art', opts: [['art', 'Badge on the cover'], ['title', 'Next to the title']], when: s => s.showLiked, help: 'Where the heart sits: a small badge in the corner of the album art, or beside the song title.' },
     { k: 'albumLine', label: 'Album and year', type: 'toggle', def: true, help: 'Shows the album name and release year under the artist.' },
-    { k: 'sourceBadge', label: 'Lyrics source tag', type: 'toggle', def: false, help: 'A quiet "Lyrics · Apple Music" line naming where the lyrics came from (Spicy Lyrics, Apple Music, Spotify, LRCLIB). The credits under the lyrics always name it as well.' },
-    { k: 'showQuality', label: 'Show audio quality', type: 'toggle', def: true, help: 'Shows Spotify\'s current streaming quality (Low … Very high, Lossless) as a small tag.' },
+    { k: 'showQuality', label: 'Audio quality', type: 'toggle', def: true, help: 'Shows Spotify\'s current streaming quality (Low … Very high, Lossless) as a small tag.' },
     { k: 'qualityIcon', label: 'Lossless indicator', desc: 'How a Lossless stream is shown - no text, no badge', type: 'choice', def: 'wave', when: s => s.showQuality,
       opts: [['wave', 'Waveform beside the song length'], ['status', 'Waveform in the status corner'], ['glow', 'Accent glow around the cover'], ['led', 'Light in the cover corner'], ['off', 'Nothing']],
       help: 'Only Lossless streams show anything. Waveform: four little accent bars right of the song length under the cover (they breathe while the song plays); in layouts without that bar they sit in the battery / time corner. Status corner: the same bars in a small glass circle next to the battery and time. Glow: the cover\'s shadow turns into a soft halo of its own colour. Light: a tiny glowing dot in the cover\'s top-right corner, like an amplifier\'s power light.' },
-    { k: 'tagPos', label: 'Tag position', desc: 'When the lyrics-source line shows', type: 'choice', def: 'auto', opts: [['auto', 'In the corner, with the controls'], ['corner', 'In the corner, always (dimmed)']],
-      when: s => s.sourceBadge,
-      help: 'The lyrics source sits in the bottom-right corner (top-right in Cinema and Now Bar) - never in the song details or on the cover. With the controls: it appears when you tap the screen. Always: it stays there, dimmed.' },
-    { k: 'accent', label: 'Accent colour from cover', type: 'toggle', def: true,
-      help: 'Tints the progress bar, buttons and settings with a colour picked from the album art. Off: plain white.' },
-    { k: 'motionArt', label: 'Animated covers (Apple Music)', type: 'toggle', def: true,
-      help: 'Albums that have an animated cover in Apple Music play it in place of the still cover (looped, silent, sized to this screen). Found through LyricDock cloud and kept on the phone, so a replayed album uses no data. Albums without one keep the still cover.' },
-    { k: 'coverShape', label: 'Animated cover shape', type: 'choice', def: 'auto', opts: [['auto', 'Auto (tall in portrait)'], ['square', 'Always square'], ['tall', 'Tall when available']], when: s => s.motionArt,
-      help: 'Some albums also have a tall (3:4) animated cover. Auto uses it in portrait, where the extra height fills the screen, and the square one in landscape. The cover only turns tall while that video plays; albums without one stay square.' },
-    { k: 'motionQuality', label: 'Animated cover quality', type: 'choice', def: 'auto', opts: [['saver', 'Data saver'], ['auto', 'Fit the screen'], ['sharp', 'Sharp'], ['max', 'Best available']],
-      when: s => s.motionArt || s.bg === 'motion' || s.bg === 'motionblur',
-      help: 'Fit the screen: the smallest file that still looks sharp here (about 2-5 MB per album on a phone). Data saver: a size smaller. Sharp / Best: bigger files for big or 4K screens.' },
-    { k: 'motionKeep', label: 'Keep animated covers on this device', type: 'choice', def: 'second', opts: [['second', 'From the second play'], ['first', 'From the first play'], ['never', 'Never (always stream)']],
-      when: s => s.motionArt || s.bg === 'motion' || s.bg === 'motionblur',
-      help: 'From the second play: an album you only hear once just streams; one you come back to is saved, and after that plays without using data. From the first play: saves everything (the video appears once fully downloaded). Never: always streams.' },
-    { k: 'motionCacheMB', label: 'Space for saved covers', type: 'range', min: 50, max: 1000, step: 50, def: (navigator.deviceMemory || 4) <= 2 ? 150 : 300, unit: ' MB',
-      when: s => s.motionKeep !== 'never' && (s.motionArt || s.bg === 'motion' || s.bg === 'motionblur'),
-      help: 'When full, the covers played longest ago are removed first.' },
-    { k: 'motionWarm', label: 'Load the next animated cover early', type: 'toggle', def: true, when: s => s.motionArt || s.bg === 'motion' || s.bg === 'motionblur',
-      help: 'While a song plays, the next song\'s animated cover is looked up (and downloaded, if it would be saved anyway), so it starts the moment the song changes.' },
-    { k: 'motionBadge', label: 'Mark animated covers', type: 'toggle', def: true, when: s => s.motionArt,
-      help: 'A tiny mark in the corner of the cover while it is animated. Still covers never show it.' },
+    { k: 'sourceBadge', label: 'Lyrics source tag', type: 'toggle', def: false, help: 'A quiet "Lyrics · Apple Music" line naming where the lyrics came from (Spicy Lyrics, Apple Music, Spotify, LRCLIB). The credits under the lyrics always name it as well.' },
+    { k: 'nextChip', label: 'Up next chip', type: 'toggle', def: true, help: 'Near the end of a song, a small chip shows what plays next.' },
     { k: 'spin', label: 'Spinning cover (Now Bar)', type: 'toggle', def: true, when: s => s.layout === 'nowbar', help: 'The round cover in the Now Bar turns like a record while playing.' },
-    { k: 'notices', label: 'Status notices', desc: 'Short messages: offline, rate limits, source changes, updates', type: 'toggle', def: true,
-      help: 'Small toasts at the bottom for things worth knowing: network lost/back, Spicy API limits, switching between computer and account, pairing, updates.' },
 
-    { group: 'Background', icon: 'image', cat: 'View', desc: 'What moves behind the lyrics: the warped cover, artist photo, Canvas, music video or plain black.' },
-    { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
-      ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['canvas', 'Spotify Canvas (looping video)'], ['motion', 'Animated cover (Apple Music)'], ['motionblur', 'Animated cover, blurred'], ['video', 'Music video (YouTube)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']],
-      help: 'Dynamic: the cover slowly warped and blurred (Spicy Lyrics\' look, uses the GPU). Artist image: the same effect with the artist\'s photo. Spotify Canvas: the short looping video some songs have in Spotify (desktop mode) - great in portrait; songs without one show the blurred cover. Animated cover: the album\'s animated cover from Apple Music where it has one (tall in portrait, square in landscape). Animated cover, blurred: the same video blurred like Blurred art (reuses the cover\'s file, no extra data). Blurred art: a blurred cover. Colour gradient: slow gradient from the cover\'s colours. Black: nothing (OLED, lowest power).' },
-    { k: 'bgDrift', label: 'Drift the still cover', type: 'toggle', def: true, when: s => ['blur', 'canvas', 'motion', 'motionblur'].includes(s.bg),
-      help: 'The blurred cover slowly pans and zooms instead of standing still (Ken Burns effect). Cheap: one layer moved by the GPU.' },
-    { k: 'bgSpeed', label: 'Motion speed', type: 'range', min: 0, max: 1.5, step: 0.05, def: 0.35, when: dyn, help: 'How fast the dynamic background drifts. 0 freezes it.' },
-    { k: 'bgBeat', label: 'Move with the music', desc: 'Livelier while words are sung, calm in instrumental parts', type: 'toggle', def: true, when: dyn,
-      help: 'Speeds the background up while vocals are busy (read from the lyric timing) and slows it in instrumental parts.' },
-    { k: 'bgWarp', label: 'Warp', type: 'range', min: 0, max: 1, step: 0.05, def: 1, when: dyn, help: 'How much the image is swirled. 0 = just a blurred, slowly moving cover.' },
-    { k: 'bgSaturation', label: 'Colour intensity', type: 'range', min: 0.5, max: 2.5, step: 0.05, def: 1.5, unit: '×', when: dyn, help: 'Saturation of the dynamic background. Higher = more vivid.' },
-    { k: 'bgFade', label: 'Cover crossfade', type: 'range', min: 0, max: 3000, step: 100, def: 1000, unit: ' ms', when: dyn, help: 'How long the background takes to blend into the next song\'s cover.' },
-    { k: 'videoKey', label: 'YouTube Data API key (optional)', type: 'text', def: '', placeholder: 'AIza…', when: s => s.bg === 'video',
-      desc: 'Finds the right video more reliably. Without it, a public search service is used.',
-      help: 'Music video background: the song\'s video plays muted behind the lyrics, synced to the song. To use your own search quota: console.cloud.google.com → create a project → enable "YouTube Data API v3" → Credentials → Create credentials → API key (restrict it to YouTube Data API v3). Without a key, LyricDock asks a public Piped instance, which can be slow or down.' },
-    { k: 'videoSync', label: 'Keep the video in sync', type: 'toggle', def: true, when: s => s.bg === 'video', help: 'Seeks the video to the song position when they drift more than 2 seconds apart, and pauses it with the music.' },
-    { k: 'bgDim', label: 'Dim', type: 'range', min: 0, max: 0.8, step: 0.05, def: 0.2, when: s => s.bg !== 'black', help: 'Darkens the background so white lyrics stay readable on bright covers or artist photos.' },
-
-    { group: 'Lyrics', icon: 'text', cat: 'View', desc: 'Font, size, spacing, colours and the Spicy-style word effects.' },
-    // Lyrics sources (Better Lyrics' provider list): drag to reorder, switch off to never use. Ranked by Lyrics.rank.
-    { k: 'srcOrder', label: 'Lyrics sources', desc: 'Source preference, priority, order, LRCLIB, Spotify, Apple Music, Spicy Lyrics', type: 'custom', render: () => window.sourceList?.(), def: ['Apple Music:word', 'Spicy Lyrics:word', 'Apple Music:line', 'Spicy Lyrics:line',
-      'Spotify:line', 'LRCLIB:line', 'Apple Music:static', 'Spicy Lyrics:static', 'Spotify:static', 'LRCLIB:static'] },
-    { k: 'roman', label: 'Romanization', desc: 'Smart keeps Hindi (Devanagari) as is and romanizes everything else',
-      type: 'choice', def: 'smart', opts: [['smart', 'Smart (keep Hindi)'], ['always', 'Always'], ['off', 'Original script']],
-      help: 'Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization.' },
-    { k: 'size', label: 'Text size', type: 'range', min: 0.6, max: 1.6, step: 0.05, def: 1, unit: '×', help: 'Lyrics size. Layouts scale from this (TV and Cinema are bigger).' },
+    { group: 'Lyrics', icon: 'text', cat: 'View', desc: 'Font, size, colours, romanization and where the lyrics come from.' },
     { k: 'font', label: 'Font', type: 'choice', def: 'Inter', opts: [['Inter', 'Inter (Apple-style, default)'], ['system', 'System font'], ['Outfit', 'Outfit'], ['Manrope', 'Manrope'], ['DM Sans', 'DM Sans'], ['Plus Jakarta Sans', 'Plus Jakarta Sans'], ['Space Grotesk', 'Space Grotesk'], ['Sora', 'Sora'], ['Lexend', 'Lexend'], ['Poppins', 'Poppins'], ['Playfair Display', 'Playfair Display (serif)'], ['Lora', 'Lora (serif)'], ['JetBrains Mono', 'JetBrains Mono']],
       help: 'Typeface for lyrics and titles. Inter is the closest free match to Apple\'s San Francisco (Apple Music\'s lyrics font, which Apple only licenses for its own devices). Anything but System downloads once from Google Fonts and is then cached; scripts a font lacks (Devanagari, Gurmukhi…) fall back to the system font.' },
+    { k: 'size', label: 'Text size', type: 'range', min: 0.6, max: 1.6, step: 0.05, def: 1, unit: '×', help: 'Lyrics size. Layouts scale from this (Cinema is bigger).' },
     { k: 'weight', label: 'Text weight', type: 'choice', def: '800', opts: [['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extra bold'], ['900', 'Black']],
       help: 'Thickness of the lyrics font.' },
     { k: 'align', label: 'Alignment', type: 'choice', def: 'left', opts: [['left', 'Left'], ['center', 'Centre']], help: 'Duet lines sung by the second singer still go to the other side.' },
-    { k: 'anchor', label: 'Active line position', desc: 'How far down the screen the current line sits', type: 'range', min: 0.2, max: 0.6, step: 0.05, def: 0.35,
-      help: '0.2 = near the top (more upcoming lines visible), 0.6 = below the middle (more past lines).' },
-    { k: 'lineGap', label: 'Line spacing', type: 'range', min: 0, max: 5, step: 0.25, def: 1.5, help: 'Space between lyric lines.' },
-    { k: 'seekComp', label: 'Seek slightly before a tapped line', type: 'toggle', def: true, help: 'Spotify fades the audio in for about 300 ms after a seek, so landing exactly on a line swallows its first syllable. This seeks 300 ms early.' },
-    { k: 'lineOpacity', label: 'Other lines brightness', type: 'range', min: 0.15, max: 0.85, step: 0.05, def: 0.5, help: 'How visible the lines that aren\'t being sung are. Spicy Lyrics uses 0.5.' },
     { k: 'lineColor', label: 'Sung line colour', type: 'choice', def: 'white', opts: [['white', 'White'], ['accent', 'Accent from cover']], help: 'Colour the word fill sweeps in. Accent uses the colour picked from the album art.' },
+    { k: 'lineOpacity', label: 'Other lines brightness', type: 'range', min: 0.15, max: 0.85, step: 0.05, def: 0.5, help: 'How visible the lines that aren\'t being sung are. Spicy Lyrics uses 0.5.' },
     { k: 'duetColors', label: 'Colour per singer (duets)', type: 'toggle', def: true, help: 'In duets, the second singer\'s lines (sung on the other side) are tinted with the accent colour so the voices are easy to tell apart.' },
-    { k: 'outline', label: 'Darken behind the lyrics', type: 'toggle', def: false, help: 'A soft dark wash behind the lyrics keeps them readable over bright covers and artist photos (it fades out at the edges with the lyrics).' },
-    { k: 'hideExplicit', label: 'Hide explicit words', type: 'toggle', def: false, help: 'Masks common English swear words in the lyrics (f***). Only changes what is shown.' },
+    { k: 'roman', label: 'Romanization', desc: 'Smart keeps Hindi (Devanagari) as is and romanizes everything else',
+      type: 'choice', def: 'smart', opts: [['smart', 'Smart (keep Hindi)'], ['always', 'Always'], ['off', 'Original script']],
+      help: 'Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization.' },
     { k: 'countdown', label: 'Countdown before singing', type: 'toggle', def: true, help: 'In the intro, the last 3 seconds before the first line count down 3 · 2 · 1 above the dots.' },
-    { k: 'blurLines', label: 'Blur distant lines', type: 'toggle', def: false, help: 'Lines two or more away from the current one are softly blurred, drawing the eye to the sung line. Off (default) keeps every line crisp and translucent, like Spotify\'s own lyrics.' },
-    { k: 'blurAmount', label: 'Blur strength', type: 'range', min: 0.5, max: 5, step: 0.1, def: 1.2, unit: 'px', when: s => s.blurLines, help: 'Blur of lines two away; three and more get twice this.' },
-    { k: 'glow', label: 'Glow on sung words', type: 'toggle', def: true, help: 'Words glow softly as they are sung (Spicy Lyrics). The most expensive effect: turn it off on slow phones for smoother motion.' },
-    { k: 'glowStrength', label: 'Glow strength', type: 'range', min: 0.2, max: 2, step: 0.1, def: 1, unit: '×', when: s => s.glow, help: 'Size and brightness of the glow.' },
-    { k: 'lift', label: 'Lift sung words', type: 'toggle', def: true, help: 'Each word rises and grows slightly as it is sung, then settles.' },
-    { k: 'liftAmount', label: 'Lift amount', type: 'range', min: 0.2, max: 2, step: 0.1, def: 1, unit: '×', when: s => s.lift, help: 'How far words rise and grow.' },
-    { k: 'letters', label: 'Letter-by-letter on long notes', desc: 'Held words glow and lift one letter at a time', type: 'toggle', def: true,
-      help: 'When a word is held for a long time ("foreverrr"), each letter lights up in turn with extra lift and glow - Spicy Lyrics\' emphasis.' },
-    { k: 'lettersMin', label: 'Long note length', type: 'range', min: 500, max: 3000, step: 100, def: 1000, unit: ' ms', when: s => s.letters,
-      help: 'How long a word must be held to get the letter-by-letter treatment.' },
     { k: 'dots', label: 'Interlude dots', type: 'toggle', def: true, help: 'Three breathing dots fill instrumental gaps and pop just before singing resumes.' },
-    { k: 'dotsGap', label: 'Dots after a gap of', type: 'range', min: 2, max: 12, step: 0.5, def: 4, unit: ' s', when: s => s.dots, help: 'Minimum silence between lines before the dots appear.' },
-    { k: 'scrollLead', label: 'Scroll ahead', type: 'range', min: 0, max: 800, step: 50, def: 250, unit: ' ms', help: 'The list starts moving to the next line this long before it is sung, so your eyes are already there.' },
-    { k: 'scrollBack', label: 'Return to the sung line after', type: 'range', min: 1, max: 10, step: 0.5, def: 3, unit: ' s', help: 'Drag the lyrics up or down to read ahead or look back (flick to scroll fast). This long after you let go, they glide back to the line being sung.' },
     { k: 'credits', label: 'Show credits', desc: 'Written by / Provided by under the lyrics', type: 'toggle', def: true,
       help: 'Songwriters are optional; the lyrics provider (and community sync credits) are always shown, as the providers require.' },
-    { k: 'tapSeek', label: 'Tap a line to jump to it', type: 'toggle', def: true, help: 'Tap any synced line to seek Spotify to it.' },
+    { k: 'hideExplicit', label: 'Hide explicit words', type: 'toggle', def: false, help: 'Masks common English swear words in the lyrics (f***). Only changes what is shown.' },
     { k: 'offset', label: 'Sync offset', desc: 'Positive shows lyrics later, negative earlier', type: 'range', min: -1000, max: 1000, step: 10, def: 0, unit: 'ms',
       help: 'Nudge if lyrics run early or late (e.g. Bluetooth speaker delay: try +150 to +300 ms).' },
-    { k: 'apiKey', label: 'Spicy Lyrics API key (optional)', type: 'text', def: '', placeholder: 'sl_pk_…',
-      desc: 'Your own publishable key with "No origin header" allowed. Fills gaps the desktop cache misses.',
-      help: 'Get one at developers.spicylyrics.org → your application → Client access (no backend) → publishable key (sl_pk_…), with "No origin header" allowed. Never paste a secret key (sl_sk_…). Optional: LyricDock signed in gets word-synced lyrics through LyricDock\'s own server, on the phone and the web app. A key of your own is used instead when set.' },
+    // Lyrics sources (Better Lyrics' provider list): drag to reorder, switch off to never use. Ranked by Lyrics.rank.
+    { k: 'srcOrder', label: 'Lyrics sources', desc: 'Source preference, priority, order, LRCLIB, Spotify, Apple Music, Spicy Lyrics', type: 'custom', render: () => window.sourceList?.(), def: ['Apple Music:word', 'Spicy Lyrics:word', 'Apple Music:line', 'Spicy Lyrics:line',
+      'Spotify:line', 'LRCLIB:line', 'Apple Music:static', 'Spicy Lyrics:static', 'Spotify:static', 'LRCLIB:static'] },
 
-    { group: 'Animations', icon: 'spark', cat: 'View', desc: 'How songs change, how play / pause feels and how the lyrics glide.' },
+    { group: 'Animations', icon: 'spark', cat: 'View', desc: 'How the lyrics move and glow, and how songs change.' },
+    { k: 'scroll', label: 'Lyrics scroll', type: 'choice', def: 'smooth', opts: [['smooth', 'Smooth'], ['spring', 'Springy'], ['snappy', 'Snappy'], ['cascade', 'Cascade'], ['fluid', 'Fluid cascade']],
+      help: 'How the lyrics glide to the next line. Springy overshoots a little. Cascade (Better Lyrics\' scroll): each line follows on its own, the ones further ahead a little later, like a ripple. Fluid cascade: the same ripple on real springs - every line keeps its own momentum, so a fast passage flows instead of queueing, and settles without a bounce.' },
+    { k: 'glow', label: 'Glow on sung words', type: 'toggle', def: true, help: 'Words glow softly as they are sung (Spicy Lyrics). The most expensive effect: turn it off on slow phones for smoother motion.' },
+    { k: 'lift', label: 'Lift sung words', type: 'toggle', def: true, help: 'Each word rises and grows slightly as it is sung, then settles.' },
+    { k: 'letters', label: 'Letter-by-letter on long notes', desc: 'Held words glow and lift one letter at a time', type: 'toggle', def: true,
+      help: 'When a word is held for a long time ("foreverrr"), each letter lights up in turn with extra lift and glow - Spicy Lyrics\' emphasis.' },
+    { k: 'blurLines', label: 'Blur distant lines', type: 'toggle', def: false, help: 'Lines two or more away from the current one are softly blurred, drawing the eye to the sung line. Off (default) keeps every line crisp and translucent, like Spotify\'s own lyrics.' },
     { k: 'trackAnim', label: 'Next / previous', type: 'choice', def: 'slide', opts: [
       ['slide', 'Slide'], ['fade', 'Fade'], ['zoom', 'Zoom'], ['flip', 'Flip'], ['blur', 'Blur'], ['stack', 'Card stack'], ['none', 'None']],
       help: 'How the screen changes to the next song. Next moves left, previous moves right.' },
     { k: 'ppAnim', label: 'Play / pause', type: 'choice', def: 'both', opts: [
       ['both', 'Pulse + shrink'], ['pulse', 'Pulse'], ['shrink', 'Shrink art'], ['ripple', 'Ripple'], ['none', 'None']],
       help: 'Feedback when playback pauses or resumes. Shrink makes the cover smaller while paused.' },
-    { k: 'scroll', label: 'Lyrics scroll', type: 'choice', def: 'smooth', opts: [['smooth', 'Smooth'], ['spring', 'Springy'], ['snappy', 'Snappy'], ['cascade', 'Cascade']],
-      help: 'How the lyrics glide to the next line. Springy overshoots a little. Cascade (Better Lyrics\' scroll): each line follows on its own, the ones further ahead a little later, like a ripple.' },
     { k: 'animSpeed', label: 'Animation speed', type: 'range', min: 0.5, max: 2, step: 0.1, def: 1, unit: '×', help: 'Speeds up or slows down every UI animation.' },
 
-    { group: 'Screen', icon: 'phone', cat: 'Device', desc: 'Keep-awake, brightness, night mode, burn-in protection and the phone\'s buttons.' },
-    { k: 'awake', label: 'Keep the screen on', type: 'choice', def: 'always', opts: [['always', 'Always'], ['playing', 'Only while playing'], ['system', 'Follow Android']],
+    { group: 'Background', icon: 'image', cat: 'View', desc: 'What moves behind the lyrics: the warped cover, artist photo, Canvas, music video or plain black.' },
+    { k: 'bg', label: 'Background', type: 'choice', def: 'dynamic', opts: [
+      ['dynamic', 'Dynamic'], ['artist', 'Artist image (dynamic)'], ['canvas', 'Spotify Canvas (looping video)'], ['motion', 'Animated cover (Apple Music)'], ['motionblur', 'Animated cover, blurred'], ['video', 'Music video (YouTube)'], ['blur', 'Blurred art'], ['gradient', 'Colour gradient'], ['black', 'Black']],
+      help: 'Dynamic: the cover slowly warped and blurred (Spicy Lyrics\' look, uses the GPU). Artist image: the same effect with the artist\'s photo. Spotify Canvas: the short looping video some songs have in Spotify (desktop mode) - great in portrait; songs without one show the blurred cover. Animated cover: the album\'s animated cover from Apple Music where it has one (tall in portrait, square in landscape). Animated cover, blurred: the same video blurred like Blurred art (reuses the cover\'s file, no extra data). Music video: the song\'s video from YouTube, muted, synced to the song and shown whole (blurred bands fill the rest of the screen). Blurred art: a blurred cover. Colour gradient: slow gradient from the cover\'s colours. Black: nothing (OLED, lowest power).' },
+    { k: 'bgDim', label: 'Dim', type: 'range', min: 0, max: 0.8, step: 0.05, def: 0.2, when: s => s.bg !== 'black', help: 'Darkens the background so white lyrics stay readable on bright covers or artist photos.' },
+    { k: 'outline', label: 'Darken behind the lyrics', type: 'toggle', def: false, help: 'A soft dark wash behind the lyrics keeps them readable over bright covers and artist photos (it fades out at the edges with the lyrics).' },
+    { k: 'videoKey', label: 'YouTube Data API key (optional)', type: 'text', def: '', placeholder: 'AIza…', when: s => s.bg === 'video',
+      desc: 'Finds the right video more reliably. Without it, a public search service is used.',
+      help: 'Music video background: the song\'s video plays muted behind the lyrics, synced to the song. To use your own search quota: console.cloud.google.com → create a project → enable "YouTube Data API v3" → Credentials → Create credentials → API key (restrict it to YouTube Data API v3). Without a key, LyricDock asks a public Piped instance, which can be slow or down.' },
+
+    { group: 'Controls', icon: 'hand', cat: 'Device', desc: 'The buttons that appear on a tap, and the gestures.' },
+    { k: 'hideAfter', label: 'Hide controls after', type: 'range', min: 2, max: 10, step: 1, def: 4, unit: 's',
+      help: 'Tap anywhere to show play/pause, next, previous, volume and the settings button. They fade out after this many seconds.' },
+    { k: 'qsEnabled', label: 'Quick bar', desc: 'One-tap actions next to the settings button, different in each layout', type: 'toggle', def: true,
+      help: 'Tap the screen: next to the gear you get swap cover side, romanization, next layout and a Quick settings sheet holding the few settings that matter in the layout you are in (for the clock layouts: card colour, seconds, 12 / 24 h, arrangement, flip animation, sound).' },
+    { k: 'showShuffle', label: 'Shuffle and repeat buttons', type: 'toggle', def: true, help: 'Adds shuffle and repeat (off / all / one) next to previous and next.' },
+    { k: 'showLists', label: 'Queue, history and friends buttons', type: 'toggle', def: true, help: 'Buttons that open the queue, recently played, your library and your friends\' listening activity.' },
+    { k: 'showVolume', label: 'Volume slider', type: 'toggle', def: true, help: 'Show a volume slider in the controls. It changes Spotify\'s volume (not the phone\'s).' },
+    { k: 'volKeys', label: 'Volume buttons control Spotify', type: 'toggle', def: true, local: true, when: () => app, help: 'The phone\'s volume buttons change Spotify\'s volume (5% per press) instead of the phone\'s.' },
+    { k: 'swipe', label: 'Swipe the cover to skip', type: 'toggle', def: true, help: 'Drag the cover (or the song card in layouts without a big cover) left for the next song, right for the previous one. Drag further to go up to 3 songs; a tab at the screen edge shows where you will land. Swiping anywhere else does nothing. (Swiping up plays / pauses, whatever this is set to.)' },
+    { k: 'doubleTapLike', label: 'Double-tap to like', type: 'toggle', def: true, help: 'Double-tap anywhere (not on a button) to add the song to Liked Songs or remove it.' },
+    { k: 'tapSeek', label: 'Tap a line to jump to it', type: 'toggle', def: true, help: 'Tap any synced line to seek Spotify to it.' },
+
+    { group: 'Screen', icon: 'phone', cat: 'Device', desc: 'Keep-awake, brightness, night mode, the status corner and the system player.' },
+    { k: 'awake', label: 'Keep the screen on', type: 'choice', def: 'always', local: true, opts: [['always', 'Always'], ['playing', 'Only while playing'], ['system', 'Follow Android']],
       help: 'Always: never sleeps (the kiosk default). Only while playing: the screen turns off after music has been paused for the time below. Follow Android: the normal screen timeout.' },
-    { k: 'sleepAfter', label: 'Turn off after pausing for', type: 'range', min: 1, max: 60, step: 1, def: 10, unit: ' min', when: s => s.awake === 'playing', help: 'How long the screen stays on after music stops.' },
-    { k: 'night', label: 'Night mode', type: 'toggle', def: false, help: 'Between the hours below: dims everything, switches to a black background and warms the colours.' },
-    { k: 'nightFrom', label: 'Night starts at', type: 'range', min: 0, max: 23, step: 1, def: 22, unit: ':00', when: s => s.night, help: 'Hour (24-hour clock) night mode starts.' },
-    { k: 'nightTo', label: 'Night ends at', type: 'range', min: 0, max: 23, step: 1, def: 7, unit: ':00', when: s => s.night, help: 'Hour (24-hour clock) night mode ends.' },
-    { k: 'nightDim', label: 'Night dimming', type: 'range', min: 0, max: 0.85, step: 0.05, def: 0.5, when: s => s.night, help: 'How much darker everything gets at night.' },
-    { k: 'nightWarm', label: 'Night warmth', type: 'range', min: 0, max: 1, step: 0.05, def: 0.4, when: s => s.night, help: 'Amber tint at night (less blue light).' },
-    { k: 'burnIn', label: 'Burn-in protection', type: 'toggle', def: true, help: 'AMOLED screens can keep a ghost of things that never move. This shifts the layout by a few pixels every few minutes: invisible, but it spreads the wear.' },
-    { k: 'bright', label: 'Brightness', type: 'choice', def: 'system', when: () => app, opts: [['system', 'Follow Android'], ['fixed', 'Fixed'], ['schedule', 'Day / night schedule']],
+    { k: 'sleepAfter', label: 'Turn off after pausing for', type: 'range', min: 1, max: 60, step: 1, def: 10, unit: ' min', local: true, when: s => s.awake === 'playing', help: 'How long the screen stays on after music stops.' },
+    { k: 'bright', label: 'Brightness', type: 'choice', def: 'system', local: true, when: () => app, opts: [['system', 'Follow Android'], ['fixed', 'Fixed'], ['schedule', 'Day / night schedule']],
       help: 'Fixed: always the level below. Day / night: the day level, and the night level between the night hours (Night starts / ends at). Only LyricDock\'s window changes, not the system setting.' },
-    { k: 'brightDay', label: 'Day brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.8, when: s => app && s.bright !== 'system', help: 'Screen brightness while LyricDock is open (Fixed), or during the day (schedule).' },
-    { k: 'brightNight', label: 'Night brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.15, when: s => app && s.bright === 'schedule', help: 'Screen brightness between the night hours.' },
-    { k: 'volKeys', label: 'Volume buttons control Spotify', type: 'toggle', def: true, when: () => app, help: 'The phone\'s volume buttons change Spotify\'s volume (5% per press) instead of the phone\'s.' },
-    { k: 'mediaNotif', label: window.LYRICDOCK_WEB ? 'System media controls' : 'Media notification', type: 'toggle', def: true, when: () => app || (!!window.LYRICDOCK_WEB && !!navigator.mediaSession && !window.LYRICDOCK_MINI),
-      desc: window.LYRICDOCK_WEB ? 'The song in your computer\'s media controls and keyboard play / next / previous keys' : undefined, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
-    { k: 'lockLyric', label: 'Lyrics on the lock screen', desc: 'The line being sung, in the lock-screen player', type: 'toggle', def: true, when: s => (app || (!!window.LYRICDOCK_WEB && !window.LYRICDOCK_MINI)) && s.mediaNotif,
-      help: 'The lock screen and notification player show the current lyric line under the song title (instead of the artist), line by line.' },
-    { k: 'lockShow', label: 'Show over the lock screen while playing', type: 'toggle', def: false, when: () => app,
-      help: 'While music plays, LyricDock itself shows over the lock screen with full word-synced lyrics - no unlocking. The lock screen comes back when playback stops.' },
-    { k: 'widgetAccent', label: 'Widget colours from the cover', type: 'toggle', def: true, when: () => app,
-      help: 'Home-screen widgets tint the sung line with the colour picked from the album art. Off: white. Add widgets from your home screen: long-press -> Widgets -> LyricDock.' },
-    { k: 'battery', label: 'Battery indicator', type: 'toggle', def: false, when: () => app || !!navigator.getBattery, help: 'Shows the phone\'s battery level and whether it is charging, in a corner (handy for a kiosk dock).' },
-    { k: 'battStyle', label: 'Battery style', type: 'choice', def: 'in', when: s => s.battery, opts: [['in', 'Icon with the % inside'], ['out', 'Icon with the % beside it'], ['ring', 'Ring with the % inside'], ['bar', 'Thin bar'], ['text', '% only']],
-      help: 'How the battery is drawn. It turns green while charging and red below 20 %.' },
-    { k: 'timeStyle', label: 'Time of day', desc: 'Shows the current time in any layout', type: 'choice', def: 'off', opts: [['off', 'Off'], ['small', 'Small text'], ['pill', 'Glass pill'], ['big', 'Big and light']],
+    { k: 'brightDay', label: 'Day brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.8, local: true, when: s => app && s.bright !== 'system', help: 'Screen brightness while LyricDock is open (Fixed), or during the day (schedule).' },
+    { k: 'brightNight', label: 'Night brightness', type: 'range', min: 0.02, max: 1, step: 0.02, def: 0.15, local: true, when: s => app && s.bright === 'schedule', help: 'Screen brightness between the night hours.' },
+    { k: 'night', label: 'Night mode', type: 'toggle', def: false, local: true, help: 'Between the hours below: dims everything, switches to a black background and warms the colours.' },
+    { k: 'nightFrom', label: 'Night starts at', type: 'range', min: 0, max: 23, step: 1, def: 22, unit: ':00', local: true, when: s => s.night || s.bright === 'schedule', help: 'Hour (24-hour clock) night mode starts.' },
+    { k: 'nightTo', label: 'Night ends at', type: 'range', min: 0, max: 23, step: 1, def: 7, unit: ':00', local: true, when: s => s.night || s.bright === 'schedule', help: 'Hour (24-hour clock) night mode ends.' },
+    { k: 'timeStyle', label: 'Time of day', desc: 'Shows the current time in any layout', type: 'choice', def: 'off', local: true, opts: [['off', 'Off'], ['small', 'Small text'], ['pill', 'Glass pill'], ['big', 'Big and light']],
       help: 'The time next to the battery (12 or 24 hour, see Clock -> Time format). Handy in Lyrics only and Cinema, which show no clock.' },
-    { k: 'statPos', label: 'Battery and time corner', type: 'choice', def: 'tr', when: s => s.battery || s.timeStyle !== 'off', opts: [['tr', 'Top right'], ['tl', 'Top left'], ['br', 'Bottom right'], ['bl', 'Bottom left']],
+    { k: 'battery', label: 'Battery indicator', type: 'toggle', def: false, local: true, when: () => app || !!navigator.getBattery, help: 'Shows the phone\'s battery level and whether it is charging, in a corner (handy for a kiosk dock).' },
+    { k: 'battStyle', label: 'Battery style', type: 'choice', def: 'in', local: true, when: s => s.battery, opts: [['in', 'Icon with the % inside'], ['out', 'Icon with the % beside it'], ['ring', 'Ring with the % inside'], ['bar', 'Thin bar'], ['text', '% only']],
+      help: 'How the battery is drawn. It turns green while charging and red below 20 %.' },
+    { k: 'statPos', label: 'Battery and time corner', type: 'choice', def: 'tr', local: true, when: s => s.battery || s.timeStyle !== 'off', opts: [['tr', 'Top right'], ['tl', 'Top left'], ['br', 'Bottom right'], ['bl', 'Bottom left']],
       help: 'Where the battery and the time sit. Top right steps aside while the controls are showing.' },
+    { k: 'mediaNotif', label: window.LYRICDOCK_WEB ? 'System media controls' : 'Media notification', type: 'toggle', def: true, local: true, when: () => app || (!!window.LYRICDOCK_WEB && !!navigator.mediaSession && !window.LYRICDOCK_MINI),
+      desc: window.LYRICDOCK_WEB ? 'The song in your computer\'s media controls and keyboard play / next / previous keys' : undefined, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
+    { k: 'lockLyric', label: 'Lyrics on the lock screen', desc: 'The line being sung, in the lock-screen player', type: 'toggle', def: true, local: true, when: s => (app || (!!window.LYRICDOCK_WEB && !window.LYRICDOCK_MINI)) && s.mediaNotif,
+      help: 'The lock screen and notification player show the current lyric line under the song title (instead of the artist), line by line.' },
+    { k: 'lockShow', label: 'Show over the lock screen while playing', type: 'toggle', def: false, local: true, when: () => app,
+      help: 'While music plays, LyricDock itself shows over the lock screen with full word-synced lyrics - no unlocking. The lock screen comes back when playback stops.' },
+    { k: 'notices', label: 'Status notices', desc: 'Short messages: offline, rate limits, source changes, updates', type: 'toggle', def: true,
+      help: 'Small toasts at the bottom for things worth knowing: network lost/back, Spicy API limits, switching between computer and account, pairing, updates.' },
 
     { group: 'Clock', icon: 'clock', cat: 'Device', desc: 'The flip clock that takes over when the music stops.' },
     { k: 'clock', label: 'Clock screen', type: 'choice', def: 'paused', opts: [['off', 'Off'], ['paused', 'When paused'], ['idle', 'When nothing is playing']],
@@ -194,64 +140,28 @@ const Settings = (() => {
     { k: 'clockAfter', label: 'Show the clock after', type: 'range', min: 1, max: 30, step: 1, def: 3, unit: ' min', when: s => s.clock !== 'off', help: 'Minutes without music before the clock appears.' },
     { k: 'clockStyle', label: 'Style', type: 'choice', def: 'flip', opts: [['flip', 'Flip cards'], ['simple', 'Simple (time and date)']], when: s => s.clock !== 'off',
       help: 'Flip cards: big raised numerals on cards that flip like a mechanical clock. Tap to show or hide seconds, double-tap to go back. Simple: a thin time with the date.' },
-    { k: 'clockTheme', label: 'Card colour', type: 'choice', def: 'dark', opts: [['dark', 'Dark cards, light numerals'], ['light', 'Light cards, dark numerals'], ['auto', 'Automatic (light by day, dark at night)']], when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout),
-      help: 'Dark: off-white puff-print numerals on black paper cards. Light: black numerals on off-white paper cards. Automatic: dark during the night-mode hours (Night section), light the rest of the day. Press and hold the clock to swap colours any time; the cards flip over to the new colour.' },
-    { k: 'clockIntro', label: 'Coming in and going out', type: 'choice', def: 'roll', opts: [['roll', 'Airport board (roll from 0 / to 0)'], ['flip', 'Flip from blank'], ['none', 'None']],
-      when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout),
-      help: 'Airport board: coming in, every card starts on 0 and rolls forward flap by flap to the time; going out, every card rolls on to 0, like a departure board changing. Flip from blank: the cards flip from and to blank. None: no animation.' },
-    { k: 'clockAnim', label: 'Flip animation', type: 'choice', def: 'classic', opts: [['classic', 'Classic (smooth)'], ['gravity', 'Gravity (natural fall)'], ['snappy', 'Snappy'], ['bounce', 'Bouncy'], ['fold', 'Slow fold'], ['cascade', 'Cascade (per digit)'], ['roll', 'Roll'], ['fade', 'Fade']],
-      when: s => s.clock !== 'off' && s.clockStyle === 'flip',
-      help: 'Classic: the top half falls, the new bottom half lands, smooth. Gravity: the flap falls like a real one - fastest at the bottom - and bounces off the stack a little. Snappy: quick and crisp. Bouncy: the flap overshoots and settles. Slow fold: slower, with a light sheen. Cascade: every digit flips a beat after the one before. Roll: the digit rolls down a drum. Fade: a quiet crossfade. The airport-board entry uses the same flap (Classic for Roll and Fade).' },
+    { k: 'clockTheme', label: 'Card colour', type: 'choice', def: 'dark', opts: [['dark', 'Dark cards, light numerals'], ['light', 'Light cards, dark numerals'], ['auto', 'Automatic (light by day, dark at night)']], when: flipUp,
+      help: 'Dark: off-white puff-print numerals on black paper cards. Light: black numerals on off-white paper cards. Automatic: dark during the night hours (Screen → Night starts / ends at), light the rest of the day. Press and hold the clock to swap colours any time; the cards flip over to the new colour.' },
+    { k: 'clock24', label: 'Time format', type: 'choice', def: '12', opts: [['12', '12-hour (AM / PM)'], ['24', '24-hour']], help: '12-hour shows AM or PM in the corner of the hours card. Also the time of day in the status corner.' },
     { k: 'clockSeconds', label: 'Show seconds', type: 'toggle', def: false, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'A third card for seconds. Tapping the clock toggles it too.' },
-    { k: 'clock24', label: 'Time format', type: 'choice', def: '12', opts: [['12', '12-hour (AM / PM)'], ['24', '24-hour']], when: s => s.clock !== 'off', help: '12-hour shows AM or PM in the corner of the hours card.' },
-    { k: 'clockLayout', label: 'Arrangement', type: 'choice', def: 'auto', opts: [['auto', 'Follow the screen'], ['side', 'Side by side'], ['stacked', 'Stacked']], when: s => s.clock !== 'off' && s.clockStyle === 'flip',
-      help: 'Follow the screen: cards side by side in landscape, stacked in portrait.' },
-    { k: 'clockCards', label: 'Show the cards', type: 'toggle', def: true, when: s => s.clock !== 'off' && s.clockStyle === 'flip', help: 'Off: only the numerals (on black, or on paper with light cards); the flip still moves them.' },
-    { k: 'clockScale', label: 'Size', type: 'range', min: 0.5, max: 1, step: 0.01, def: 0.96, unit: '×', when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout), help: 'How much of the screen the cards fill (1 = edge to edge). Also sizes the clock in the Cover + clock layout.' },
-    { k: 'clockDigitGap', label: 'Gap between digits', type: 'range', min: 0, max: 0.2, step: 0.01, def: 0.03, when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout), help: 'Space between the two cards of the hours, the minutes and the seconds (as a share of a card\'s width).' },
-    { k: 'clockGroupGap', label: 'Gap between hours and minutes', type: 'range', min: 0, max: 0.6, step: 0.01, def: 0.14, when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout), help: 'Space between the hours, minutes and seconds groups (as a share of a card\'s width).' },
-    { k: 'clockDim', label: 'Dim', type: 'range', min: 0, max: 0.85, step: 0.05, def: 0, when: s => s.clock !== 'off', help: 'Darkens the clock (for a bedroom at night).' },
     { k: 'clockSound', label: 'Flip sound', type: 'choice', def: 'off', opts: [['off', 'Off'], ['solari', 'Airport board (clack)'], ['mechanical', 'Mechanical (air + clack)'], ['click', 'Click'], ['whoosh', 'Whoosh (air)'], ['soft', 'Soft tap']],
       when: s => s.clock !== 'off' && s.clockStyle === 'flip',
       help: 'Made on the phone (no audio files) and timed to each flap: every card clacks as it lands, so several changing at once rattle like a departure board. Airport board: a sharp plastic clack with the next flap rattling. Mechanical: the rush of the falling flap, then the clack. Silent during night mode.' },
     { k: 'clockVolume', label: 'Sound volume', type: 'range', min: 0.05, max: 1, step: 0.05, def: 0.4, when: s => s.clock !== 'off' && s.clockSound !== 'off', help: 'Loudness of the flip sound (relative to the phone\'s media volume).' },
-    { k: 'clockSoundEvery', label: 'Sound with seconds on', type: 'choice', def: 'minute', opts: [['minute', 'Only when the minute changes'], ['all', 'Every flip']], when: s => s.clock !== 'off' && s.clockSound !== 'off' && s.clockSeconds,
-      help: 'A tick every second gets tiring: by default only the minute flip makes a sound.' },
-    { k: 'clockHaptic', label: 'Vibrate on flip', type: 'choice', def: 'off', opts: [['off', 'Off'], ['light', 'Light'], ['firm', 'Firm']], when: s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout),
-      help: 'A tick of the vibration motor as the flap lands (on entering and leaving, as each card settles).' },
     { k: 'clockCaption', label: 'Paused song under the clock', type: 'toggle', def: true, when: s => s.clock !== 'off', help: 'Shows "Paused · song" in small text below the clock.' },
-    { group: 'Performance', icon: 'gauge', cat: 'Device', desc: 'Background resolution, blur and frame rate: trade looks for smoothness on slower phones.' },
-    { k: 'bgRes', label: 'Background resolution', type: 'range', min: 0.2, max: 1, step: 0.05, def: 0.5, unit: '×',
-      help: 'Size the dynamic background is drawn at. Under this much blur 0.5 looks the same as 1 and is what lets a budget phone hold 60 fps.' },
-    { k: 'bgBlur', label: 'Background blur passes', type: 'range', min: 1, max: 12, step: 1, def: 6, help: 'Softness of the dynamic background. More passes = smoother, more GPU work.' },
-    { k: 'bgFps', label: 'Background frame rate', type: 'choice', def: 'max', opts: [['max', 'Match display'], ['165', '165 fps'], ['144', '144 fps'], ['120', '120 fps'], ['100', '100 fps'], ['90', '90 fps'], ['75', '75 fps'], ['60', '60 fps'], ['45', '45 fps'], ['30', '30 fps'], ['24', '24 fps'], ['20', '20 fps'], ['15', '15 fps']],
-      help: 'Cap for the dynamic background. Match display runs at the screen\'s own refresh rate (60, 90, 120, 144 Hz…); a phone never goes above its screen. The background moves slowly, so 30 fps is hard to tell apart and saves power.' },
-    { k: 'glass', label: 'Glass blur', desc: 'Frosted blur behind the controls and settings', type: 'toggle', def: true,
-      help: 'The controls, the settings button and the settings sheet blur what is behind them. Behind the moving dynamic background that blur is redone every frame, which slower phones feel (the controls opening stutters). Off: the same panels as tinted glass without the blur.' },
-    { k: 'renderDistance', label: 'Lines kept drawn', type: 'range', min: 8, max: 60, step: 1, def: 20, help: 'Lines further than this from the current one are not drawn at all (long songs stay light). Raise it if you use a tiny text size.' },
 
-    { group: 'Storage', icon: 'disk', cat: 'Device', desc: 'What LyricDock keeps on this phone - animated covers, lyrics, images - and clearing it.' },
-    { label: 'Animated covers', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('videos'), info: () => window.dockStorage?.text('videos') ?? '',
-      help: 'Animated covers saved on the phone (see Now playing -> Keep animated covers). Cleared covers stream again next time.' },
-    { label: 'Lyrics', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('lyrics'), info: () => window.dockStorage?.text('lyrics') ?? '',
-      help: 'Lyrics of the last 500 songs, so a replay (or no internet) shows them instantly.' },
-    { label: 'Images & web cache', type: 'action', when: () => app, text: () => 'Clear', run: () => window.dockStorage?.clear('web'), info: () => window.dockStorage?.text('web') ?? '',
-      help: 'Still covers, artist pictures and other downloads the app keeps (the WebView cache). They download again when needed.' },
-    { label: 'Everything', type: 'action', text: () => 'Clear all', run: () => window.dockStorage?.clear('all'), info: () => window.dockStorage?.text('total') ?? '',
-      help: 'Clears all of the above. Your settings stay.' },
-
-    { group: 'Playback source', icon: 'source', cat: 'Source', desc: 'Follow Spotify on the computer, your Spotify account, or both.' },
-    { k: 'source', label: 'Source', type: 'choice', def: 'auto',
-      desc: 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
-      opts: [['auto', 'Auto'], ['bridge', 'Desktop (Spicetify)'], ['web', 'Spotify account']],
-      help: 'Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify\'s Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise.' },
+    { group: 'Account', icon: 'person', cat: 'Account', desc: 'Your LyricDock sign-in, your Spotify account and where playback comes from.' },
     { label: 'LyricDock account', type: 'action', text: () => 'Sign out', run: () => window.Account?.signOut(),
       info: () => { const u = window.Account?.user(); return u ? `${u.name} · ${u.email}` : ''; },
       help: 'LyricDock needs a sign-in with Google on every screen. Signing out here shows the sign-in screen again on this screen only.' },
-    { k: 'syncScope', label: 'Sync with your LyricDock account', type: 'choice', def: 'all',
+    { k: 'syncScope', label: 'Sync with your LyricDock account', type: 'choice', def: 'all', local: true,
       opts: [['all', 'Settings, keys and Spotify sign-in'], ['keys', 'Only keys and Spotify sign-in'], ['off', 'Off (this screen only)']],
       desc: 'Every screen you sign in to with this Google account starts with the same setup',
-      help: 'Settings, keys and Spotify sign-in: your look, lyrics and clock settings, the Spicy Lyrics and YouTube keys, the Spotify Client ID and your Spotify sign-in follow you to every phone and browser you sign in on. Screen, performance and storage settings always stay on this device. Only keys and Spotify sign-in: each screen keeps its own look. Stored encrypted in LyricDock\'s cloud, readable only with your sign-in.' },
+      help: 'Settings, keys and Spotify sign-in: your look, lyrics and clock settings, the Spicy Lyrics and YouTube keys, the Spotify Client ID and your Spotify sign-in follow you to every phone and browser you sign in on. Screen, performance, storage and connection settings always stay on this device. Only keys and Spotify sign-in: each screen keeps its own look. Stored encrypted in LyricDock\'s cloud, readable only with your sign-in.' },
+    { k: 'source', label: 'Playback source', type: 'choice', def: 'auto',
+      desc: 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
+      opts: [['auto', 'Auto'], ['bridge', 'Desktop (Spicetify)'], ['web', 'Spotify account']],
+      help: 'Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify\'s Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise.' },
     // Signing in goes through the setup screen: the dashboard link, the redirect URI and the errors live there.
     { label: 'Spotify account', type: 'action', text: () => (window.Web?.loggedIn() ? 'Sign out' : 'Sign in'),
       run: () => { if (Web.loggedIn()) return Web.logout(); Settings.close(); window.Setup?.open('web'); },
@@ -261,15 +171,34 @@ const Settings = (() => {
       desc: `From developer.spotify.com - redirect URI ${window.LYRICDOCK_WEB ? location.origin : 'http://127.0.0.1:8976'}/callback. No client secret needed.`,
       help: 'developer.spotify.com/dashboard → Create app → Web API, add the redirect URI above → copy the Client ID. Development mode allows 5 users (added by email under User Management); the app owner needs Premium.' },
 
-    { group: 'Presets', icon: 'layers', cat: 'Source', desc: 'Built-in looks and your own, saved on the computer so every phone can use them.' },
-    { label: 'Export / import', type: 'io', help: 'Export copies all settings (without API keys) as text you can paste into another phone. Import applies settings pasted here. Spotify\'s LyricDock panel can export and import files too.' },
-    { label: 'Presets', type: 'presets', help: 'Built-in: Default (the shipped config), Smooth (for slow phones) and Full Spicy (every effect up). Your own presets are stored in Spotify on the computer.' },
+    { group: 'Connection', icon: 'link', cat: 'System', desc: 'How this screen and Spotify on your computer find each other.' },
+    { label: 'Status', type: 'custom', render: () => window.connCard?.() },
+    { label: 'Setup guide', type: 'action', text: () => 'Open', desc: 'The first-run screen: sign in with Spotify or connect Spotify on your computer.', run: () => { Settings.close(); window.Setup?.open(); } },
+    { label: 'Local network access', type: 'action', text: () => 'Allow', run: () => window.lyricdockLna?.request(), when: () => !!window.LYRICDOCK_WEB && !!window.lyricdockLna,
+      info: () => 'Lets this page reach Spotify on your computer (Chrome / Edge ask once)',
+      help: 'Browsers keep websites away from your home network unless you allow it. LyricDock needs it to connect to Spotify on your computer. If you blocked it, allow "Local network" in the site settings (the icon left of the address).' },
+    { label: 'Pairing code', type: 'action', text: () => 'New code', desc: 'Unpairs every computer: connect again with Find devices.',
+      run: () => {
+        if (!window.pairArmed) { window.pairArmed = true; setTimeout(() => { window.pairArmed = false; }, 4000); return window.notice?.('Tap New code again: every computer must pair again'); }
+        try { localStorage.removeItem('dock:pair'); } catch (e) {}
+        location.reload(); // rtc.js makes a fresh code on start
+      }, help: 'The code is the key to this screen\'s connection. Make a new one if someone else may have seen it (it was shown on screen, or this phone ran a LyricDock older than v1.8.9 on a shared Wi-Fi).' },
+    { label: 'Kiosk mode', desc: 'Full screen, starts on boot, silent updates. Leave it to use the phone normally (tap twice).',
+      type: 'action', when: () => { try { return Dock.kioskOn(); } catch (e) { return false; } }, text: () => 'Leave',
+      run: () => {
+        if (window.kioskArmed) { try { Dock.leaveKiosk(); } catch (e) {} window.notice?.('Kiosk mode is off'); return; }
+        window.kioskArmed = true; setTimeout(() => { window.kioskArmed = false; }, 4000);
+        window.notice?.('Tap Leave again to turn kiosk mode off');
+      }, help: 'Kiosk mode was turned on by setup-phone.ps1. Leaving it gives the phone back its normal home screen, status bar and lock screen.' },
 
-    { group: 'Updates', icon: 'download', cat: 'Ops', desc: 'Automatic updates, the beta channel and release notes.' },
-    { k: 'channel', label: 'Update channel', type: 'choice', def: 'stable', when: () => app, opts: [['stable', 'Stable'], ['beta', 'Beta (pre-releases)']],
-      help: 'Beta installs pre-releases as soon as they are published (they may have rough edges). Android cannot install an older version over a newer one, so going back from beta to stable waits for the next stable release.' },
+    { group: 'Updates', icon: 'download', cat: 'System', desc: 'Automatic updates, release notes and installing LyricDock as an app.' },
+    { label: 'LyricDock app', type: 'action', text: () => 'Check now', run: () => window.checkUpdate?.(true), info: () => window.updateStatus?.() ?? '',
+      help: 'Check for a new version now and install it if there is one.' },
     { k: 'autoUpdate', label: 'Update automatically', desc: app ? 'New versions from GitHub Releases install on their own' : 'New versions load on their own', type: 'toggle', def: true,
       help: 'Checks GitHub Releases shortly after start and every 6 hours. In kiosk mode updates install silently; otherwise Android asks once.' },
+    { k: 'channel', label: 'Update channel', type: 'choice', def: 'stable', when: () => app, opts: [['stable', 'Stable'], ['beta', 'Beta (pre-releases)']],
+      help: 'Beta installs pre-releases as soon as they are published (they may have rough edges). Android cannot install an older version over a newer one, so going back from beta to stable waits for the next stable release.' },
+    { label: 'Changelog', type: 'action', text: () => 'What\'s new', run: () => window.showChangelog?.(), help: 'Release notes for this and earlier versions, from GitHub.' },
     { label: 'Reopen by itself', type: 'action', when: () => app, text: () => { try { return Dock.canReopen() ? 'On' : 'Turn on'; } catch (e) { return 'Turn on'; } },
       run: () => { try { Dock.askReopen(); } catch (e) {} },
       info: () => { try { return Dock.canReopen() ? 'The dock comes back by itself after an update or a crash' : 'Off - after an update you get a "tap to reopen" notification'; } catch (e) { return ''; } },
@@ -280,47 +209,135 @@ const Settings = (() => {
     { label: 'Full screen', type: 'action', text: () => (document.fullscreenElement || document.webkitFullscreenElement ? 'Leave full screen' : 'Go full screen'),
       run: () => window.lyricdockFullscreen?.(), when: () => !!window.LYRICDOCK_WEB && !matchMedia('(display-mode: fullscreen)').matches && navigator.standalone !== true,
       help: 'Hides the browser bars until you press Esc, F or the button again (or swipe on a phone). Also the quick bar\'s button. iPhone: Add to Home Screen instead.' },
+
+    { group: 'Miniplayer', icon: 'pip', cat: 'System', desc: 'A small always-on-top window with the cover, the sung line and the controls.' },
     { label: 'Miniplayer', type: 'action', text: () => 'Open', run: () => window.lyricdockMini?.(), when: () => !!window.lyricdockMini?.supported,
       help: 'A small always-on-top window with the cover, the line being sung and the controls. Also: press M.' },
-    { k: 'miniLayout', label: 'Miniplayer layout', type: 'choice', def: 'auto', opts: [['auto', 'Auto'], ['wide', 'Big cover beside the lyrics'], ['bar', 'Song bar on top']], when: () => !!window.lyricdockMini?.supported,
+    { k: 'miniLayout', label: 'Layout', type: 'choice', def: 'auto', opts: [['auto', 'Auto'], ['wide', 'Big cover beside the lyrics'], ['bar', 'Song bar on top']], when: () => !!window.lyricdockMini?.supported,
       help: 'Big cover: the cover on the left with play / pause, previous and next on it (hover), the timeline under it and the song above the lyrics. Song bar: a small cover, title and like button along the top. Auto picks the big cover when the window is wide enough. Applies the next time the miniplayer opens.' },
-    { k: 'miniProgress', label: 'Miniplayer progress bar', type: 'toggle', def: true, when: () => !!window.lyricdockMini?.supported, help: 'The timeline under the cover (big cover layout) or in the bottom bar.' },
-    { k: 'miniArt', label: 'Miniplayer cover change', type: 'choice', def: 'shuffle', opts: [['shuffle', 'Shuffle'], ['fade', 'Fade'], ['none', 'None']], when: () => !!window.lyricdockMini?.supported,
+    { k: 'miniProgress', label: 'Progress bar', type: 'toggle', def: true, when: () => !!window.lyricdockMini?.supported, help: 'The timeline under the cover (big cover layout) or in the bottom bar.' },
+    { k: 'miniArt', label: 'Cover change', type: 'choice', def: 'shuffle', opts: [['shuffle', 'Shuffle'], ['fade', 'Fade'], ['none', 'None']], when: () => !!window.lyricdockMini?.supported,
       help: 'How the cover changes with the song. Shuffle: the old cover is dealt away like a card while the new one comes up from behind.' },
-    { k: 'miniTitle', label: 'Miniplayer title change', type: 'choice', def: 'spring', opts: [['spring', 'Spring'], ['fade', 'Fade'], ['none', 'None']], when: () => !!window.lyricdockMini?.supported,
+    { k: 'miniTitle', label: 'Title change', type: 'choice', def: 'spring', opts: [['spring', 'Spring'], ['fade', 'Fade'], ['none', 'None']], when: () => !!window.lyricdockMini?.supported,
       help: 'How the song title and artist change. Spring: the words pop up one after another.' },
-    { label: 'LyricDock app', type: 'action', text: () => 'Check now', run: () => window.checkUpdate?.(true), info: () => window.updateStatus?.() ?? '',
-      help: 'Check for a new version now and install it if there is one.' },
-    { label: 'Changelog', type: 'action', text: () => 'What\'s new', run: () => window.showChangelog?.(), help: 'Release notes for this and earlier versions, from GitHub.' },
 
-    { group: 'Connection', icon: 'link', cat: 'Ops', desc: 'How the phone and Spotify find each other: pairing, signalling server, TURN, kiosk mode.' },
-    { label: 'Status', type: 'custom', render: () => window.connCard?.() },
-    { label: 'Setup guide', type: 'action', text: () => 'Open', desc: 'The first-run screen: sign in with Spotify or connect Spotify on your computer.', run: () => { Settings.close(); window.Setup?.open(); } },
-    { label: 'Pairing code', type: 'action', text: () => 'New code', desc: 'Unpairs every computer: connect again with Find devices.',
-      run: () => {
-        if (!window.pairArmed) { window.pairArmed = true; setTimeout(() => { window.pairArmed = false; }, 4000); return window.notice?.('Tap New code again: every computer must pair again'); }
-        try { localStorage.removeItem('dock:pair'); } catch (e) {}
-        location.reload(); // rtc.js makes a fresh code on start
-      }, help: 'The code is the key to this screen\'s connection. Make a new one if someone else may have seen it (it was shown on screen, or this phone ran a LyricDock older than v1.8.9 on a shared Wi-Fi).' },
-    { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', when: () => app, opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
+    { group: 'Storage', icon: 'disk', cat: 'System', desc: 'What LyricDock keeps on this device - animated covers, lyrics, images - and clearing it.' },
+    { k: 'motionKeep', label: 'Keep animated covers', type: 'choice', def: 'second', local: true, opts: [['second', 'From the second play'], ['first', 'From the first play'], ['never', 'Never (always stream)']],
+      when: mot,
+      help: 'From the second play: an album you only hear once just streams; one you come back to is saved, and after that plays without using data. From the first play: saves everything (the video appears once fully downloaded). Never: always streams.' },
+    { k: 'motionCacheMB', label: 'Space for saved covers', type: 'range', min: 50, max: 1000, step: 50, def: (navigator.deviceMemory || 4) <= 2 ? 150 : 300, unit: ' MB', local: true,
+      when: s => s.motionKeep !== 'never' && mot(s),
+      help: 'When full, the covers played longest ago are removed first.' },
+    { label: 'Animated covers', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('videos'), info: () => window.dockStorage?.text('videos') ?? '',
+      help: 'Animated covers saved on this device. Cleared covers stream again next time.' },
+    { label: 'Lyrics', type: 'action', text: () => 'Clear', run: () => window.dockStorage?.clear('lyrics'), info: () => window.dockStorage?.text('lyrics') ?? '',
+      help: 'Lyrics of the last 500 songs, so a replay (or no internet) shows them instantly.' },
+    { label: 'Images & web cache', type: 'action', when: () => app, text: () => 'Clear', run: () => window.dockStorage?.clear('web'), info: () => window.dockStorage?.text('web') ?? '',
+      help: 'Still covers, artist pictures and other downloads the app keeps (the WebView cache). They download again when needed.' },
+    { label: 'Everything', type: 'action', text: () => 'Clear all', run: () => window.dockStorage?.clear('all'), info: () => window.dockStorage?.text('total') ?? '',
+      help: 'Clears all of the above. Your settings stay.' },
+
+    { group: 'Presets', icon: 'layers', cat: 'System', desc: 'Built-in looks and your own, saved on the computer so every phone can use them.' },
+    { label: 'Presets', type: 'presets', help: 'Built-in: Default (the shipped config), Smooth (for slow phones) and Full Spicy (every effect up). Your own presets are stored in Spotify on the computer.' },
+    { label: 'Export / import', type: 'io', help: 'Export copies all settings (without API keys) as text you can paste into another phone. Import applies settings pasted here. Spotify\'s LyricDock panel can export and import files too.' },
+
+    { group: 'Advanced', icon: 'sliders', cat: 'System', desc: 'Fine-tuning. The defaults are what LyricDock is designed and tested with.' },
+    { type: 'heading', label: 'Lyrics' },
+    { k: 'anchor', label: 'Active line position', desc: 'How far down the screen the current line sits', type: 'range', min: 0.2, max: 0.6, step: 0.05, def: 0.35,
+      help: '0.2 = near the top (more upcoming lines visible), 0.6 = below the middle (more past lines).' },
+    { k: 'lineGap', label: 'Line spacing', type: 'range', min: 0, max: 5, step: 0.25, def: 1.5, help: 'Space between lyric lines.' },
+    { k: 'scrollLead', label: 'Scroll ahead', type: 'range', min: 0, max: 800, step: 50, def: 250, unit: ' ms', help: 'The list starts moving to the next line this long before it is sung, so your eyes are already there.' },
+    { k: 'scrollBack', label: 'Return to the sung line after', type: 'range', min: 1, max: 10, step: 0.5, def: 3, unit: ' s', help: 'Drag the lyrics up or down to read ahead or look back (flick to scroll fast). This long after you let go, they glide back to the line being sung.' },
+    { k: 'seekComp', label: 'Seek slightly before a tapped line', type: 'toggle', def: true, help: 'Spotify fades the audio in for about 300 ms after a seek, so landing exactly on a line swallows its first syllable. This seeks 300 ms early.' },
+    { k: 'dotsGap', label: 'Interlude dots after a gap of', type: 'range', min: 2, max: 12, step: 0.5, def: 4, unit: ' s', when: s => s.dots, help: 'Minimum silence between lines before the dots appear.' },
+    { k: 'glowStrength', label: 'Glow strength', type: 'range', min: 0.2, max: 2, step: 0.1, def: 1, unit: '×', when: s => s.glow, help: 'Size and brightness of the glow.' },
+    { k: 'liftAmount', label: 'Lift amount', type: 'range', min: 0.2, max: 2, step: 0.1, def: 1, unit: '×', when: s => s.lift, help: 'How far words rise and grow.' },
+    { k: 'lettersMin', label: 'Long note length', type: 'range', min: 500, max: 3000, step: 100, def: 1000, unit: ' ms', when: s => s.letters,
+      help: 'How long a word must be held to get the letter-by-letter treatment.' },
+    { k: 'blurAmount', label: 'Blur strength', type: 'range', min: 0.5, max: 5, step: 0.1, def: 1.2, unit: 'px', when: s => s.blurLines, help: 'Blur of lines two away; three and more get twice this.' },
+    { k: 'apiKey', label: 'Spicy Lyrics API key', type: 'text', def: '', placeholder: 'sl_pk_…',
+      desc: 'Your own publishable key with "No origin header" allowed. Fills gaps the desktop cache misses.',
+      help: 'Get one at developers.spicylyrics.org → your application → Client access (no backend) → publishable key (sl_pk_…), with "No origin header" allowed. Never paste a secret key (sl_sk_…). Optional: LyricDock signed in gets word-synced lyrics through LyricDock\'s own server, on the phone and the web app. A key of your own is used instead when set.' },
+    { type: 'heading', label: 'Song details' },
+    { k: 'marquee', label: 'Scroll long titles', type: 'toggle', def: true, help: 'Song titles and artist lists that do not fit scroll slowly back and forth instead of being cut off.' },
+    { k: 'times', label: 'Times on the edge bar', desc: 'Elapsed and total time above the ends of the edge bar', type: 'toggle', def: false, when: s => s.progress === 'top' || s.progress === 'bottom' || !['split', 'clocksplit'].includes(s.layout),
+      help: 'Shows 1:23 / 3:45 above the ends of the edge bar. The bar under the cover always shows its times.' },
+    { k: 'tagPos', label: 'Lyrics source tag position', type: 'choice', def: 'auto', opts: [['auto', 'In the corner, with the controls'], ['corner', 'In the corner, always (dimmed)']],
+      when: s => s.sourceBadge,
+      help: 'The lyrics source sits in the bottom-right corner (top-right in Cinema and Now Bar) - never in the song details or on the cover. With the controls: it appears when you tap the screen. Always: it stays there, dimmed.' },
+    { k: 'nextChipSecs', label: 'Up next chip for the last', type: 'range', min: 5, max: 45, step: 5, def: 15, unit: ' s', when: s => s.nextChip, help: 'How long before the end of the song the chip appears.' },
+    { type: 'heading', label: 'Animated covers' },
+    { k: 'motionQuality', label: 'Quality', type: 'choice', def: 'auto', opts: [['saver', 'Data saver'], ['auto', 'Fit the screen'], ['sharp', 'Sharp'], ['max', 'Best available']],
+      when: mot,
+      help: 'Fit the screen: the smallest file that still looks sharp here (about 2-5 MB per album on a phone). Data saver: a size smaller. Sharp / Best: bigger files for big or 4K screens.' },
+    { k: 'motionWarm', label: 'Load the next one early', type: 'toggle', def: true, when: mot,
+      help: 'While a song plays, the next song\'s animated cover is looked up (and downloaded, if it would be saved anyway), so it starts the moment the song changes.' },
+    { k: 'motionBadge', label: 'Mark animated covers', type: 'toggle', def: true, when: s => s.motionArt,
+      help: 'A tiny mark in the corner of the cover while it is animated. Still covers never show it.' },
+    { type: 'heading', label: 'Background' },
+    { k: 'bgSpeed', label: 'Motion speed', type: 'range', min: 0, max: 1.5, step: 0.05, def: 0.35, when: dyn, help: 'How fast the dynamic background drifts. 0 freezes it.' },
+    { k: 'bgBeat', label: 'Move with the music', desc: 'Livelier while words are sung, calm in instrumental parts', type: 'toggle', def: true, when: dyn,
+      help: 'Speeds the background up while vocals are busy (read from the lyric timing) and slows it in instrumental parts.' },
+    { k: 'bgWarp', label: 'Warp', type: 'range', min: 0, max: 1, step: 0.05, def: 1, when: dyn, help: 'How much the image is swirled. 0 = just a blurred, slowly moving cover.' },
+    { k: 'bgSaturation', label: 'Colour intensity', type: 'range', min: 0.5, max: 2.5, step: 0.05, def: 1.5, unit: '×', when: dyn, help: 'Saturation of the dynamic background. Higher = more vivid.' },
+    { k: 'bgFade', label: 'Cover crossfade', type: 'range', min: 0, max: 3000, step: 100, def: 1000, unit: ' ms', when: dyn, help: 'How long the background takes to blend into the next song\'s cover.' },
+    { k: 'bgDrift', label: 'Drift the still cover', type: 'toggle', def: true, when: s => ['blur', 'canvas', 'motion', 'motionblur'].includes(s.bg),
+      help: 'The blurred cover slowly pans and zooms instead of standing still (Ken Burns effect). Cheap: one layer moved by the GPU.' },
+    { type: 'heading', label: 'Performance' },
+    { k: 'bgRes', label: 'Background resolution', type: 'range', min: 0.2, max: 1, step: 0.05, def: 0.5, unit: '×', local: true,
+      help: 'Size the dynamic background is drawn at. Under this much blur 0.5 looks the same as 1 and is what lets a budget phone hold 60 fps.' },
+    { k: 'bgBlur', label: 'Background blur passes', type: 'range', min: 1, max: 12, step: 1, def: 6, local: true, help: 'Softness of the dynamic background. More passes = smoother, more GPU work.' },
+    { k: 'bgFps', label: 'Background frame rate', type: 'choice', def: 'max', local: true, opts: [['max', 'Match display'], ['165', '165 fps'], ['144', '144 fps'], ['120', '120 fps'], ['100', '100 fps'], ['90', '90 fps'], ['75', '75 fps'], ['60', '60 fps'], ['45', '45 fps'], ['30', '30 fps'], ['24', '24 fps'], ['20', '20 fps'], ['15', '15 fps']],
+      help: 'Cap for the dynamic background. Match display runs at the screen\'s own refresh rate (60, 90, 120, 144 Hz…); a phone never goes above its screen. The background moves slowly, so 30 fps is hard to tell apart and saves power.' },
+    { k: 'glass', label: 'Glass blur', desc: 'Frosted blur behind the controls and settings', type: 'toggle', def: true, local: true,
+      help: 'The controls, the settings button and the settings sheet blur what is behind them. Behind the moving dynamic background that blur is redone every frame, which slower phones feel (the controls opening stutters). Off: the same panels as tinted glass without the blur.' },
+    { type: 'heading', label: 'Screen' },
+    { k: 'nightDim', label: 'Night dimming', type: 'range', min: 0, max: 0.85, step: 0.05, def: 0.5, local: true, when: s => s.night, help: 'How much darker everything gets at night.' },
+    { k: 'nightWarm', label: 'Night warmth', type: 'range', min: 0, max: 1, step: 0.05, def: 0.4, local: true, when: s => s.night, help: 'Amber tint at night (less blue light).' },
+    { k: 'burnIn', label: 'Burn-in protection', type: 'toggle', def: true, local: true, help: 'AMOLED screens can keep a ghost of things that never move. This shifts the layout by a few pixels every few minutes: invisible, but it spreads the wear.' },
+    { k: 'widgetAccent', label: 'Widget colours from the cover', type: 'toggle', def: true, local: true, when: () => app,
+      help: 'Home-screen widgets tint the sung line with the colour picked from the album art. Off: white. Add widgets from your home screen: long-press -> Widgets -> LyricDock.' },
+    { k: 'edgeMode', label: 'Notch & edge spacing', desc: 'Auto reads the camera cutout and rounded corners from the phone',
+      type: 'choice', def: 'auto', local: true, opts: [['auto', 'Auto'], ['manual', 'Manual']],
+      help: 'The camera notch is always kept clear, whichever way the phone is turned. Auto also reads the rounded corners and pulls the edge progress bar in where they would cut it. Manual lets you add side padding and set the corner inset yourself.' },
+    { k: 'notchPad', label: 'Notch side padding', type: 'range', min: 0, max: 120, step: 2, def: 36, unit: 'px', local: true, when: s => s.edgeMode === 'manual',
+      help: 'Space on the side with the camera notch (top in portrait, left or right in landscape). Lower it if your notch is small and you want the room; a line shows where content stops while you change it.' },
+    { k: 'edgePad', label: 'Side padding', type: 'range', min: 0, max: 80, step: 2, def: 0, unit: 'px', local: true, when: s => s.edgeMode === 'manual',
+      help: 'Space on the left and right edges that have no notch. 0 uses the whole screen.' },
+    { k: 'cornerPad', label: 'Progress bar corner inset', type: 'range', min: 0, max: 80, step: 2, def: 20, unit: 'px', local: true, when: s => s.edgeMode === 'manual',
+      help: 'How rounded the screen corners are: the progress bar is lifted and shortened to stay inside them.' },
+    { type: 'heading', label: 'Flip clock' },
+    { k: 'clockIntro', label: 'Coming in and going out', type: 'choice', def: 'roll', opts: [['roll', 'Airport board (roll from 0 / to 0)'], ['flip', 'Flip from blank'], ['none', 'None']], when: flipUp,
+      help: 'Airport board: coming in, every card starts on 0 and rolls forward flap by flap to the time; going out, every card rolls on to 0, like a departure board changing. Flip from blank: the cards flip from and to blank. None: no animation.' },
+    { k: 'clockAnim', label: 'Flip animation', type: 'choice', def: 'classic', opts: [['classic', 'Classic (smooth)'], ['gravity', 'Gravity (natural fall)'], ['snappy', 'Snappy'], ['bounce', 'Bouncy'], ['fold', 'Slow fold'], ['cascade', 'Cascade (per digit)'], ['roll', 'Roll'], ['fade', 'Fade']],
+      when: flipUp,
+      help: 'Classic: the top half falls, the new bottom half lands, smooth. Gravity: the flap falls like a real one - fastest at the bottom - and bounces off the stack a little. Snappy: quick and crisp. Bouncy: the flap overshoots and settles. Slow fold: slower, with a light sheen. Cascade: every digit flips a beat after the one before. Roll: the digit rolls down a drum. Fade: a quiet crossfade. The airport-board entry uses the same flap (Classic for Roll and Fade).' },
+    { k: 'clockLayout', label: 'Arrangement', type: 'choice', def: 'auto', opts: [['auto', 'Follow the screen'], ['side', 'Side by side'], ['stacked', 'Stacked']], when: s => s.clock !== 'off' && s.clockStyle === 'flip',
+      help: 'Follow the screen: cards side by side in landscape, stacked in portrait.' },
+    { k: 'clockCards', label: 'Show the cards', type: 'toggle', def: true, when: flipUp, help: 'Off: only the numerals (on black, or on paper with light cards); the flip still moves them.' },
+    { k: 'clockScale', label: 'Size', type: 'range', min: 0.5, max: 1, step: 0.01, def: 0.96, unit: '×', when: flipUp, help: 'How much of the screen the cards fill (1 = edge to edge). Also sizes the clock in the Cover + clock layout.' },
+    { k: 'clockDigitGap', label: 'Gap between digits', type: 'range', min: 0, max: 0.2, step: 0.01, def: 0.03, when: flipUp, help: 'Space between the two cards of the hours, the minutes and the seconds (as a share of a card\'s width).' },
+    { k: 'clockGroupGap', label: 'Gap between hours and minutes', type: 'range', min: 0, max: 0.6, step: 0.01, def: 0.14, when: flipUp, help: 'Space between the hours, minutes and seconds groups (as a share of a card\'s width).' },
+    { k: 'clockDim', label: 'Dim', type: 'range', min: 0, max: 0.85, step: 0.05, def: 0, when: s => s.clock !== 'off', help: 'Darkens the clock (for a bedroom at night).' },
+    { k: 'clockSoundEvery', label: 'Sound with seconds on', type: 'choice', def: 'minute', opts: [['minute', 'Only when the minute changes'], ['all', 'Every flip']], when: s => s.clock !== 'off' && s.clockSound !== 'off' && s.clockSeconds,
+      help: 'A tick every second gets tiring: by default only the minute flip makes a sound.' },
+    { k: 'clockHaptic', label: 'Vibrate on flip', type: 'choice', def: 'off', opts: [['off', 'Off'], ['light', 'Light'], ['firm', 'Firm']], when: flipUp,
+      help: 'A tick of the vibration motor as the flap lands (on entering and leaving, as each card settles).' },
+    { type: 'heading', label: 'Connection' },
+    { k: 'linkPath', label: 'Connection path', type: 'choice', def: 'auto', local: true, when: () => app, opts: [['auto', 'Auto (fastest)'], ['usb', 'Prefer USB cable'], ['wifi', 'Wi-Fi only']],
       help: 'How the phone reaches Spotify on your computer. Auto uses whatever works best. Prefer USB cable only offers the USB-tethering network. It works when the computer\'s internet goes through the phone (USB tethering on, and the computer has no other network or prefers the tethered one): Spotify only offers its main network interface. Takes effect on the next connection.' },
-    { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', opts: [['ntfy', 'LyricDock (default)'], ['custom', 'My own ntfy server'], ...(app ? [['helper', 'LyricDock Helper on my PC']] : [])], // an https page can't reach the helper
+    { k: 'relay', label: 'Signalling server', type: 'choice', def: 'ntfy', local: true, opts: [['ntfy', 'LyricDock (default)'], ['custom', 'My own ntfy server'], ...(app ? [['helper', 'LyricDock Helper on my PC']] : [])], // an https page can't reach the helper
       help: 'Where the phone and Spotify swap their one-time connection details (encrypted with the pairing code; the server never sees your music or lyrics). LyricDock\'s own server is always used. My own ntfy server: any self-hosted ntfy (https address), used as well. LyricDock Helper: the helper app runs a tiny relay on your PC, so pairing also works without the internet - type your PC\'s IP address below. Spotify takes this setting from the phone.' },
-    { k: 'relayUrl', label: 'Server address', type: 'text', def: '', placeholder: 'https://ntfy.example.com  or  192.168.1.20', when: s => s.relay !== 'ntfy',
+    { k: 'relayUrl', label: 'Server address', type: 'text', def: '', local: true, placeholder: 'https://ntfy.example.com  or  192.168.1.20', when: s => s.relay !== 'ntfy',
       help: 'My own ntfy server: its https:// address (Spotify only allows https). LyricDock Helper: the IPv4 address of the PC running the helper (shown on its Dashboard).' },
-    { label: 'Local network access', type: 'action', text: () => 'Allow', run: () => window.lyricdockLna?.request(), when: () => !!window.LYRICDOCK_WEB && !!window.lyricdockLna,
-      info: () => 'Lets this page reach Spotify on your computer (Chrome / Edge ask once)',
-      help: 'Browsers keep websites away from your home network unless you allow it. LyricDock needs it to connect to Spotify on your computer. If you blocked it, allow "Local network" in the site settings (the icon left of the address).' },
-    { k: 'ice', label: 'STUN / TURN servers (away from home)', type: 'text', def: '', placeholder: 'turn:host:3478|user|password, stun:host:3478',
+    { k: 'ice', label: 'STUN / TURN servers (away from home)', type: 'text', def: '', local: true, placeholder: 'turn:host:3478|user|password, stun:host:3478',
       help: 'Only for using LyricDock on a different network from your computer (e.g. phone on mobile data). Add a TURN relay you control as url|username|password; several separated by commas. Options: a Metered.ca or Cloudflare TURN account, or coturn on a VPS. Leave empty at home.' },
+
+    { group: 'Developer', icon: 'code', cat: 'System', desc: 'Aids for debugging and for talking about the design.' },
+    { k: 'showBlocks', label: 'Show block names', desc: 'Outlines and labels every area of the screen', type: 'toggle', def: false,
+      help: 'Draws a dashed outline and a name on each block: Cover, Now playing, Timeline, Lyrics pane, Control pill, Tags, Status cluster... The names are the ones in the design file and docs/layout-map.md.' },
+    { k: 'renderDistance', label: 'Lines kept drawn', type: 'range', min: 8, max: 60, step: 1, def: 20, local: true, help: 'Lines further than this from the current one are not drawn at all (long songs stay light). Raise it if you use a tiny text size.' },
     { label: 'Connection log', type: 'info', value: () => (window.connLog?.() ?? []).slice(0, 6).join('  ·  ') || 'Nothing yet', help: 'The last connection events on this phone (connected, lost, reconnected), newest first.' },
-    { label: 'Kiosk mode', desc: 'Full screen, starts on boot, silent updates. Leave it to use the phone normally (tap twice).',
-      type: 'action', when: () => { try { return Dock.kioskOn(); } catch (e) { return false; } }, text: () => 'Leave',
-      run: () => {
-        if (window.kioskArmed) { try { Dock.leaveKiosk(); } catch (e) {} window.notice?.('Kiosk mode is off'); return; }
-        window.kioskArmed = true; setTimeout(() => { window.kioskArmed = false; }, 4000);
-        window.notice?.('Tap Leave again to turn kiosk mode off');
-      }, help: 'Kiosk mode was turned on by setup-phone.ps1. Leaving it gives the phone back its normal home screen, status bar and lock screen.' },
   ];
 
   // Built-in presets (the shipped default config is 'Default'); applied on top of the defaults.
@@ -345,16 +362,24 @@ const Settings = (() => {
     layers: 'M12 3.5l8.5 4.5-8.5 4.5L3.5 8zM3.5 12.5l8.5 4.5 8.5-4.5M3.5 16.5l8.5 4.5 8.5-4.5',
     download: 'M12 3.5v11M7 10l5 5 5-5M4.5 20h15',
     link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+    hand: 'M9.5 11.5V5a1.5 1.5 0 0 1 3 0v6M12.5 10.5a1.5 1.5 0 0 1 3 0v1M15.5 11a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1-6 6h-1a6 6 0 0 1-4.9-2.6l-2.4-3.5a1.5 1.5 0 0 1 2.4-1.8l1.4 1.9v-4',
+    person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5',
+    pip: 'M3.5 5h17v14h-17zM12 12h6.5v5H12z',
+    sliders: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4',
+    code: 'M8.5 7l-5 5 5 5M15.5 7l5 5-5 5M13.5 4.5l-3 15',
   };
   // Icon tile colours (Apple's system palette, dark mode): each section reads at a glance, like System Settings.
   const TINTS = { layout: '#0A84FF', note: '#FF375F', image: '#BF5AF2', text: '#FF9F0A', spark: '#64D2FF', phone: '#8E8E93', clock: '#5E5CE6',
-    gauge: '#30D158', disk: '#64D2FF', source: '#FF453A', layers: '#FFD60A', download: '#0A84FF', link: '#30D158' };
+    gauge: '#30D158', disk: '#64D2FF', source: '#FF453A', layers: '#FFD60A', download: '#0A84FF', link: '#30D158',
+    hand: '#66D4CF', person: '#FF453A', pip: '#40C8E0', sliders: '#8E8E93', code: '#636366' };
   const KEY = window.LYRICDOCK_MINI ? 'dock:settings:mini' : 'dock:settings'; // the miniplayer's own look (mini.js)
   const defaults = Object.fromEntries(SCHEMA.filter(x => x.k).map(x => [x.k, x.def]));
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(window.LYRICDOCK_MINI ? 'dock:settings' : KEY)); } catch (e) {} // the miniplayer starts from the screen's look
   const fresh = !saved; // first run on this phone: take the desktop's last settings when the bridge sends them
-  const S = { ...defaults, ...saved };
+  // Layouts folded into others in the 2026-10 cleanup: TV view into Default, Compact into Lyrics only.
+  const fix = o => { if (o.layout === 'tv') o.layout = 'split'; else if (o.layout === 'compact') o.layout = 'lyrics'; return o; };
+  const S = fix({ ...defaults, ...saved });
   const listeners = [];
   let presets = {}, presetHook = () => {};
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
@@ -362,6 +387,7 @@ const Settings = (() => {
 
   // Every change is saved immediately - sliders included (not only on release).
   function set(k, v, rerender = true) {
+    if (S[k] !== v) window.beforeSet?.(k, v); // features.js: the layout morph reads where everything is before it moves
     S[k] = v;
     save();
     notify(k, v);
@@ -531,8 +557,11 @@ const Settings = (() => {
   let cur = null, query = '';
   const svgI = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
   const groupKeys = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (SCHEMA[j].k) out.push(SCHEMA[j].k); return out; };
-  const visibleRows = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (!SCHEMA[j].when || SCHEMA[j].when(S)) out.push(SCHEMA[j]); return out; };
+  // A sub-heading shows only while a row under it does.
+  const visibleRows = g => { const out = []; for (let j = SCHEMA.findIndex(x => x.group === g) + 1; j < SCHEMA.length && !SCHEMA[j].group; j++) if (!SCHEMA[j].when || SCHEMA[j].when(S)) out.push(SCHEMA[j]);
+    return out.filter((x, i) => x.type !== 'heading' || (out[i + 1] && out[i + 1].type !== 'heading')); };
   function makeRow(x, where) {
+    if (x.type === 'heading') return el('div', 'st-sub', x.label);
     if (x.type === 'custom') { const r = el('div', 'sl-sp-row st-custom'); const c = x.render?.(); if (c) r.append(c); return r; }
     const row = el('div', 'sl-sp-row' + (['range', 'text', 'presets', 'action', 'io'].includes(x.type) ? ' sl-sp-row--stacked' : ''));
     const lw = el('div', 'sl-sp-label-wrap');
@@ -560,7 +589,7 @@ const Settings = (() => {
   function render() {
     const body = document.querySelector('#settings .sl-modal-main-section');
     if (!body) return;
-    const groups = SCHEMA.filter(x => x.group), q = query.trim().toLowerCase();
+    const groups = SCHEMA.filter(x => x.group && visibleRows(x.group).length), q = query.trim().toLowerCase(); // a section with nothing to show here (Miniplayer on the phone) stays out
     if (!groups.some(g => g.group === cur)) cur = groups[0].group;
     const oldPane = body.querySelector('.st-pane'), same = body.dataset.view === `${cur}|${q}`, top = oldPane?.scrollTop ?? 0;
     const rail = el('nav', 'st-rail');
@@ -585,6 +614,7 @@ const Settings = (() => {
       let g = null, n = 0;
       for (const x of SCHEMA) {
         if (x.group) { g = x.group; continue; }
+        if (x.type === 'heading') continue;
         if ((x.when && !x.when(S)) || !`${x.label} ${x.desc || ''} ${x.help || ''} ${g}`.toLowerCase().includes(q)) continue;
         box.append(makeRow(x, g)); n++;
       }
@@ -621,14 +651,14 @@ const Settings = (() => {
   function load(obj) {
     for (const k of Object.keys(defaults)) if (obj && k in obj && k !== 'apiKey') S[k] = obj[k];
     if (obj?.apiKey && !S.apiKey) S.apiKey = obj.apiKey;
-    save(); notify('*'); render();
+    fix(S); save(); notify('*'); render();
   }
 
   // Serializable copy of the schema for the desktop panel (functions dropped; actions/info/presets are phone-only).
   const schema = () => SCHEMA.filter(x => x.group || (x.k && x.type !== 'info' && x.type !== 'custom'))
     .filter((x, i, a) => !x.group || (a[i + 1] && !a[i + 1].group)) // drop sections with nothing editable (Presets, Connection)
-    .map(({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon, cat }) =>
-      ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon: ICONS[icon], tint: TINTS[icon], cat }));
+    .map(({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon, cat, local }) =>
+      ({ group, k, label, type, def, opts, min, max, step, unit, desc, placeholder, help, icon: ICONS[icon], tint: TINTS[icon], cat, local }));
   // A change from the desktop panel: only known keys, and only values of the default's type.
   const setRemote = (k, v) => { if (k in defaults && typeof v === typeof defaults[k] && (x => !x.opts || x.opts.some(o => o[0] === v))(SCHEMA.find(x => x.k === k))) set(k, v); };
 

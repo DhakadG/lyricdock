@@ -121,7 +121,7 @@ browser hides its local addresses behind random `.local` names.
 ## Account sync
 
 `sync.js`: what a LyricDock sign-in carries to every screen signed in with the same Google account.
-- *Settings → Playback source → Sync with your LyricDock account*: **all** (default: settings, the Spicy Lyrics and
+- *Settings → Account → Sync with your LyricDock account*: **all** (default: settings, the Spicy Lyrics and
   YouTube keys, the Spotify Client ID, the Spotify sign-in), **keys** (the keys and the Spotify sign-in), **off**.
 - Never synced: the Screen, Performance and Storage groups and device keys (orientation, edge padding, relay, TURN).
 - Stored at `art.lyricdock…/v1/sync` (docs/lyricdock-cloud.md), one blob per account, last writer wins. A screen

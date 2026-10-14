@@ -52,14 +52,14 @@ $('bgc').addEventListener('webglcontextlost', e => { e.preventDefault(); glLost 
 $('bgc').addEventListener('webglcontextrestored', () => { glLost = false; apply('bg'); });
 // Half the CSS-pixel size (a quarter of the device's): identical under this much blur, and it's what lets the
 // phone's GPU (Adreno 505) hold 60fps - full size ran the whole app at 32-42fps.
-// Settings -> Performance -> Background resolution (default 0.5).
+// Settings -> Advanced -> Performance -> Background resolution (default 0.5).
 function sizeBg() { const c = $('bgc'); c.width = Math.round(innerWidth * S.bgRes); c.height = Math.round(innerHeight * S.bgRes); kw?.resize(); }
 function kawarp() {
   if (kw || !window.Kawarp || glLost) return kw;
   try {
     kw = new Kawarp($('bgc'), { animationSpeed: S.bgSpeed, warpIntensity: S.bgWarp, blurPasses: S.bgBlur, saturation: S.bgSaturation,
       tintIntensity: 0, dithering: 0.008, transitionDuration: S.bgFade, scale: 1 });
-    // Frame-rate cap (Settings -> Performance): Kawarp's own loop, minus the frames the cap skips.
+    // Frame-rate cap (Settings -> Advanced -> Performance): Kawarp's own loop, minus the frames the cap skips.
     const k = kw;
     k.renderLoop = t => {
       if (!k.isPlaying) return;
@@ -507,6 +507,8 @@ function decideSource() {
   for (const m of [s.track && { ...s.track, dir: 1 }, s.preload, s.pos]) if (m) handle(m);
 }
 setInterval(decideSource, 1000);
+// Spotify's device type where it plays (Computer, Smartphone, Tablet...), from whichever source is on screen; '' = unknown.
+window.playingOnType = () => (performance.now() - SRC[P.source].at < 10000 && SRC[P.source].pos?.dtype) || '';
 decideSource(); // a saved sign-in starts polling now, not a second in
 
 function handle(m) {
@@ -876,7 +878,7 @@ function apply(k) {
   r.setProperty('--gk', S.glowStrength);
   b.classList.toggle('no-glass', !S.glass);
   // Controls: over the cover (Default/TV), in the always-visible deck (Player card), centred on screen otherwise.
-  const artCtl = ['split', 'tv', 'clocksplit'].includes(S.layout);
+  const artCtl = ['split', 'clocksplit'].includes(S.layout);
   b.classList.toggle('art-ctl', artCtl);
   (artCtl ? $('artbox') : S.layout === 'player' ? $('deck') : b).appendChild($('ctl'));
   if (kw) { kw.animationSpeed = S.bgSpeed; kw.warpIntensity = S.bgWarp; kw.blurPasses = S.bgBlur; kw.saturation = S.bgSaturation; kw.transitionDuration = S.bgFade; }
@@ -892,21 +894,28 @@ pullInsets();
 setPlaying(false);
 addEventListener('resize', () => { pullInsets(); Lyrics.refresh(); sizeBg(); });
 
-// ---- progress bar: one linear CSS transition from "now" to the end of the song, run by the compositor (smooth at any
-// frame rate, no per-frame work). Re-synced only on seek / pause / new song / drift > 200ms.
-const F = { at: 0, pos: -1, playing: false, dur: 0 };
+// ---- progress bar: one linear animation over the whole song per bar, run by the compositor (smooth at any frame rate, no
+// per-frame work). Re-synced only on seek / pause / new song / drift > 200ms. A Web Animation, not a CSS transition: a
+// transition never starts on a bar that is hidden at that moment (the one under the cover outside its layouts, the Player
+// card's), so a bar shown later - another layout, another progress style - sat full or frozen until the next seek. An
+// animation's clock runs hidden or not, so every bar is right the moment it appears.
+const F = { at: 0, pos: -1, playing: false, dur: 0 }, fills = new Map();
 function fillSync(p) {
-  const frac = P.dur ? Math.min(1, Math.max(0, p / P.dur)) : 0;
   Object.assign(F, { at: performance.now(), pos: p, playing: P.playing, dur: P.dur });
   for (const f of [$('fill'), $('dfill'), $('tlfill')]) { // the edge bar, the Player card's bar and the one under the cover
-    f.style.transition = 'none';
-    f.style.transform = `translateX(${(frac - 1) * 100}%)`;
-    if (!P.playing || !P.dur || frac >= 1) continue;
-    f.offsetWidth; // commit the start point before starting the glide
-    f.style.transition = `transform ${Math.round(P.dur - p)}ms linear`;
-    f.style.transform = 'translateX(0)';
+    let a = fills.get(f);
+    if (!a || a.effect.getTiming().duration !== Math.max(1, P.dur)) {
+      a?.cancel();
+      f.style.transition = f.style.transform = '';
+      a = f.animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' }], { duration: Math.max(1, P.dur), fill: 'both' });
+      fills.set(f, a);
+    }
+    a.currentTime = P.dur ? Math.min(P.dur, Math.max(0, p)) : 0;
+    if (P.playing && P.dur) a.play(); else a.pause();
   }
 }
+// The finger on the timeline (features.js): that bar shows where it would seek; fillSync() hands it back.
+window.fillPreview = frac => { const a = fills.get($('tlfill')); if (a) { a.pause(); a.currentTime = frac * Math.max(1, P.dur); } };
 function fillCheck(p) {
   if (document.body.classList.contains('tl-drag')) return; // the finger is driving the bar
   const expected = F.pos + (F.playing ? performance.now() - F.at : 0);

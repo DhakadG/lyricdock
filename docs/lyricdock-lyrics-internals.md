@@ -80,7 +80,7 @@ velocity when the target changes, moves in sub-pixels and sleeps when settled. A
 
 ## 7. Layouts, blocks and chrome
 
-9 layouts (Default, Player card, Lyrics only, Compact, TV, Cinema, Now Bar, Cover + clock, Flip clock) — names and every block in
+7 layouts (Default, Player card, Lyrics only, Cinema, Now Bar, Cover + clock, Flip clock) — names and every block in
 [layout-map.md](layout-map.md); `data-block` on each element; Settings → Layout → *Show block names* draws them on the phone.
 * **Timeline** (`#tl`, default): slim bar + times under the cover (Default, TV, Cover + clock), compositor-only fill (one linear transition to the
   song's end), thickens under the finger; tap seeks, a sideways drag scrubs (seek on release), a vertical finger is a scroll, not a seek. Moves with

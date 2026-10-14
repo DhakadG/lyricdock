@@ -9,8 +9,6 @@ On the phone: **Settings → Layout → Show block names** draws a dashed outlin
 | **Default** | `split` | Cover column (Cover, Timeline, Now playing) + Lyrics pane; controls over the cover | Timeline under the cover |
 | **Player card** | `player` | Cover column as a mini player (thumb + Now playing, Deck timeline, Control pill) + Lyrics pane | Deck timeline |
 | **Lyrics only** | `lyrics` | Lyrics pane full width | Edge progress bar |
-| **Compact** | `compact` | small Cover + Now playing on top, Lyrics pane below | Edge progress bar |
-| **TV view** | `tv` | like Default, bigger cover and type | Timeline under the cover |
 | **Cinema** | `cinema` | huge centred Lyrics pane + Now-playing badge (bottom-left) | Edge progress bar |
 | **Now Bar** | `nowbar` | Lyrics pane + floating Now Bar pill (round spinning cover + title) | Edge progress bar |
 | **Cover + clock** | `clocksplit` | Cover column + Clock pane (flip clock HH:MM) | Timeline under the cover |
@@ -44,12 +42,12 @@ Landscape reference size 760 × 360 CSS px (Galaxy M01); all sizes are `vmin`, s
 | **Link status** | `#dot` | "Reconnecting…" |
 
 ## Changing songs and layouts (1.7.x)
-- **Swipe to change songs** works only on the **Cover** (Default, TV view, Cover + clock) or the **Now playing** card (Player card, Compact, Cinema, Now Bar pill). Drag further to reach up to 3 songs each way; the **Edge tab** (`#swipeCue`) shows Next / Previous, +2 / +3 and the song's name, and turns white once letting go commits. Tap the cover = controls, double tap = like. Code: `swipe.js`; check on the phone: `node scripts/swipe-test.mjs`.
+- **Swipe to change songs** works only on the **Cover** (Default, Cover + clock) or the **Now playing** card (Player card, Cinema, Now Bar pill). Drag further to reach up to 3 songs each way; the **Edge tab** (`#swipeCue`) shows Next / Previous, +2 / +3 and the song's name, and turns white once letting go commits. Tap the cover = controls, double tap = like. Code: `swipe.js`; check on the phone: `node scripts/swipe-test.mjs`.
 - **▯ Layout picker** (quick bar, and the top of Settings → Layout): a true-to-scale sketch of every layout; tap to switch. Design file: *07 · Interactions*.
 
 ## Quick bar per layout
 Default / TV: ⇄ swap cover side · Aa romanization · ▯ layout picker · ⚙ quick settings.
-Player card / Lyrics only / Compact / Cinema / Now Bar: Aa · ▯ · ⚙.
+Player card / Lyrics only / Cinema / Now Bar: Aa · ▯ · ⚙.
 Cover + clock: ⇄ · ◐ card colour · ss seconds · ▯ · ⚙. Flip clock: ◐ · ss · 12/24 · ▯ · ⚙.
 
 ## Quick settings contents (the ⚙ sheet)
