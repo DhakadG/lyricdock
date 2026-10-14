@@ -4,6 +4,10 @@ const S = Settings.S;
 const P = { pos: 0, at: 0, playing: false, dur: 0, id: null, art: null, lyrics: null, dir: 1, dirAt: 0, lockUntil: 0, token: 0,
   shown: false, liked: false, heartLock: 0, quality: null, gotHello: false };
 const EASE = 'cubic-bezier(.2,.8,.2,1)';
+// Apple-like spring (damping 0.72, response 0.45 s: a 4 % overshoot, settled in 0.7 s) as CSS linear(); browsers without
+// linear() (Chrome < 113, Safari < 17.2) get a close cubic-bezier. style.css carries the same curve for --art-h.
+const SPRING = (() => { const s = 'linear(0, 0.0323, 0.1128, 0.2211, 0.3415, 0.4629, 0.5776, 0.6808, 0.77, 0.8442, 0.9039, 0.9501, 0.9843, 1.0085, 1.0243, 1.0335, 1.0377, 1.0383, 1.0363, 1.0328, 1.0284, 1.0238, 1.0192, 1.0149, 1.0111, 1.0078, 1.0052, 1.0031, 1.0014, 1.0003, 0.9994, 0.9989, 0.9986, 0.9985, 0.9985, 0.9986, 1)';
+  try { return CSS.supports('transition-timing-function', s) ? s : 'cubic-bezier(.34,1.3,.64,1)'; } catch (e) { return 'cubic-bezier(.34,1.3,.64,1)'; } })();
 const PLAY = 'M8 5v14l11-7z', PAUSE = 'M6 5h4v14H6zm8 0h4v14h-4z';
 const ms = t => t / S.animSpeed;
 // The song position. Every bridge beat (~500 ms) re-measures it, and the measurements are a little noisy, so following
@@ -200,11 +204,17 @@ function swap(m, im, lyr, swiped, artDone) {
     if (back >= 0) P.hist.splice(0, back + 1); // went back: it (and anything after it) leaves the history
     else { P.hist.unshift({ ...P.cur, lyrics: P.lyrics }); P.hist.length = Math.min(P.hist.length, 5); }
   }
+  // A song Spotify just named starts at 0. Until its first beat the clock used to run on from the old song's position,
+  // so the new lyrics were drawn minutes in (lines already sung, the view scrolled to the end) and then jumped back.
+  // From the moment it was named, unless a beat came since. (A skip from this screen already reset it: swipeTo / songEnd.)
+  const src = SRC[P.source];
+  if (P.cur && P.cur.id !== m.id && src.track?.id === m.id && !(src.at >= src.trackAt)) { P.pos = 0; P.at = src.trackAt; }
   P.cur = { id: m.id, uri: m.uri, title: m.title, artist: m.artist, album: m.album, art: m.art, dur: m.dur };
   P.id = m.id;
   P.art = m.art;
   P.dur = m.dur || P.dur;
   P.lyrics = lyr;
+  P.lyrHold = null; // (change())
   window.lyricStore?.put(m.id, lyr); // device copy for replays / offline (features.js)
   P.artistImg = artistImgs.get(m.id) ?? null;
   $('title').textContent = m.title || '';
@@ -212,34 +222,27 @@ function swap(m, im, lyr, swiped, artDone) {
   Lyrics.build(lyr);
   const mode = !changed ? 'none' : swiped ? 'landed' : 'swap';
   if (artDone) P.settleAt = Math.max(P.settleAt || 0, performance.now() + ms(700));
-  else if (im || !m.art) showArt(m.art, im, mode);
-  else art(m.art).then(i => { if (P.id === m.id && P.art === m.art) showArt(m.art, i, mode); });
+  else if (im || !m.art) showArt(m.art, im, mode, m.id);
+  else art(m.art).then(i => { if (P.id === m.id && P.art === m.art) showArt(m.art, i, mode, m.id); });
   window.afterSwap?.(m);
   window.refreshNeighbours?.();
 }
 
 // mode: 'swap' (song change), 'landed' (a swipe card already shows it), 'quiet' (same song, better art), 'none'.
 let artShown = null;
-function showArt(url, im, mode) {
+function showArt(url, im, mode, id) {
   const a = $('art'), old = artShown, blank = a.classList.contains('art-wait');
   const still = S.trackAnim === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches;
   artShown = url;
   a.style.backgroundImage = url ? `url("${url}")` : 'none';
   a.classList.remove('art-wait');
   if (!still && blank) a.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(320), easing: 'ease-out' }); // empty swipe card fills in
-  else if (!still && old && old !== url && (mode === 'swap' || mode === 'quiet')) {
-    const dur = ms(mode === 'swap' ? 520 : 300), v = $('mv');
-    artFadeFrom(old, dur);
-    // An animated cover is on top: it fades out with the old cover instead of vanishing when the song switches.
-    if (mode === 'swap' && v?.classList.contains('on')) {
-      v.removeAttribute('id'); // features.js starts the new song's video fresh
-      Object.assign(v.style, { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit', pointerEvents: 'none', zIndex: 1 });
-      v.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur, easing: 'ease-in-out', fill: 'forwards' }).onfinish = () => v.remove();
-      a.classList.remove('animated');
-    }
-  }
+  else if (!still && old && old !== url && (mode === 'swap' || mode === 'quiet')) artFadeFrom(old, ms(mode === 'swap' ? 520 : 300));
+  // The animated cover (features.js videoHandover): the old song's video leaves with its cover (a swipe took it off screen
+  // with its card), and the new song's comes in with the change when it is already loaded - video to video, no still between.
+  if (mode === 'swap' || mode === 'landed') window.videoHandover?.(mode, still ? 0 : ms(mode === 'swap' ? 520 : 300), id);
   // 'scale' (not 'transform'): the paused-shrink and swipe transforms on #art keep working underneath
-  if (!still && mode === 'swap') a.animate([{ scale: 0.95 }, { scale: 1 }], { duration: ms(700), easing: 'cubic-bezier(.34,1.3,.64,1)' });
+  if (!still && mode === 'swap') a.animate([{ scale: 0.94 }, { scale: 1 }], { duration: ms(700), easing: SPRING });
   if (!still && (mode === 'swap' || mode === 'landed')) spread(url, im); else background(url, im);
   P.settleAt = performance.now() + ms(950);
 }
@@ -360,6 +363,9 @@ async function onTrack(m) {
 // The visible change to song m (from Spotify, or started early from the preload: jump / songEnd).
 async function change(m, sw) {
   const token = ++P.token;
+  // The old lyrics hold still while they leave: the new song's first beat often lands in these 200 ms and scrolled
+  // them back to their start mid-exit. swap() lets go.
+  if (P.shown) P.lyrHold ??= now();
   // Next slides left, previous slides right. The bridge knows which (history), a phone tap knows too.
   const style = S.trackAnim, d = m.dir ?? (performance.now() - P.dirAt < 3000 ? P.dir : 1);
   const parts = [$('meta'), $('lyrics')]; // the cover never leaves: the change grows out of it (showArt)
@@ -370,7 +376,7 @@ async function change(m, sw) {
     : Promise.resolve();
   // A decoded cover changes right away, together with the text leaving: the change starts on the press.
   const hot = !sw && P.shown && m.art && ready.get(m.art);
-  if (hot) showArt(m.art, hot, 'swap');
+  if (hot) showArt(m.art, hot, 'swap', m.id);
   // The text never waits long for a cold cover: swap() keeps the old cover up and switches when this one decodes.
   const [im] = await Promise.all([Promise.race([art(m.art), sleep(260).then(() => null)]), outDone]);
   if (token !== P.token) return; // skipped again meanwhile
@@ -447,8 +453,11 @@ function onPos(m) {
   // A beat over half a second behind the running clock is nearly always a late one: the Web API's progress lags at times,
   // a WebRTC beat can arrive after a newer one, a source switch replays its last beat. Following it pulled the lyrics a
   // second back, then forward again on the next beat. A real jump back (a seek on the computer, the song restarted) is
-  // taken once the next beat says the same. Not right after a song change: the first beats there correct the start.
-  const t = performance.now(), back = P.playing && m.playing && P.at > 0 && t - (P.curAt || 0) > 2500 ? P.pos + t - P.at - (+m.pos || 0) : 0;
+  // taken once the next beat says the same. Not right after a song change (from when Spotify names it, not when the
+  // screen shows it: its first beat often comes before the swap), where the first beats correct the start.
+  const t = performance.now(), changed = Math.max(P.curAt || 0, SRC[P.source].trackAt || 0);
+  // A beat at the very start is a restart (repeat one, "previous" late in a song): taken at once too.
+  const back = P.playing && m.playing && P.at > 0 && t - changed > 2500 && +m.pos > 3000 ? P.pos + t - P.at - (+m.pos || 0) : 0;
   if (back > 500 && !(P.backAt && Math.abs(P.backPos + t - P.backAt - +m.pos) < 400)) { P.backPos = +m.pos; P.backAt = t; return onMeta(m); }
   P.backAt = 0;
   const had = P.at > 0;
@@ -928,7 +937,7 @@ const linkLog = window.linkLog = [];
     $('tcur').textContent = $('dcur').textContent = $('tlcur').textContent = clock(real);
     $('tdur').textContent = $('ddur').textContent = $('tldur').textContent = clock(P.dur);
   }
-  Lyrics.update(p, dt);
+  Lyrics.update(P.lyrHold ?? p, dt);
   beatBg(p);
   requestAnimationFrame(tick);
 })(performance.now());

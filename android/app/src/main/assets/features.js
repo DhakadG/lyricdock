@@ -954,7 +954,7 @@
   // too when the keep setting would save it on this play anyway. Logged as 'warm', so it never counts as a play.
   // Cover shape: 'auto' = tall (3:4) in portrait where the height is free, square in landscape.
   const coverTall = () => S.coverShape === 'tall' || (S.coverShape === 'auto' && innerHeight > innerWidth);
-  const tallOf = new Map(); // `cover:${song id}` -> the playing cover video is the tall one
+  const tallOf = new Map(), keyOf = new Map(); // `cover:${song id}` -> the cover video is the tall one / its file (album/shape/variant)
   const warmed = window.dockWarm = new Map(); // `${slot}:${song id}` -> { url, key } | null
   async function warm(t, slot) {
     const k = `${slot}:${t?.id}`;
@@ -975,7 +975,7 @@
       let w = warmed.get(k);
       if (w) cloud(lookupUrl(t, slot)[1], 15000).catch(() => {}); // already known: just count the play
       else w = await lookup(t, slot);
-      if (w) { motion.set(k, await playable(w.url, w.key)); tallOf.set(k, w.shape === 'tall'); }
+      if (w) { motion.set(k, await playable(w.url, w.key)); tallOf.set(k, w.shape === 'tall'); keyOf.set(k, w.key); }
     } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 15000); } // offline / slow / refused: ask again soon
     while (motion.size > 12) { const old = motion.keys().next().value; if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old)); motion.delete(old); }
     motionTick(); canvasTick();
@@ -986,18 +986,19 @@
   // Keyed by album/shape/variant, so a file the cloud moves from Apple's CDN to R2 isn't fetched again.
   const vcId = key => `https://dock.local/${key}`, vcIdx = () => { try { return JSON.parse(localStorage.getItem('dock:videos') || '{}'); } catch (e) { return {}; } };
   const vcSave = idx => { try { localStorage.setItem('dock:videos', JSON.stringify(idx)); } catch (e) {} };
-  async function playable(url, key) {
-    const id = vcId(key), idx = vcIdx(), e = idx[id] || [0, 0, 0]; // [bytes, last played, plays]
+  // A play of this file: [bytes, last played, plays] for the keep ladder, and a background copy when it says so.
+  // Not on the device yet: it streams now. Waiting for the copy first kept the still cover up for the whole download -
+  // on an iPad that's a 1662x2216 HEVC at 17 Mbit/s, so a song started directly often never showed its animated cover.
+  function note(url, key, cached) {
+    const id = vcId(key), idx = vcIdx(), e = idx[id] || [0, 0, 0];
     e[1] = Date.now(); e[2]++; idx[id] = e; vcSave(idx);
-    let c;
-    try { c = await caches.open('dock-videos'); } catch (err) { return url; } // no Cache Storage: stream
-    const hit = await c.match(id).catch(() => null);
-    if (hit) return URL.createObjectURL(await hit.blob());
-    // Not on the device yet: stream it now, and save a copy in the background when the keep setting says so. Waiting for
-    // the copy first kept the still cover up for the whole download - on an iPad that's a 1662x2216 HEVC at 17 Mbit/s,
-    // so a song started directly (not warmed as "next") often never showed its animated cover.
-    if (S.motionKeep === 'first' || (S.motionKeep === 'second' && e[2] >= 2)) save(url, key);
-    return url;
+    if (!cached && (S.motionKeep === 'first' || (S.motionKeep === 'second' && e[2] >= 2))) save(url, key);
+  }
+  const cachedBlob = key => caches.open('dock-videos').then(c => c.match(vcId(key))).then(r => r ? r.blob() : null).catch(() => null);
+  async function playable(url, key) {
+    const blob = await cachedBlob(key);
+    note(url, key, !!blob);
+    return blob ? URL.createObjectURL(blob) : url;
   }
   const inflight = new Map(); // device id -> Promise<Blob | null>
   function save(url, key) {
@@ -1024,10 +1025,88 @@
     return inflight.get(id);
   }
 
+  // ---- Cover video transitions, every case (Apple Music-like: dissolves on a soft curve, the box springs between square
+  // and tall - style.css --art-h, app.js SPRING):
+  //  Song change (a button, a key, the song ending, Spotify elsewhere): app.js showArt -> videoHandover.
+  //   still -> still   covers crossfade, the cover settles on a spring (app.js)
+  //   video -> still   the video dissolves into the new cover; a tall box springs back to square
+  //   still -> video   video ready (preloaded as "next", or the last one kept for "previous"): the old cover dissolves
+  //                    straight into it. Not ready: the new still first, the video dissolves in once it plays
+  //   video -> video   ready: from one video straight into the other, no still between; the box springs when the shapes
+  //                    differ. Same file (same album): it just keeps playing. Not ready, both tall: the box stays tall
+  //                    until it is (up to 4 s, motionTick)
+  //  Swipe (touch, swipe.js): the video rides its card off screen and is gone at landing (it used to come back and fade
+  //   over the new card); the box snaps to the landed card's square, then the new video, if ready, dissolves in quickly
+  //   and a tall one springs the box open.
+  //  Same song: a video that becomes ready dissolves in (a tall one springs the box open); one that goes (setting off,
+  //   night, rotation) dissolves out (.mv-old) and the box springs back. Pause / play: the cover's own spring (style.css).
+  let primed = null, kept = null, pend = null; // the next song's video, loaded; the last one shown (for "previous"); a change in flight
+  const free = x => { if (!x || x.v.id === 'mv') return; x.v.removeAttribute('src'); x.v.load(); if (x.src.startsWith('blob:') && ![...motion.values()].includes(x.src)) URL.revokeObjectURL(x.src); };
+  // The next song's video, loaded and paused on its first frame (only with "Load the next animated cover early").
+  function prime() {
+    // Warmed now, or played earlier this session (warming skips those: its file is already known, and that play counted).
+    const t = P.next, k = `cover:${t?.id}`, known = motion.get(k);
+    const w = warmed.get(k) || (known ? { url: known, key: keyOf.get(k) || '', shape: tallOf.get(k) ? 'tall' : 'square' } : null);
+    if (!t?.id || !w || primed?.k === k || kept?.k === k || !S.motionArt || !S.motionWarm || document.hidden) return;
+    free(primed);
+    const v = Object.assign(document.createElement('video'), { muted: true, loop: true, playsInline: true, preload: 'auto' });
+    const p = primed = { k, v, t: known ? null : t, w, src: w.url, tall: w.shape === 'tall', cached: false };
+    if (known) v.src = known;
+    else cachedBlob(w.key).then(b => { if (primed !== p) return; if (b) { p.src = URL.createObjectURL(b); p.cached = true; } v.src = p.src; });
+  }
+  window.videoHandover = (mode, dur, id) => {
+    const k = `cover:${id}`, art = $('art'), body = document.body, old = $('mv'), on = S.motionArt && !body.classList.contains('night');
+    if (old?.dataset.k === k) return; // already handed over (a swipe does it at landing, then swap() asks again)
+    pend = { id, until: performance.now() + 3000 }; // motionTick waits until swap() makes this the song (it could undo the change)
+    const ready = x => x?.k === k && x.v.readyState >= 2 ? x : null, next = on ? ready(primed) || ready(kept) : null;
+    const wasOn = !!old?.classList.contains('on'), w = next?.w || warmed.get(k);
+    if (wasOn && mode !== 'landed' && old.dataset.key && old.dataset.key === w?.key) { // same album, same file: it keeps playing
+      old.dataset.k = k; motion.set(k, old.dataset.src); tallOf.set(k, old.dataset.tall === '1');
+      if (P.next?.id === id && w.url) { cloud(lookupUrl(P.next, 'cover')[1], 15000).catch(() => {}); note(w.url, w.key, old.dataset.src.startsWith('blob:')); }
+      art.querySelectorAll('.art-x').forEach(x => x.remove()); // its still is under the video anyway
+      return;
+    }
+    if (old) {
+      old.removeAttribute('id');
+      if (wasOn) { if (kept?.v !== old) free(kept); kept = { k: old.dataset.k, v: old, src: old.dataset.src, tall: old.dataset.tall === '1', w: { key: old.dataset.key } }; }
+      if (mode === 'landed' || !dur || !wasOn) { old.remove(); old.pause(); } // a swipe took it off screen with its card
+      else {
+        art.querySelectorAll('.art-x').forEach(x => x.remove()); // the old still is under the old video: it would show through
+        old.className = 'mv-old'; old.style.zIndex = 1; // over the new song's video (or cover) while it dissolves
+        old.fade?.cancel();
+        (old.fade = old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' }))
+          .onfinish = () => { if (old.id !== 'mv') { old.remove(); old.pause(); } };
+      }
+    }
+    // The box: a swipe's landed card is square, so the box is square at once; then it springs to the new shape.
+    if (mode === 'landed' && body.classList.contains('cover-tall')) {
+      body.classList.add('art-snap'); body.classList.remove('cover-tall'); getComputedStyle(body).getPropertyValue('--art-h');
+      body.classList.remove('art-snap'); getComputedStyle(body).getPropertyValue('--art-h');
+    }
+    if (next) {
+      if (next === primed) primed = null; else kept = null;
+      const v = next.v;
+      v.fade?.cancel(); v.fade = null; // a kept video still carries its fade-out (getAnimations misses it while detached)
+      Object.assign(v, { id: 'mv', className: 'on' }); v.style.zIndex = v.style.visibility = '';
+      Object.assign(v.dataset, { src: next.src, k, key: next.w?.key || '', tall: next.tall ? '1' : '' });
+      art.prepend(v); // under the old video / the old cover's fade (.art-x): they dissolve into it
+      if (P.playing) v.play().catch(() => {});
+      // Nothing dissolves over it (a swipe, or the same still): it fades in itself.
+      if (mode === 'landed' || !(wasOn || art.querySelector('.art-x'))) v.animate([{ opacity: 0 }, { opacity: 1 }], { duration: mode === 'landed' ? ms(300) : Math.max(dur, ms(450)), easing: 'cubic-bezier(.32,.72,0,1)' });
+      motion.set(k, next.src); tallOf.set(k, next.tall);
+      if (next.t) { cloud(lookupUrl(next.t, 'cover')[1], 15000).catch(() => {}); note(next.w.url, next.w.key, next.cached); } // the play counts, like motionFor
+    }
+    art.classList.toggle('animated', !!next);
+    // Not ready yet but tall too: the box stays tall for it (motionTick lets go after 4 s).
+    const tall = next ? next.tall : on && body.classList.contains('cover-tall') && w?.shape === 'tall';
+    if (tall !== body.classList.contains('cover-tall')) { body.classList.toggle('cover-tall', tall); fitArt(); }
+  };
+
   // A video that goes (setting off, night, a new file for the same song) dissolves away the way it came (style.css
-  // .mv-old), never just vanishes. Song changes fade theirs out in app.js showArt.
-  const retire = v => { if (!v) return; v.removeAttribute('id'); if (!v.classList.contains('on')) return v.remove(); v.className = 'mv-old'; setTimeout(() => v.remove(), 1000); };
+  // .mv-old), never just vanishes.
+  const retire = v => { if (!v) return; v.removeAttribute('id'); if (!v.classList.contains('on')) return v.remove(); v.className = 'mv-old'; setTimeout(() => v.id !== 'mv' && v.remove(), 1000); };
   function motionTick() {
+    if (pend) { if (pend.id === P.id || performance.now() > pend.until) pend = null; else return; }
     const k = `cover:${P.id}`, on = S.motionArt && !document.body.classList.contains('night'), want = on ? motion.get(k) : '';
     let v = $('mv');
     const live = !!want && !!v?.classList.contains('on') && v.dataset.src === want;
@@ -1041,7 +1120,7 @@
     if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
     retire(v);
     v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
-    v.dataset.src = want;
+    Object.assign(v.dataset, { src: want, k, key: keyOf.get(k) || '', tall: tallOf.get(k) ? '1' : '' }); // (videoHandover)
     // Fades in only once the song change has settled (app.js showArt): never pops in mid-transition.
     v.onplaying = () => { v.onplaying = null; setTimeout(() => { if (v.isConnected) { v.classList.add('on'); motionTick(); } }, Math.max(0, (P.settleAt || 0) - performance.now())); };
     $('art').prepend(v); // first child: the controls, ripple and heart badge stay on top
@@ -1056,13 +1135,15 @@
       if (cover) warm(t, 'cover');
       if (S.bg === 'motion') warm(t, 'bg');
     }
+    prime();
     motionTick();
   }, 1000);
   let wasTall = coverTall();
   const reshape = () => { const t = coverTall(); if (t !== wasTall) { for (const k of [...motion.keys()]) if (k.startsWith('cover:')) motion.delete(k); warmed.clear(); } wasTall = t; };
   addEventListener('resize', reshape); Settings.onChange(reshape);
   const swapAt = window.afterSwap;
-  window.afterSwap = m => { P.curAt = performance.now(); swapAt(m); };
+  // (the new song's video is looked up now, not on the next tick: a second sooner)
+  window.afterSwap = m => { P.curAt = performance.now(); if (S.motionArt || S.bg === 'motionblur') motionFor(P.cur, 'cover'); swapAt(m); };
 
   // ---- Lyrics kept on the device (Cache Storage 'dock-lyrics', newest 500 songs): replays and offline start instantly.
   const lyId = id => `https://dock.local/lyrics/${id}`;

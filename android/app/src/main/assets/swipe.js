@@ -138,6 +138,9 @@
     if (s.cov) {
       artEl.style.backgroundImage = url(song?.art);
       artEl.classList.toggle('art-wait', !song);
+      // The old song's video went off screen with its card: gone now (it used to sit over the new card until the song's
+      // details arrived), the box back to the card's square, the new video in if it's loaded (features.js videoHandover).
+      if (song) window.videoHandover?.('landed', 0, song.id); else $('mv')?.style.setProperty('visibility', 'hidden');
     }
     reset();
     if (song) window.swipeLand?.(song);

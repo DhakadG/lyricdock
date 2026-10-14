@@ -76,8 +76,11 @@ body.heart-liked-only:not(.ui) #heart:not(.on) { display: none; } /* unliked: on
    box morphs between square and tall (--art-h = height / width, registered so it animates; without @property it just
    switches), the video inside cropped to it as it opens up. */
 @property --art-h { syntax: '<number>'; inherits: true; initial-value: 1; }
-body { --art-h: 1; transition: --art-h .8s cubic-bezier(.32, .72, 0, 1); }
+/* A spring (app.js SPRING: 4 % overshoot, settled in .7 s); browsers without linear() keep the cubic-bezier line. */
+body { --art-h: 1; transition: --art-h .7s cubic-bezier(.3, 1.25, .5, 1);
+  transition: --art-h .7s linear(0, 0.0323, 0.1128, 0.2211, 0.3415, 0.4629, 0.5776, 0.6808, 0.77, 0.8442, 0.9039, 0.9501, 0.9843, 1.0085, 1.0243, 1.0335, 1.0377, 1.0383, 1.0363, 1.0328, 1.0284, 1.0238, 1.0192, 1.0149, 1.0111, 1.0078, 1.0052, 1.0031, 1.0014, 1.0003, 0.9994, 0.9989, 0.9986, 0.9985, 0.9985, 0.9986, 1); }
 body.cover-tall { --art-h: 1.33333; }
+body.art-snap { transition: none !important; } /* a swipe's landed card: the box takes its square at once (features.js) */
 /* Padding guide (Settings): where content stops on each edge; the notch side in the accent colour. */
 #padGuide { position: fixed; inset: 0; z-index: 100000; pointer-events: none; opacity: 0; transition: opacity .3s; }
 body.pad-guide #padGuide { opacity: 1; }

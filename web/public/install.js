@@ -160,9 +160,17 @@
     try { Promise.resolve(el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen()).catch(no); } catch (e) { no(); }
   };
 
-  // ---- mouse / trackpad: moving the pointer shows the controls (they fade, and the cursor hides, after the usual delay).
-  let moved = 0;
-  addEventListener('mousemove', () => {
+  // ---- mouse / trackpad: moving the pointer shows the controls (they fade after the usual delay). The cursor hides like
+  // in a video player: 3 s after it stops, only once the controls are down and nothing is open (settings, lists, setup,
+  // sign-in...), and never while it rests on something clickable. It used to be hidden whenever the controls were down,
+  // so screens that never raise them (setup, sign-in, the clock, the miniplayer) showed it only over buttons.
+  let moved = 0, stillSince = performance.now(), overClick = false;
+  const CLICK = 'button, a, input, select, textarea, summary, label, [data-list], [data-a], #tlhit, #bar, #heart, #ctl, #qs, #installChip';
+  setInterval(() => document.documentElement.classList.toggle('cursor-idle', !window.LYRICDOCK_MINI && performance.now() - stillSince > 3000 && !overClick
+    && !document.body.classList.contains('ui') && !window.lyricdockPanelOpen?.() && !document.getElementById('signin')), 400);
+  addEventListener('mousemove', e => {
+    stillSince = performance.now(); overClick = !!e.target.closest?.(CLICK);
+    document.documentElement.classList.remove('cursor-idle');
     const t = performance.now();
     if (t - moved < 250 || !matchMedia('(pointer: fine)').matches || window.lyricdockPanelOpen?.()) return;
     moved = t;

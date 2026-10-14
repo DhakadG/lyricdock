@@ -19,8 +19,9 @@
 button, a, summary, label, input[type=range], [data-list], [data-a], #tlhit, #bar, #heart { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) {
   #ctl button:hover, #gear:hover, #lists button:hover { filter: brightness(1.25); }
-  /* Moving the mouse shows the controls (install.js); once they fade, the cursor goes too, like a video player. */
-  body:not(.ui):not(.settings-open):not(.lists-open):not(.qs-open):not(.news-open):not(.pair-ask) { cursor: none; }
+  /* The cursor goes once it has been still a while on the plain screen, like a video player (install.js decides when).
+     All of it, buttons included: a cursor that only shows over buttons reads as a glitch. */
+  html.cursor-idle, html.cursor-idle * { cursor: none !important; }
 }
 /* Keyboard: a visible ring on whatever has focus (style.css turns outlines off for the phone). */
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, summary:focus-visible {
