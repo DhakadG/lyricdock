@@ -188,10 +188,25 @@
   window.lyricdockFullscreen = () => {
     const d = document, el = d.documentElement;
     if (fullscreenEl()) return Promise.resolve((d.exitFullscreen || d.webkitExitFullscreen)?.call(d)).catch(() => {});
-    const no = () => ios || ipad ? showGuide() // the Home Screen app is how full screen works there
+    const no = () => (ios || ipad) && standalone() ? window.notice?.('This Home Screen app is already as full screen as iOS allows - the status bar stays', 4000)
+      : ios || ipad ? showGuide() // the Home Screen app is how full screen works there
       : window.notice?.('This browser won\'t go full screen from a page - use its own menu (View → Full screen)', 6000);
     if (!(d.fullscreenEnabled || d.webkitFullscreenEnabled)) return no();
     try { Promise.resolve(el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen()).catch(no); } catch (e) { no(); }
+  };
+
+  // ---- rotate (the quick bar's rotate button): a quarter turn, held there. Browsers only lock the screen's orientation
+  // while full screen (Android Chrome), so it goes full screen first. Safari (iPhone, iPad) and computers can't turn the
+  // screen from a page at all: false, and the button says so.
+  window.lyricdockRotate = async o => {
+    const so = screen.orientation;
+    if (!so?.lock || ios || ipad) return false;
+    try {
+      const d = document, el = d.documentElement;
+      if (!fullscreenEl() && (d.fullscreenEnabled || d.webkitFullscreenEnabled)) await (el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen());
+      await so.lock(o);
+      return true;
+    } catch (e) { return false; }
   };
 
   // ---- mouse / trackpad: moving the pointer shows the controls (they fade after the usual delay). The cursor hides like

@@ -53,6 +53,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         current = this;
+        immersive = getSharedPreferences("dock", MODE_PRIVATE).getBoolean("immersive", true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         // Draw into the camera-notch strip too (it showed as a black bar in landscape).
         if (Build.VERSION.SDK_INT >= 28) getWindow().getAttributes().layoutInDisplayCutoutMode =
@@ -265,6 +266,17 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return ""; }
     }
 
+    // The quick bar's full-screen button: system bars hidden (the default, immersive) or shown. Kept across restarts.
+    volatile boolean immersive = true;
+    @JavascriptInterface
+    public void setFullscreen(boolean on) {
+        immersive = on;
+        getSharedPreferences("dock", MODE_PRIVATE).edit().putBoolean("immersive", on).apply();
+        runOnUiThread(this::applyBars);
+    }
+    @JavascriptInterface
+    public boolean isFullscreen() { return immersive; }
+
     // Settings -> "Orientation": auto (all four), landscape (both), portrait (both), or one fixed way (the quick bar's
     // rotate button; screen.orientation type names, same as the web shim locks).
     @JavascriptInterface
@@ -332,13 +344,13 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         super.onResume();
         Reopen.clear(this); // back on screen: the "tap to reopen" notification has done its job
         if (web != null) web.evaluateJavascript("window.Settings&&Settings.render&&Settings.render()", null); // e.g. back from granting "Reopen by itself"
-        hideBars();
+        applyBars();
         if (isOwner()) startLockTask();
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
-        if (hasFocus) hideBars();
+        if (hasFocus) applyBars();
     }
 
     @Override
@@ -418,6 +430,13 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         getPackageManager().setComponentEnabledSetting(new ComponentName(this, getPackageName() + ".Home"),
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
         dpm.clearDeviceOwnerApp(getPackageName());
+    }
+
+    void applyBars() { if (immersive) hideBars(); else showBars(); }
+
+    @SuppressWarnings("deprecation")
+    void showBars() {
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
     }
 
     @SuppressWarnings("deprecation")

@@ -47,18 +47,25 @@
     if (!on) return;
     // Auto margins (style.css) split the spare height evenly: above the cover, above the title block, below it. The empty
     // room the timeline leaves under itself is mirrored under the title block, so the gaps look equal, not just measure it.
-    const vm = Math.min(innerWidth, innerHeight) / 100, pt = 2 * vm, gap = 3.5 * vm, meta = $('meta');
+    const vm = Math.min(innerWidth, innerHeight) / 100, gap = 4.5 * vm, meta = $('meta');
+    // The column's own box, not the window: #wrap's padding keeps it clear of the safe areas (an iPad Home Screen app has
+    // the status bar on top and the home indicator below), and measuring the whole window let the title block run past
+    // the bottom by exactly those insets.
+    const box = $('left').getBoundingClientRect();
     // (getClientRects, not offsetParent: both are position: fixed)
     const low = [$('times'), $('bar')].filter(e => e.getClientRects().length).map(e => e.getBoundingClientRect().top).filter(y => y > innerHeight / 2);
-    const bottom = Math.min(innerHeight, ...low);
+    const bottom = Math.min(box.bottom, ...low);
     const hasTl = $('tl').getClientRects().length;
     const tl = hasTl ? parseFloat(getComputedStyle($('artbox')).marginBottom) || 0 : 0; // the bar + times under the cover
     // offsets, not rects: with the controls up the timeline is moved by a transform
     const slack = hasTl ? Math.max(0, tl - ($('tl').offsetTop + $('tl').offsetHeight - $('art').offsetHeight)) : 0;
     const a = Math.max(0, gap - slack);
-    st.setProperty('--left-pt', `${pt}px`);
-    st.setProperty('--left-pb', `${innerHeight - bottom + slack}px`);
-    st.setProperty('--art-max', `${Math.max(80, bottom - pt - tl - meta.offsetHeight - slack - 3 * a)}px`);
+    // Three equal gaps: above the cover, between the timeline and the title, under the title. Each is one auto margin
+    // (the spare height split three ways, at least a) plus the timeline's empty room (slack), which the middle gap has
+    // anyway and the top and bottom get as padding.
+    st.setProperty('--left-pt', `${slack}px`);
+    st.setProperty('--left-pb', `${box.bottom - bottom + slack}px`);
+    st.setProperty('--art-max', `${Math.max(80, bottom - box.top - 2 * slack - tl - meta.offsetHeight - 3 * a)}px`);
   });
   addEventListener('resize', fitArt);
   Settings.onChange(() => fitArt());
@@ -631,18 +638,33 @@
     // A quarter turn per tap from however the screen stands now, then held there: no waiting on the tilt sensor.
     rotate: { html: SVG('<rect x="7.5" y="3.5" width="9" height="17" rx="2"/><path d="M3 9.5a9 9 0 0 1 3-5M21 14.5a9 9 0 0 1-3 5"/><path d="M3.5 5v4.5H8M20.5 19v-4.5H16"/>'),
       tip: 'Rotate the screen', on: () => ROT.includes(S.orientation),
-      run: () => { const i = ROT.indexOf(ROT.includes(S.orientation) ? S.orientation : screen.orientation?.type); Settings.set('orientation', ROT[(i + 1) % 4]);
-        window.notice?.('Rotation locked - Settings → Orientation → Auto-rotate to undo', 2600); } },
+      run: async () => {
+        const i = ROT.indexOf(ROT.includes(S.orientation) ? S.orientation : screen.orientation?.type), o = ROT[(i + 1) % 4];
+        // The web can only turn the screen where the browser allows it (web/public/install.js lyricdockRotate).
+        if (window.LYRICDOCK_WEB && !(await window.lyricdockRotate?.(o))) {
+          const apple = /iPhone|iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+          return window.notice?.(apple ? 'iPhone and iPad turn with the device - Apple doesn\'t let a page lock the screen. Use rotation lock in Control Centre.'
+            : 'This screen can\'t be turned from a browser - turn the device, or use the LyricDock Android app', 5000);
+        }
+        Settings.set('orientation', o);
+        window.notice?.('Rotation locked - Settings → Orientation → Auto-rotate to undo', 2600);
+      } },
   };
-  // Web: full screen in the rotate button's place (web/public/install.js; corners in, while full screen, to leave it).
-  const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  // Full screen, next to rotate everywhere. Web: the browser's own (web/public/install.js). Android app: the system
+  // bars on or off (MainActivity.setFullscreen). Corners in, while full screen, to leave it.
+  const nativeFull = () => !window.LYRICDOCK_WEB && typeof window.Dock?.setFullscreen === 'function';
+  const isFull = () => nativeFull() ? !!Dock.isFullscreen() : !!(document.fullscreenElement || document.webkitFullscreenElement)
+    || matchMedia('(display-mode: fullscreen)').matches;
   QB.full = { html: () => SVG(isFull() ? '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>' : '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
-    tip: 'Full screen', on: isFull, run: () => window.lyricdockFullscreen?.() };
+    tip: 'Full screen', on: isFull, run: () => {
+      if (nativeFull()) { Dock.setFullscreen(!isFull()); renderQs(); window.notice?.(isFull() ? 'Full screen' : 'Status and navigation bars shown', 1400); }
+      else window.lyricdockFullscreen?.();
+    } };
   for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => renderQs());
   const ROT = ['landscape-primary', 'portrait-primary', 'landscape-secondary', 'portrait-secondary']; // a quarter turn apart, in order
-  const QBAR = { split: ['swap', 'roman', 'rotate', 'layout', 'tune'], player: ['roman', 'rotate', 'layout', 'tune'],
-    lyrics: ['roman', 'rotate', 'layout', 'tune'], cinema: ['roman', 'rotate', 'layout', 'tune'], nowbar: ['roman', 'rotate', 'layout', 'tune'],
-    clocksplit: ['swap', 'theme', 'secs', 'rotate', 'layout', 'tune'], clock: ['theme', 'secs', 'h24', 'rotate', 'layout', 'tune'] };
+  const QBAR = { split: ['swap', 'roman', 'rotate', 'full', 'layout', 'tune'], player: ['roman', 'rotate', 'full', 'layout', 'tune'],
+    lyrics: ['roman', 'rotate', 'full', 'layout', 'tune'], cinema: ['roman', 'rotate', 'full', 'layout', 'tune'], nowbar: ['roman', 'rotate', 'full', 'layout', 'tune'],
+    clocksplit: ['swap', 'theme', 'secs', 'rotate', 'full', 'layout', 'tune'], clock: ['theme', 'secs', 'h24', 'rotate', 'full', 'layout', 'tune'] };
   // Keys are Settings schema keys; a row only shows while its own "when" holds.
   const LYR = ['roman', 'size', 'align', 'weight', 'lineGap', 'lineOpacity', 'blurLines', 'glow', 'scroll'];
   const STATUS = ['timeStyle', 'battery', 'battStyle', 'statPos'];
@@ -653,10 +675,10 @@
     clocksplit: ['artSide', ...CLK], clock: [...CLK, ...STATUS],
   };
   function renderQs() {
-    // A browser can't turn its screen: full screen goes there instead (not in an installed app that already is full screen).
-    const full = !matchMedia('(display-mode: fullscreen)').matches && navigator.standalone !== true;
-    const box = $('qs'), ids = (QBAR[S.layout] || ['layout', 'tune']).map(id => id === 'rotate' && window.LYRICDOCK_WEB ? 'full' : id)
-      .filter(id => id !== 'full' || (full && !window.LYRICDOCK_MINI));
+    // Rotate and full screen on every device (the miniplayer window has neither); where a platform can't do one, the
+    // button says why instead of vanishing. An Android app too old for the bars toggle leaves full screen out.
+    const box = $('qs'), ids = (QBAR[S.layout] || ['layout', 'tune'])
+      .filter(id => !window.LYRICDOCK_MINI || (id !== 'full' && id !== 'rotate')).filter(id => id !== 'full' || window.LYRICDOCK_WEB || nativeFull());
     box.replaceChildren(...ids.map(id => {
       const q = QB[id], b = document.createElement('button');
       b.dataset.q = id; b.title = q.tip; b.setAttribute('aria-label', q.tip);
@@ -960,6 +982,31 @@
     else ytCmd('pauseVideo');
   }, 2000);
 
+  // ---- Videos iOS won't start. In Low Power Mode (and on some data-saver setups) Safari refuses play() without a tap
+  // and paints the video as a black box with a struck-out play glyph - over the still cover, which is what showed up
+  // instead of the animated art. A refused video steps aside (loses .on, so the still or the blurred cover shows) and
+  // the next touch anywhere starts it: a play() inside a tap is always allowed.
+  const refused = new Set();
+  function playOr(v) {
+    if (!v) return;
+    v.play().then(() => refused.delete(v), e => {
+      if (e?.name !== 'NotAllowedError') return;
+      refused.add(v);
+      if (v.classList.contains('on')) { v.classList.remove('on'); v.dataset.wasOn = '1'; }
+      if (v.id === 'mv') $('art').classList.remove('animated');
+    });
+  }
+  const unrefuse = () => {
+    if (!refused.size || !P.playing) return;
+    for (const v of [...refused]) {
+      refused.delete(v);
+      if (!v.isConnected) continue;
+      v.play().then(() => { if (v.dataset.wasOn || v.id === 'mv') { delete v.dataset.wasOn; v.classList.add('on'); } if (v.id === 'mv') motionTick(); }, () => {});
+    }
+  };
+  addEventListener('pointerdown', unrefuse, true);
+  addEventListener('keydown', unrefuse, true);
+
   // ---- Spotify Canvas background: the song's short looping video (sent by the bridge), over the blurred cover.
   const canvases = new Map(), baseExtra = window.onExtra;
   window.onExtra = m => {
@@ -977,7 +1024,7 @@
     const want = night || mirror ? null : S.bg === 'canvas' ? canvases.get(P.id) : S.bg === 'motion' ? motion.get(`bg:${P.id}`) : S.bg === 'motionblur' ? motion.get(`cover:${P.id}`) : null;
     let v = document.getElementById('cv');
     if (!want) { v?.remove(); return; }
-    if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
+    if (v?.dataset.src === want) { if (P.playing && v.paused) playOr(v); else if (!P.playing && !v.paused) v.pause(); return; }
     v?.remove();
     v = Object.assign(document.createElement('video'), { id: 'cv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
     v.dataset.src = want;
@@ -1171,7 +1218,7 @@
       Object.assign(v, { id: 'mv', className: 'on' }); v.style.zIndex = v.style.visibility = '';
       Object.assign(v.dataset, { src: next.src, k, key: next.w?.key || '', tall: next.tall ? '1' : '' });
       art.prepend(v); // under the old video / the old cover's fade (.art-x): they dissolve into it
-      if (P.playing) v.play().catch(() => {});
+      if (P.playing) playOr(v);
       // Nothing dissolves over it (a swipe, or the same still): it fades in itself.
       if (mode === 'landed' || !(wasOn || art.querySelector('.art-x'))) v.animate([{ opacity: 0 }, { opacity: 1 }], { duration: mode === 'landed' ? ms(300) : Math.max(dur, ms(450)), easing: 'cubic-bezier(.32,.72,0,1)' });
       motion.set(k, next.src); tallOf.set(k, next.tall);
@@ -1198,7 +1245,7 @@
     const tall = (live && !!tallOf.get(k)) || hold;
     if (tall !== document.body.classList.contains('cover-tall')) { document.body.classList.toggle('cover-tall', tall); fitArt(); }
     if (!want) { retire(v); return; }
-    if (v?.dataset.src === want) { if (P.playing && v.paused) v.play().catch(() => {}); else if (!P.playing && !v.paused) v.pause(); return; }
+    if (v?.dataset.src === want) { if (P.playing && v.paused) playOr(v); else if (!P.playing && !v.paused) v.pause(); return; }
     retire(v);
     v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
     Object.assign(v.dataset, { src: want, k, key: keyOf.get(k) || '', tall: tallOf.get(k) ? '1' : '' }); // (videoHandover)
