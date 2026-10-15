@@ -1,1 +1,9 @@
-*.sh text eol=lf
+# Every text file is stored with LF; git detects binaries (images, icons) on its own.
+*       text=auto eol=lf
+
+# Binary assets, stated so git never tries to convert them
+*.png   binary
+*.webp  binary
+*.ico   binary
+*.apk   binary
+*.exe   binary
