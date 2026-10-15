@@ -155,4 +155,14 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
     wake() {}, // a page can't switch the screen on
   };
   window.LYRICDOCK_WEB = true;
+
+  // iPhone / iPad Home Screen apps draw under the status bar (black-translucent), and Safari settles
+  // env(safe-area-inset-*) a little after the first layout and after a rotation: the app's one read on load (and on
+  // resize) could get 0 and leave the list panel's tabs under the clock. Read again once things have settled.
+  const reInset = () => { try { window.setInsets?.(JSON.parse(window.Dock.insets())); } catch (e) {} };
+  const settle = () => [120, 500, 1200].forEach(t => setTimeout(reInset, t));
+  addEventListener('load', settle);
+  addEventListener('orientationchange', settle);
+  addEventListener('pageshow', settle);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && settle());
 })();
