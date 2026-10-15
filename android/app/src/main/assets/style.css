@@ -237,6 +237,14 @@ body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / 
   body.layout-lyrics #wrap, body.layout-cinema #wrap { padding-top: calc(var(--sa-t) + 6vmin); }
   #lyrics { -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent); }
 }
+/* Squarer portrait screens (iPad, foldables; phones are taller than 3:5): cover on the left, title and artist beside it,
+   so the lyrics get the bottom half instead of what a stacked cover + title leave over. */
+@media (orientation: portrait) and (min-aspect-ratio: 3/5) {
+  body.layout-split #left { flex-direction: row; align-items: center; gap: 5vmin; }
+  body.layout-split #artbox { flex: none; width: min(44vw, calc(38vh / var(--art-h))); }
+  body.layout-split #meta { flex: 1; margin: 0; text-align: left; }
+  body.layout-split #titlerow, body.layout-split #tags { justify-content: flex-start; }
+}
 
 /* ======================================================================= controls
    Glass pill: prev / big white play-pause / next, volume underneath. Over the cover in the cover layouts, centred on
