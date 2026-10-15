@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import worker from '../auth/src/index.js';
 import { verify, session, appUser, isAllowed, COOKIE } from '../auth/sso.js';
 
-const env = { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', ALLOWED_EMAILS: '', SSO_PRIVATE_JWK: readFileSync(process.env.SSO_KEY_FILE, 'utf8') };
+// The signing key (gitignored): sessions must verify against the public key baked into auth/sso.js, so a throwaway key won't do.
+const keyFile = process.env.SSO_KEY_FILE || new URL('../secrets/SSO_PRIVATE_JWK.json', import.meta.url);
+const env = { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', ALLOWED_EMAILS: '', SSO_PRIVATE_JWK: readFileSync(keyFile, 'utf8') };
 const get = (path, cookie = '') => worker.fetch(new Request(`https://auth.lyricdock.losthusky.qzz.io${path}`, { headers: { cookie } }), env);
 const setCookies = r => r.headers.getSetCookie();
 
