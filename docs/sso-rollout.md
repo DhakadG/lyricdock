@@ -27,14 +27,14 @@ Any session can continue from the first unchecked box. Never print or paste a se
   - Path: `%LOCALAPPDATA%\Google\Cloud SDK\google-cloud-sdk\bin`, on PATH for new terminals.
   - The Claude Code session that installed it predates that PATH change.
 - [x] **MCP `gcloud`** (Google's official `@google-cloud/gcloud-mcp`), user scope (`~/.claude.json`): runs any gcloud
-  command for Claude.
+      command for Claude.
   - It connects in a Claude Code started from a new terminal. Its startup check is `where.exe gcloud`, which needs
     gcloud on PATH.
   - Check: `claude mcp get gcloud` should say Connected.
 - [x] **CLI signed in** as `ghanisht.kumawat@gmail.com` (`gcloud auth login`). That account owns every project and
-  the Search Console properties. Default project: `youtubedata-lyricsdockapp`.
+      the Search Console properties. Default project: `youtubedata-lyricsdockapp`.
 - [x] **Search Console access**: Application Default Credentials with the read-only scope `webmasters.readonly`
-  (Google allowed it on gcloud's own client).
+      (Google allowed it on gcloud's own client).
   - Quota project: `lost-husky`, with `searchconsole.googleapis.com` enabled. The apex project now holds apex-wide
     tooling; LyricDock's things live in the LyricDock project.
   - Properties: `sc-domain:losthusky.qzz.io`, `sc-domain:arth.shop`, `sc-domain:baunafier.qzz.io` (all siteOwner).
@@ -62,16 +62,17 @@ Any session can continue from the first unchecked box. Never print or paste a se
 
 The owner's step-by-step guide (Google console, TURN, browser control) is **docs/setup-guide.md**. This table is the state.
 
-| Secret | Goes to | Source | Status |
-|---|---|---|---|
-| `SSO_PRIVATE_JWK` | auth Worker | `secrets/SSO_PRIVATE_JWK.json` | done (matches `auth/sso.js`, kid `mupbl6zw`) |
-| `PUBLISH_TOKEN` | ntfy Worker + your PC | `secrets/PUBLISH_TOKEN.txt` | done (random) |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | auth Worker | `secrets/google-client.json`: the client's downloaded JSON, `.web.client_id` and `.web.client_secret` | **user**, setup-guide part 1 |
-| `TURN_KEY_ID`, `TURN_KEY_TOKEN` | web Worker | `secrets/TURN_KEY_ID.txt`, `secrets/TURN_KEY_TOKEN.txt` | **user**, setup-guide part 2 (dashboard or `scripts/new-turn-key.ps1`) |
-| `SYNC_KEY` | cloud Worker | `secrets/SYNC_KEY.txt` (random 32 bytes, base64) | done 2026-10-08. Changing it loses every account's synced settings |
-| `CF_API_TOKEN` | cloud Worker | already set | unchanged (`ADMIN_PASSWORD` is no longer used: `npx wrangler secret delete ADMIN_PASSWORD`) |
+| Secret                                     | Goes to               | Source                                                                                                | Status                                                                                      |
+| ------------------------------------------ | --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `SSO_PRIVATE_JWK`                          | auth Worker           | `secrets/SSO_PRIVATE_JWK.json`                                                                        | done (matches `auth/sso.js`, kid `mupbl6zw`)                                                |
+| `PUBLISH_TOKEN`                            | ntfy Worker + your PC | `secrets/PUBLISH_TOKEN.txt`                                                                           | done (random)                                                                               |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | auth Worker           | `secrets/google-client.json`: the client's downloaded JSON, `.web.client_id` and `.web.client_secret` | **user**, setup-guide part 1                                                                |
+| `TURN_KEY_ID`, `TURN_KEY_TOKEN`            | web Worker            | `secrets/TURN_KEY_ID.txt`, `secrets/TURN_KEY_TOKEN.txt`                                               | **user**, setup-guide part 2 (dashboard or `scripts/new-turn-key.ps1`)                      |
+| `SYNC_KEY`                                 | cloud Worker          | `secrets/SYNC_KEY.txt` (random 32 bytes, base64)                                                      | done 2026-10-08. Changing it loses every account's synced settings                          |
+| `CF_API_TOKEN`                             | cloud Worker          | already set                                                                                           | unchanged (`ADMIN_PASSWORD` is no longer used: `npx wrangler secret delete ADMIN_PASSWORD`) |
 
 Google client facts (for checking the user's setup):
+
 - Project `youtubedata-lyricsdockapp`, consent screen `LyricDock`, **External**, published.
 - Authorized domain `losthusky.qzz.io`, home page `https://lyricdock.losthusky.qzz.io/`.
 - Web client `LyricDock sign-in` with redirect URI `https://auth.lyricdock.losthusky.qzz.io/callback`.
@@ -91,7 +92,7 @@ Google client facts (for checking the user's setup):
 PowerShell, repo root, branch `web-fixes-apple`.
 
 - [x] **Files present** (2026-10-08; first TURN pair was an SFU app by mistake, replaced with a real TURN key):
-  `Test-Path secrets/google-client.json, secrets/TURN_KEY_ID.txt, secrets/TURN_KEY_TOKEN.txt, secrets/SSO_PRIVATE_JWK.json, secrets/PUBLISH_TOKEN.txt`
+      `Test-Path secrets/google-client.json, secrets/TURN_KEY_ID.txt, secrets/TURN_KEY_TOKEN.txt, secrets/SSO_PRIVATE_JWK.json, secrets/PUBLISH_TOKEN.txt`
   - Also check the JSON is the right client: `.web.redirect_uris` contains `https://auth.lyricdock.losthusky.qzz.io/callback`
     and `.web.project_id` is `youtubedata-lyricsdockapp`. Print only those two fields, never the secret.
 - [x] **Secrets into Cloudflare** (2026-10-08: auth 3, web 2; ntfy PUBLISH_TOKEN + LYRICDOCK_PUBLISH_TOKEN go in with the ntfy deploy). If auto mode blocks `wrangler secret put`, the user runs these lines:
@@ -118,13 +119,13 @@ PowerShell, repo root, branch `web-fixes-apple`.
   - https://admin.lyricdock.losthusky.qzz.io asks for Google, lets ghanisht.kumawat@gmail.com in and refuses any other
     account.
 - [x] **Switches removed** (security audit, after v1.8.8): the gates are always on now. `SSO`, `ADMIN_SSO` and
-  `API_SSO` and the admin password login are gone from the code, so none can be turned off by a config change.
+      `API_SSO` and the admin password login are gone from the code, so none can be turned off by a config change.
 - [x] **ntfy owner gate** (2026-10-08): `cd ntfy; npm i; npx wrangler deploy` (Cloudflare Containers; see docs/ntfy.md).
   - `./scripts/ping-update.ps1` says "Update ping sent".
   - A phone and the web app still pair (the `ld*` topics stay open).
   - https://ntfy.losthusky.qzz.io/ asks for a password (the token).
 - [ ] **Rollback if anyone is locked out**: set the switch back to `"off"` and redeploy that Worker
-  (ntfy: `npx wrangler rollback`).
+      (ntfy: `npx wrangler rollback`).
 - [x] **Merge and sync** (2026-10-08, before the gates, so the owner can test sign-in from main):
   ```powershell
   git checkout main; git merge --ff-only web-fixes-apple   # if main moved: git merge web-fixes-apple
@@ -138,8 +139,9 @@ PowerShell, repo root, branch `web-fixes-apple`.
 ## 3. Sign-in in every app (2026-10-08)
 
 Every LyricDock screen needs a sign-in, not just the web app.
+
 - **Phone app** (`assets/account.js`): a sign-in screen covers the app until signed in.
-  - *Sign in with Google* opens `auth.lyricdock.../login?app=<PKCE challenge>` in the phone's browser (Google refuses
+  - _Sign in with Google_ opens `auth.lyricdock.../login?app=<PKCE challenge>` in the phone's browser (Google refuses
     sign-in inside a WebView). Kiosk mode unpins the dock while the browser is open; `onResume` pins it again.
   - The browser comes back through `intent://signed-in?code=...;scheme=lyricdock;package=com.you.lyricdock`
     (`lyricdock://signed-in` elsewhere): `MainActivity.signedIn` -> `Account.check()` -> `POST /token` with the

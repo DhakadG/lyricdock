@@ -3,11 +3,18 @@
 // queue / recently played / library / friends panel, and the settings live preview.
 // app.js calls the window.after* hooks; everything here reads Settings.S (S) and the playback state (P).
 (() => {
-  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  const fmtT = t => { t = Math.max(0, t) / 1000 | 0; return `${t / 60 | 0}:${String(t % 60).padStart(2, '0')}`; };
+  const esc = s =>
+    String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const fmtT = t => {
+    t = (Math.max(0, t) / 1000) | 0;
+    return `${(t / 60) | 0}:${String(t % 60).padStart(2, '0')}`;
+  };
   // control() (app.js), not Web.control: the miniplayer's copy must hand commands to the main copy - its own Web never
   // polls, so a toggle there (shuffle) read a blank state and could only ever switch on.
-  const cmdOf = (c, extra = {}) => (P.source === 'web' ? control(c, 'ms' in extra ? extra.ms : 'v' in extra ? extra.v : extra) : send({ type: 'cmd', cmd: c, ...extra }));
+  const cmdOf = (c, extra = {}) =>
+    P.source === 'web'
+      ? control(c, 'ms' in extra ? extra.ms : 'v' in extra ? extra.v : extra)
+      : send({ type: 'cmd', cmd: c, ...extra });
 
   // ---- marquee: only text that does not fit scrolls, back and forth, with soft edges.
   function marquee(el) {
@@ -33,40 +40,59 @@
     $('album').textContent = S.albumLine ? [a.album || P.album, a.year].filter(Boolean).join(' · ') : '';
     marquee($('album'));
   }
-  window.afterSwap = m => { fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album;
+  window.afterSwap = m => {
+    fitArt();
+    document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none');
+    P.album = m.album;
     // The bridge's preloads for the new song may already be here; the ones for another song go (a swipe back left the
     // song after the one we went back from as "next": the following swipe and the early song-end change then took it).
     const stale = x => x && (x.id === m.id || (x.for && x.for !== m.id));
-    if (stale(P.next)) P.next = null; if (stale(P.next2)) P.next2 = null; remarquee(); albumLine(); badge(); hideChip(); };
-  window.afterPreload = m => { if (m.ahead === 2) P.next2 = m; else P.next = m; }; // ahead: 1 = next, 2 = the one after
+    if (stale(P.next)) P.next = null;
+    if (stale(P.next2)) P.next2 = null;
+    remarquee();
+    albumLine();
+    badge();
+    hideChip();
+  };
+  window.afterPreload = m => {
+    if (m.ahead === 2) P.next2 = m;
+    else P.next = m;
+  }; // ahead: 1 = next, 2 = the one after
   // Cover + title in the left column (Default / TV, landscape): the column is padded clear of the song times and
   // progress bar, and the cover is capped so cover + title + artist + album always fit between them.
-  window.fitArt = () => requestAnimationFrame(() => {
-    const st = document.documentElement.style, on = innerWidth > innerHeight && S.layout === 'split';
-    document.body.classList.toggle('fit-art', on);
-    if (!on) return;
-    // Auto margins (style.css) split the spare height evenly: above the cover, above the title block, below it. The empty
-    // room the timeline leaves under itself is mirrored under the title block, so the gaps look equal, not just measure it.
-    const vm = Math.min(innerWidth, innerHeight) / 100, gap = 4.5 * vm, meta = $('meta');
-    // The column's own box, not the window: #wrap's padding keeps it clear of the safe areas (an iPad Home Screen app has
-    // the status bar on top and the home indicator below), and measuring the whole window let the title block run past
-    // the bottom by exactly those insets.
-    const box = $('left').getBoundingClientRect();
-    // (getClientRects, not offsetParent: both are position: fixed)
-    const low = [$('times'), $('bar')].filter(e => e.getClientRects().length).map(e => e.getBoundingClientRect().top).filter(y => y > innerHeight / 2);
-    const bottom = Math.min(box.bottom, ...low);
-    const hasTl = $('tl').getClientRects().length;
-    const tl = hasTl ? parseFloat(getComputedStyle($('artbox')).marginBottom) || 0 : 0; // the bar + times under the cover
-    // offsets, not rects: with the controls up the timeline is moved by a transform
-    const slack = hasTl ? Math.max(0, tl - ($('tl').offsetTop + $('tl').offsetHeight - $('art').offsetHeight)) : 0;
-    const a = Math.max(0, gap - slack);
-    // Three equal gaps: above the cover, between the timeline and the title, under the title. Each is one auto margin
-    // (the spare height split three ways, at least a) plus the timeline's empty room (slack), which the middle gap has
-    // anyway and the top and bottom get as padding.
-    st.setProperty('--left-pt', `${slack}px`);
-    st.setProperty('--left-pb', `${box.bottom - bottom + slack}px`);
-    st.setProperty('--art-max', `${Math.max(80, bottom - box.top - 2 * slack - tl - meta.offsetHeight - 3 * a)}px`);
-  });
+  window.fitArt = () =>
+    requestAnimationFrame(() => {
+      const st = document.documentElement.style,
+        on = innerWidth > innerHeight && S.layout === 'split';
+      document.body.classList.toggle('fit-art', on);
+      if (!on) return;
+      // Auto margins (style.css) split the spare height evenly: above the cover, above the title block, below it. The empty
+      // room the timeline leaves under itself is mirrored under the title block, so the gaps look equal, not just measure it.
+      const vm = Math.min(innerWidth, innerHeight) / 100,
+        gap = 4.5 * vm,
+        meta = $('meta');
+      // The column's own box, not the window: #wrap's padding keeps it clear of the safe areas (an iPad Home Screen app has
+      // the status bar on top and the home indicator below), and measuring the whole window let the title block run past
+      // the bottom by exactly those insets.
+      const box = $('left').getBoundingClientRect();
+      // (getClientRects, not offsetParent: both are position: fixed)
+      const low = [$('times'), $('bar')]
+        .filter(e => e.getClientRects().length)
+        .map(e => e.getBoundingClientRect().top)
+        .filter(y => y > innerHeight / 2);
+      const bottom = Math.min(box.bottom, ...low);
+      const hasTl = $('tl').getClientRects().length;
+      const tl = hasTl ? parseFloat(getComputedStyle($('artbox')).marginBottom) || 0 : 0; // the bar + times under the cover
+      // offsets, not rects: with the controls up the timeline is moved by a transform
+      const slack = hasTl ? Math.max(0, tl - ($('tl').offsetTop + $('tl').offsetHeight - $('art').offsetHeight)) : 0;
+      const a = Math.max(0, gap - slack);
+      // Three equal gaps: above the cover, between the timeline and the title, under the title. Each is one auto margin
+      // (the spare height split three ways, at least a) plus the timeline's empty room (slack), which the middle gap has
+      // anyway and the top and bottom get as padding.
+      st.setProperty('--left-pt', `${slack}px`);
+      st.setProperty('--left-pb', `${box.bottom - bottom + slack}px`);
+      st.setProperty('--art-max', `${Math.max(80, bottom - box.top - 2 * slack - tl - meta.offsetHeight - 3 * a)}px`);
+    });
   addEventListener('resize', fitArt);
   Settings.onChange(() => fitArt());
   // ---- lyrics pill (Better Lyrics' toolbar): with the controls up, at the bottom of the lyrics pane.
@@ -77,29 +103,39 @@
   const chev = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
   const pillEl = document.createElement('div');
   pillEl.id = 'srcPill';
-  pillEl.innerHTML = `<div class="pp-src"><button data-d="-1" aria-label="Previous lyrics source">${chev('M15 5l-7 7 7 7')}</button><span></span><button data-d="1" aria-label="Next lyrics source">${chev('M9 5l7 7-7 7')}</button></div>`
-    + `<div class="pp-off"><i class="pp-clk">${chev('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2')}</i><button data-o="-100" aria-label="Lyrics earlier">${chev('M6 12h12')}</button>`
-    + `<button class="pp-val" data-o="0" aria-label="Reset sync offset" title="Sync offset (tap for 0)"></button><button data-o="100" aria-label="Lyrics later">${chev('M6 12h12M12 6v12')}</button></div>`;
+  pillEl.innerHTML =
+    `<div class="pp-src"><button data-d="-1" aria-label="Previous lyrics source">${chev('M15 5l-7 7 7 7')}</button><span></span><button data-d="1" aria-label="Next lyrics source">${chev('M9 5l7 7-7 7')}</button></div>` +
+    `<div class="pp-off"><i class="pp-clk">${chev('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2')}</i><button data-o="-100" aria-label="Lyrics earlier">${chev('M6 12h12')}</button>` +
+    `<button class="pp-val" data-o="0" aria-label="Reset sync offset" title="Sync offset (tap for 0)"></button><button data-o="100" aria-label="Lyrics later">${chev('M6 12h12M12 6v12')}</button></div>`;
   document.body.append(pillEl);
   // The lyrics on screen always count as one of the versions: a copy from the cover swipe's history, a preload or the
   // device store can be a different object than the pool's (or missing from it), and the pill then stayed hidden.
   const sameAs = (a, b) => a && b && (a === b || (a.source === b.source && a.kind === b.kind));
   const versions = () => {
-    const have = pool.get(P.id) ?? [], cur = P.lyrics;
-    if (cur?.lines?.length && P.id && !have.some(h => sameAs(h, cur))) { have.push(cur); pool.set(P.id, have); }
+    const have = pool.get(P.id) ?? [],
+      cur = P.lyrics;
+    if (cur?.lines?.length && P.id && !have.some(h => sameAs(h, cur))) {
+      have.push(cur);
+      pool.set(P.id, have);
+    }
     return [...have].sort((a, b) => Lyrics.rank(b) - Lyrics.rank(a));
   };
   let pillSig = '';
   function pill() {
-    const v = versions(), i = v.findIndex(h => sameAs(h, P.lyrics)), src = v.length > 1 && i >= 0, off = ['word', 'line'].includes(P.lyrics?.kind);
-    const r = $('lyrics').getBoundingClientRect(), sig = `${src}|${off}|${S.offset}|${P.id}|${i}|${v.length}|${r.left | 0}|${r.width | 0}|${r.bottom | 0}`;
+    const v = versions(),
+      i = v.findIndex(h => sameAs(h, P.lyrics)),
+      src = v.length > 1 && i >= 0,
+      off = ['word', 'line'].includes(P.lyrics?.kind);
+    const r = $('lyrics').getBoundingClientRect(),
+      sig = `${src}|${off}|${S.offset}|${P.id}|${i}|${v.length}|${r.left | 0}|${r.width | 0}|${r.bottom | 0}`;
     if (sig === pillSig) return;
     pillSig = sig;
     pillEl.classList.toggle('has', src || off);
     pillEl.classList.toggle('no-src', !src);
     pillEl.classList.toggle('no-off', !off);
     if (src) {
-      const sy = SYN[P.lyrics.kind] ?? ['', 's'], span = pillEl.querySelector('.pp-src span');
+      const sy = SYN[P.lyrics.kind] ?? ['', 's'],
+        span = pillEl.querySelector('.pp-src span');
       span.innerHTML = `<i class="src-sync s-${sy[1]}">${sy[0]}</i><b></b><small>${i + 1}/${v.length}</small>`;
       span.querySelector('b').textContent = P.lyrics.source || 'Lyrics';
     }
@@ -109,18 +145,24 @@
     pillEl.style.top = `${r.bottom}px`;
   }
   setInterval(pill, 250);
-  addEventListener('resize', () => { pillSig = ''; pill(); });
+  addEventListener('resize', () => {
+    pillSig = '';
+    pill();
+  });
   pillEl.onclick = e => {
     const b = e.target.closest('button');
     if (!b) return;
     e.stopPropagation();
     window.showUi?.(true); // keep the controls (and the pill) up while using it
     if (b.dataset.o !== undefined) {
-      const step = +b.dataset.o, v = step ? Math.max(-1000, Math.min(1000, S.offset + step)) : 0; // the setting's own range
+      const step = +b.dataset.o,
+        v = step ? Math.max(-1000, Math.min(1000, S.offset + step)) : 0; // the setting's own range
       if (v !== S.offset) Settings.set('offset', v, false);
       return pill();
     }
-    const v = versions(), i = v.findIndex(h => sameAs(h, P.lyrics)), n = v[(i + +b.dataset.d + v.length) % v.length];
+    const v = versions(),
+      i = v.findIndex(h => sameAs(h, P.lyrics)),
+      n = v[(i + +b.dataset.d + v.length) % v.length];
     if (!n || n === P.lyrics) return;
     picked.set(P.id, `${n.source}:${n.kind}`);
     P.lyrics = n;
@@ -147,14 +189,20 @@
   }
   // The Lossless waveform: beside the song length under the cover when that bar is on screen, else in the status corner.
   function placeQw() {
-    const q = $('qw'), inTl = S.qualityIcon === 'wave' && getComputedStyle($('tl')).display !== 'none', home = inTl ? $('tl') : $('stat');
+    const q = $('qw'),
+      inTl = S.qualityIcon === 'wave' && getComputedStyle($('tl')).display !== 'none',
+      home = inTl ? $('tl') : $('stat');
     if (q.parentNode !== home) inTl ? home.appendChild(q) : home.prepend(q);
-    const need = document.body.classList.contains('q-lossless') && S.showQuality && (S.qualityIcon === 'status' || (S.qualityIcon === 'wave' && !inTl));
+    const need =
+      document.body.classList.contains('q-lossless') &&
+      S.showQuality &&
+      (S.qualityIcon === 'status' || (S.qualityIcon === 'wave' && !inTl));
     $('stat').classList.toggle('qshow', need);
   }
   window.qualityChanged = () => placeQw();
   function placeHeart() {
-    const h = $('heart'), onArt = S.heartPos === 'art' && !['player', 'lyrics', 'nowbar'].includes(S.layout); // no big cover there / the Now Bar cover spins
+    const h = $('heart'),
+      onArt = S.heartPos === 'art' && !['player', 'lyrics', 'nowbar'].includes(S.layout); // no big cover there / the Now Bar cover spins
     (onArt ? $('art') : $('titlerow')).appendChild(h);
     h.classList.toggle('badge', onArt);
   }
@@ -163,43 +211,94 @@
   // After a tap, beats already in flight still carry the old mode: ignored for a moment so the button doesn't flick back.
   window.afterPos = m => {
     const locked = performance.now() < (P.modeLock || 0);
-    if (typeof m.shuffle === 'boolean' && !locked) { P.shuffle = m.shuffle; $('shuf').classList.toggle('on', m.shuffle); }
-    if (Number.isFinite(m.repeat) && !locked) { P.repeat = m.repeat; $('rep').classList.toggle('on', m.repeat > 0); $('rep').classList.toggle('one', m.repeat === 2); }
+    if (typeof m.shuffle === 'boolean' && !locked) {
+      P.shuffle = m.shuffle;
+      $('shuf').classList.toggle('on', m.shuffle);
+    }
+    if (Number.isFinite(m.repeat) && !locked) {
+      P.repeat = m.repeat;
+      $('rep').classList.toggle('on', m.repeat > 0);
+      $('rep').classList.toggle('one', m.repeat === 2);
+    }
     lastPlayAt = m.playing ? Date.now() : lastPlayAt;
   };
-  $('shuf').onclick = () => { P.modeLock = performance.now() + 1500; P.shuffle = $('shuf').classList.toggle('on'); cmdOf('shuffle'); };
-  $('rep').onclick = () => { P.modeLock = performance.now() + 1500; const n = ((P.repeat || 0) + 1) % 3; P.repeat = n; $('rep').classList.toggle('on', n > 0); $('rep').classList.toggle('one', n === 2); cmdOf('repeat', { v: n }); };
+  $('shuf').onclick = () => {
+    P.modeLock = performance.now() + 1500;
+    P.shuffle = $('shuf').classList.toggle('on');
+    cmdOf('shuffle');
+  };
+  $('rep').onclick = () => {
+    P.modeLock = performance.now() + 1500;
+    const n = ((P.repeat || 0) + 1) % 3;
+    P.repeat = n;
+    $('rep').classList.toggle('on', n > 0);
+    $('rep').classList.toggle('one', n === 2);
+    cmdOf('repeat', { v: n });
+  };
 
   // ---- gestures: double-tap to like, long-press the progress bar to scrub (changing songs by swiping: swipe.js,
   // on the cover / song card only - a sideways drag anywhere else does nothing)
-  const interactive = e => e.target.closest?.('button, input, #settings, #listPanel, #bar, #tl, #qs, #qpanel, #pairAsk, #setup, #news, #installChip, a');
+  const interactive = e =>
+    e.target.closest?.(
+      'button, input, #settings, #listPanel, #bar, #tl, #qs, #qpanel, #pairAsk, #setup, #news, #installChip, a',
+    );
   // Touch events, not pointer events: the WebView fires pointercancel as soon as it takes a drag for a pan.
-  let down = null, lastTap = 0;
+  let down = null,
+    lastTap = 0;
   // While the clock is up it owns every tap (seconds, double-tap to leave): no double-tap like.
   const clockUp = () => document.body.classList.contains('clock');
   const coverLayouts = ['split', 'clocksplit'];
-  addEventListener('touchstart', e => {
-    const t = e.touches[0];
-    if (clockUp()) { down = null; return; }
-    const onCover = coverLayouts.includes(S.layout) && e.target.closest?.('#artbox');
-    down = e.touches.length !== 1 || interactive(e) ? null : { x: t.clientX, y: t.clientY, t: performance.now(), cover: onCover };
-  }, { capture: true, passive: true });
-  addEventListener('touchend', e => {
-    if (!down || e.touches.length) { down = null; return; }
-    const t = e.changedTouches[0], dt = performance.now() - down.t, d0 = down;
-    down = null;
-    // Double-tap to like: two real taps, not on a lyric line (a line tap seeks) and not on the cover (swipe.js has its own).
-    const onLine = S.tapSeek && e.target.closest?.('#lyrics:not(.static) .ln');
-    if (Gesture.tap() && dt < 300 && !onLine && !d0.cover) {
-      const now2 = performance.now();
-      if (S.doubleTapLike && S.showLiked && now2 - lastTap < 320) { likeTap(t.clientX, t.clientY); lastTap = 0; }
-      else lastTap = now2;
-    } else lastTap = 0;
-  }, { capture: true, passive: true });
+  addEventListener(
+    'touchstart',
+    e => {
+      const t = e.touches[0];
+      if (clockUp()) {
+        down = null;
+        return;
+      }
+      const onCover = coverLayouts.includes(S.layout) && e.target.closest?.('#artbox');
+      down =
+        e.touches.length !== 1 || interactive(e)
+          ? null
+          : { x: t.clientX, y: t.clientY, t: performance.now(), cover: onCover };
+    },
+    { capture: true, passive: true },
+  );
+  addEventListener(
+    'touchend',
+    e => {
+      if (!down || e.touches.length) {
+        down = null;
+        return;
+      }
+      const t = e.changedTouches[0],
+        dt = performance.now() - down.t,
+        d0 = down;
+      down = null;
+      // Double-tap to like: two real taps, not on a lyric line (a line tap seeks) and not on the cover (swipe.js has its own).
+      const onLine = S.tapSeek && e.target.closest?.('#lyrics:not(.static) .ln');
+      if (Gesture.tap() && dt < 300 && !onLine && !d0.cover) {
+        const now2 = performance.now();
+        if (S.doubleTapLike && S.showLiked && now2 - lastTap < 320) {
+          likeTap(t.clientX, t.clientY);
+          lastTap = 0;
+        } else lastTap = now2;
+      } else lastTap = 0;
+    },
+    { capture: true, passive: true },
+  );
 
   // Mouse / trackpad: a double-click likes (touch has its own double tap above and in swipe.js).
   addEventListener('dblclick', e => {
-    if (Gesture.touch() || clockUp() || interactive(e) || !S.doubleTapLike || !S.showLiked || e.target.closest?.('#lyrics .ln')) return;
+    if (
+      Gesture.touch() ||
+      clockUp() ||
+      interactive(e) ||
+      !S.doubleTapLike ||
+      !S.showLiked ||
+      e.target.closest?.('#lyrics .ln')
+    )
+      return;
     likeTap(e.clientX, e.clientY);
   });
 
@@ -207,55 +306,115 @@
   // left / right in portrait. Four, not three: many phones take a three-finger swipe for screenshots. While more
   // than one finger is down, single-finger gestures (lyrics scroll, taps, cover swipe) stand down.
   let quad = null;
-  const mid = ts => [...ts].reduce((a, t) => ({ x: a.x + t.clientX / ts.length, y: a.y + t.clientY / ts.length }), { x: 0, y: 0 });
-  addEventListener('touchstart', e => {
-    if (e.touches.length === 4) { const m = mid(e.touches); quad = { x: m.x, y: m.y, dx: 0, dy: 0, t: performance.now() }; }
-  }, { capture: true, passive: true });
-  addEventListener('touchmove', e => { if (quad && e.touches.length === 4) { const m = mid(e.touches); quad.dx = m.x - quad.x; quad.dy = m.y - quad.y; } }, { capture: true, passive: true });
-  addEventListener('touchend', e => {
-    if (!quad || e.touches.length) return;
-    const s = quad; quad = null;
-    const land = innerWidth > innerHeight, main = land ? s.dy : s.dx, cross = land ? s.dx : s.dy;
-    if (Math.abs(main) < 50 || Math.abs(main) < Math.abs(cross) * 1.2 || performance.now() - s.t > 1200) return;
-    if (!Gesture.claim('layout') && Gesture.owner() !== 'layout') return;
-    const opts = Settings.schema().find(x => x.k === 'layout')?.opts || [];
-    const i = opts.findIndex(([v]) => v === S.layout), next = opts[(i + (main < 0 ? 1 : -1) + opts.length) % opts.length];
-    if (!next) return;
-    Settings.set('layout', next[0]);
-    window.notice?.(`Layout: ${next[1]}`, 1400);
-  }, { capture: true, passive: true });
+  const mid = ts =>
+    [...ts].reduce((a, t) => ({ x: a.x + t.clientX / ts.length, y: a.y + t.clientY / ts.length }), { x: 0, y: 0 });
+  addEventListener(
+    'touchstart',
+    e => {
+      if (e.touches.length === 4) {
+        const m = mid(e.touches);
+        quad = { x: m.x, y: m.y, dx: 0, dy: 0, t: performance.now() };
+      }
+    },
+    { capture: true, passive: true },
+  );
+  addEventListener(
+    'touchmove',
+    e => {
+      if (quad && e.touches.length === 4) {
+        const m = mid(e.touches);
+        quad.dx = m.x - quad.x;
+        quad.dy = m.y - quad.y;
+      }
+    },
+    { capture: true, passive: true },
+  );
+  addEventListener(
+    'touchend',
+    e => {
+      if (!quad || e.touches.length) return;
+      const s = quad;
+      quad = null;
+      const land = innerWidth > innerHeight,
+        main = land ? s.dy : s.dx,
+        cross = land ? s.dx : s.dy;
+      if (Math.abs(main) < 50 || Math.abs(main) < Math.abs(cross) * 1.2 || performance.now() - s.t > 1200) return;
+      if (!Gesture.claim('layout') && Gesture.owner() !== 'layout') return;
+      const opts = Settings.schema().find(x => x.k === 'layout')?.opts || [];
+      const i = opts.findIndex(([v]) => v === S.layout),
+        next = opts[(i + (main < 0 ? 1 : -1) + opts.length) % opts.length];
+      if (!next) return;
+      Settings.set('layout', next[0]);
+      window.notice?.(`Layout: ${next[1]}`, 1400);
+    },
+    { capture: true, passive: true },
+  );
 
   // Double tap / double-click: the heart's own handler, called directly. A synthetic click would also reach app.js's tap
   // handler and pop the controls up (the cover shrinking under the heart burst). Unliking bursts a hollow heart.
-  const likeTap = window.likeTap = (x, y) => { $('heart').onclick(); heartBurst(x, y, P.liked); }; // swipe.js: double tap on the cover
+  const likeTap = (window.likeTap = (x, y) => {
+    $('heart').onclick();
+    heartBurst(x, y, P.liked);
+  }); // swipe.js: double tap on the cover
   function heartBurst(x, y, on) {
     const b = document.createElement('div');
     b.className = on ? 'burst' : 'burst off';
-    b.style.left = `${x}px`; b.style.top = `${y}px`;
+    b.style.left = `${x}px`;
+    b.style.top = `${y}px`;
     b.innerHTML = $('heart').querySelector('svg').outerHTML;
     document.body.append(b);
-    b.animate([{ transform: 'translate(-50%,-50%) scale(.3)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1.15)', opacity: 1, offset: .35 },
-      { transform: 'translate(-50%,-80%) scale(1)', opacity: 0 }], { duration: ms(900), easing: 'cubic-bezier(.2,.8,.2,1)' }).onfinish = () => b.remove();
+    b.animate(
+      [
+        { transform: 'translate(-50%,-50%) scale(.3)', opacity: 0 },
+        { transform: 'translate(-50%,-50%) scale(1.15)', opacity: 1, offset: 0.35 },
+        { transform: 'translate(-50%,-80%) scale(1)', opacity: 0 },
+      ],
+      { duration: ms(900), easing: 'cubic-bezier(.2,.8,.2,1)' },
+    ).onfinish = () => b.remove();
   }
   // Long-press (350ms) on the progress bar: drag to scrub with a time bubble, release to seek.
   let scrub = null;
   $('bar').addEventListener('pointerdown', e => {
-    const x0 = e.clientX, y0 = e.clientY;
-    const t = setTimeout(() => { if (!Gesture.claim('scrub')) return; scrub = { id: e.pointerId }; $('bar').setPointerCapture(e.pointerId); document.body.classList.add('scrubbing'); move(e); }, 350);
+    const x0 = e.clientX,
+      y0 = e.clientY;
+    const t = setTimeout(() => {
+      if (!Gesture.claim('scrub')) return;
+      scrub = { id: e.pointerId };
+      $('bar').setPointerCapture(e.pointerId);
+      document.body.classList.add('scrubbing');
+      move(e);
+    }, 350);
     const cancel = () => clearTimeout(t);
-    const drift = m => { if (!scrub && Math.hypot(m.clientX - x0, m.clientY - y0) > 10) { cancel(); $('bar').removeEventListener('pointermove', drift); } };
+    const drift = m => {
+      if (!scrub && Math.hypot(m.clientX - x0, m.clientY - y0) > 10) {
+        cancel();
+        $('bar').removeEventListener('pointermove', drift);
+      }
+    };
     $('bar').addEventListener('pointermove', drift);
     $('bar').addEventListener('pointerup', cancel, { once: true });
     $('bar').addEventListener('pointercancel', cancel, { once: true });
   });
   const frac = e => Math.min(1, Math.max(0, e.clientX / innerWidth));
-  function move(e) { if (!scrub) return; const f = frac(e); $('bar').style.setProperty('--scrub', f); $('bar').dataset.time = fmtT(f * P.dur); }
+  function move(e) {
+    if (!scrub) return;
+    const f = frac(e);
+    $('bar').style.setProperty('--scrub', f);
+    $('bar').dataset.time = fmtT(f * P.dur);
+  }
   $('bar').addEventListener('pointermove', move);
   // seek() (app.js), like the timeline: beats still carrying the old position are ignored for a moment, so the bar doesn't jump back.
-  $('bar').addEventListener('pointerup', e => { if (!scrub) return; scrub = null; setTimeout(() => document.body.classList.remove('scrubbing'), 0); seek(Math.round(frac(e) * P.dur)); });
+  $('bar').addEventListener('pointerup', e => {
+    if (!scrub) return;
+    scrub = null;
+    setTimeout(() => document.body.classList.remove('scrubbing'), 0);
+    seek(Math.round(frac(e) * P.dur));
+  });
 
   // ---- up-next chip
-  function hideChip() { $('nextChip').classList.remove('show'); }
+  function hideChip() {
+    $('nextChip').classList.remove('show');
+  }
   // ---- fonts (Google Fonts, cached by the WebView after the first load)
   const loaded = new Set();
   function applyFont() {
@@ -272,24 +431,49 @@
   }
 
   // ---- screen: clock, night, burn-in, battery, keep-awake (checked every second)
-  let lastPlayAt = Date.now(), clockDismissedAt = 0, shift = 0;
-  const call = (fn, ...a) => { try { return Dock[fn](...a); } catch (e) { return null; } };
+  let lastPlayAt = Date.now(),
+    clockDismissedAt = 0,
+    shift = 0;
+  const call = (fn, ...a) => {
+    try {
+      return Dock[fn](...a);
+    } catch (e) {
+      return null;
+    }
+  };
   // Flip clock: tap toggles seconds, double tap goes back to the lyrics (the simple clock: any tap goes back).
   // In the Flip clock layout a double tap goes back to the layout used before it (Default if none this session).
   let layoutBeforeClock = 'split';
   // Long press (0.6 s) on the flip clock: swap the card colour (the cards flip over). The click after it is ignored.
-  let lp = null, lpAt = 0;
-  $('clockScreen').addEventListener('touchstart', e => {
-    clearTimeout(lp?.timer); lp = null;
-    if (e.touches.length !== 1 || !$('clockScreen').classList.contains('flip')) return;
-    const t = e.touches[0];
-    lp = { x: t.clientX, y: t.clientY, timer: setTimeout(() => {
-      lpAt = performance.now();
-      window.notice?.(Flip.toggleTheme() === 'light' ? 'Light cards' : 'Dark cards', 1400);
-      call('vibrate', 30);
-    }, 600) };
-  }, { passive: true });
-  $('clockScreen').addEventListener('touchmove', e => { const t = e.touches[0]; if (lp && Math.hypot(t.clientX - lp.x, t.clientY - lp.y) > 12) clearTimeout(lp.timer); }, { passive: true });
+  let lp = null,
+    lpAt = 0;
+  $('clockScreen').addEventListener(
+    'touchstart',
+    e => {
+      clearTimeout(lp?.timer);
+      lp = null;
+      if (e.touches.length !== 1 || !$('clockScreen').classList.contains('flip')) return;
+      const t = e.touches[0];
+      lp = {
+        x: t.clientX,
+        y: t.clientY,
+        timer: setTimeout(() => {
+          lpAt = performance.now();
+          window.notice?.(Flip.toggleTheme() === 'light' ? 'Light cards' : 'Dark cards', 1400);
+          call('vibrate', 30);
+        }, 600),
+      };
+    },
+    { passive: true },
+  );
+  $('clockScreen').addEventListener(
+    'touchmove',
+    e => {
+      const t = e.touches[0];
+      if (lp && Math.hypot(t.clientX - lp.x, t.clientY - lp.y) > 12) clearTimeout(lp.timer);
+    },
+    { passive: true },
+  );
   $('clockScreen').addEventListener('touchend', () => clearTimeout(lp?.timer), { passive: true });
   // Mouse / trackpad: a right-click (two-finger click) swaps the colour, like the long press.
   $('clockScreen').addEventListener('contextmenu', e => {
@@ -299,25 +483,47 @@
   });
   $('clockScreen').onclick = () => {
     if (performance.now() - lpAt < 800) return;
-    if (S.layout === 'clock') { if (Flip.onTap() === 'dismiss') { clockDismissedAt = Date.now(); Settings.set('layout', layoutBeforeClock); } return; }
+    if (S.layout === 'clock') {
+      if (Flip.onTap() === 'dismiss') {
+        clockDismissedAt = Date.now();
+        Settings.set('layout', layoutBeforeClock);
+      }
+      return;
+    }
     if (S.clockStyle === 'flip' && Flip.onTap() !== 'dismiss') return;
-    clockDismissedAt = Date.now(); setClock(false);
+    clockDismissedAt = Date.now();
+    setClock(false);
   };
   // Clock <-> song view as one motion: entering, the song view sinks back while the clock fades up and its cards
   // flip from blank to the time; leaving, the cards flip back to blank first, then the song view rises in.
-  let clockOn = false, clockBusy = null;
+  let clockOn = false,
+    clockBusy = null;
   function setClock(on) {
     if (on === clockOn) return;
     clockOn = on;
     const b = document.body;
     const flip = S.clockStyle === 'flip';
-    if (on) { b.classList.add('clock'); if (flip) { Flip.mount($('clockScreen')); Flip.show(); } window.notice?.('Double-tap to go back · hold to change colour', 2200); return; }
-    const go = () => { if (!clockOn) b.classList.remove('clock'); };
-    if (flip && Flip.isShown()) { clockBusy = Flip.leave().then(go); } else go();
+    if (on) {
+      b.classList.add('clock');
+      if (flip) {
+        Flip.mount($('clockScreen'));
+        Flip.show();
+      }
+      window.notice?.('Double-tap to go back · hold to change colour', 2200);
+      return;
+    }
+    const go = () => {
+      if (!clockOn) b.classList.remove('clock');
+    };
+    if (flip && Flip.isShown()) {
+      clockBusy = Flip.leave().then(go);
+    } else go();
   }
   function everySecond() {
     if (S.layout !== 'clock') layoutBeforeClock = S.layout;
-    const tNow = Date.now(), idleMin = (tNow - lastPlayAt) / 60000, h = new Date().getHours();
+    const tNow = Date.now(),
+      idleMin = (tNow - lastPlayAt) / 60000,
+      h = new Date().getHours();
     // chip
     const left = P.dur - now();
     const n = P.next;
@@ -327,8 +533,14 @@
     } else hideChip();
     // clock
     // The "Flip clock" layout keeps it up; "Cover + clock" has its own; otherwise it's the idle screen.
-    const wantClock = S.layout === 'clock' || (S.layout !== 'clocksplit' && S.clock !== 'off' && !P.playing && idleMin >= S.clockAfter
-      && tNow - clockDismissedAt > S.clockAfter * 60000 && (S.clock === 'paused' ? !!P.id : true));
+    const wantClock =
+      S.layout === 'clock' ||
+      (S.layout !== 'clocksplit' &&
+        S.clock !== 'off' &&
+        !P.playing &&
+        idleMin >= S.clockAfter &&
+        tNow - clockDismissedAt > S.clockAfter * 60000 &&
+        (S.clock === 'paused' ? !!P.id : true));
     $('clockScreen').classList.toggle('flip', S.clockStyle === 'flip' || S.layout === 'clock');
     setClock(wantClock);
     $('clkNext').style.display = S.clockCaption ? '' : 'none';
@@ -336,27 +548,36 @@
       const d = new Date();
       $('clkTime').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       $('clkDate').textContent = d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
-      $('clkNext').textContent = !P.id ? '' : P.playing ? `${$('title').textContent} · ${$('artist').textContent}` : `Paused · ${$('title').textContent}`;
+      $('clkNext').textContent = !P.id
+        ? ''
+        : P.playing
+          ? `${$('title').textContent} · ${$('artist').textContent}`
+          : `Paused · ${$('title').textContent}`;
     }
     // night
-    const night = S.night && (S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo);
+    const night =
+      S.night && (S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo);
     if (night !== document.body.classList.contains('night')) {
       document.body.classList.toggle('night', night);
-      if (night) kw?.stop(); else applyBg();
+      if (night) kw?.stop();
+      else applyBg();
     }
     document.documentElement.style.setProperty('--nd', S.nightDim);
     document.documentElement.style.setProperty('--nw', S.nightWarm);
     // burn-in: nudge the whole layout a few px every 3 minutes
     if (S.burnIn && tNow - shift > 180000) {
       shift = tNow;
-      const dx = Math.round(Math.random() * 8 - 4), dy = Math.round(Math.random() * 6 - 3);
+      const dx = Math.round(Math.random() * 8 - 4),
+        dy = Math.round(Math.random() * 6 - 3);
       $('wrap').style.transform = `translate(${dx}px, ${dy}px)`;
       $('clockScreen').style.setProperty('--cx', `${Math.round(Math.random() * 40 - 20)}px`);
       $('clockScreen').style.setProperty('--cy', `${Math.round(Math.random() * 30 - 15)}px`);
     } else if (!S.burnIn) $('wrap').style.transform = '';
     // status cluster: battery (every 30s is plenty) and the time of day
-    const bat = $('batt'), tn = $('tnow'), timeOn = S.timeStyle !== 'off';
-    if (S.battery && tNow % 30000 < 1000 || S.battery && !bat.dataset.init) {
+    const bat = $('batt'),
+      tn = $('tnow'),
+      timeOn = S.timeStyle !== 'off';
+    if ((S.battery && tNow % 30000 < 1000) || (S.battery && !bat.dataset.init)) {
       bat.dataset.init = 1;
       const b = String(call('battery') || '').split(',');
       if (b.length === 2) {
@@ -379,22 +600,39 @@
     document.body.classList.toggle('stat-on', stat.classList.contains('show'));
     // keep-awake
     const awake = S.awake === 'always' || (S.awake === 'playing' && (P.playing || idleMin < S.sleepAfter));
-    if (awake !== window.__awake) { window.__awake = awake; call('keepAwake', awake); }
+    if (awake !== window.__awake) {
+      window.__awake = awake;
+      call('keepAwake', awake);
+    }
     badge();
   }
   setInterval(everySecond, 1000);
-  function applyBg() { try { art(P.art).then(im => background(P.art, im)); } catch (e) {} }
+  function applyBg() {
+    try {
+      art(P.art).then(im => background(P.art, im));
+    } catch (e) {}
+  }
 
   // ---- queue / recently played / library / search / friends, with browsing into playlists, albums and artists.
   // A view stack: the tab at the bottom, each opened playlist / album / artist on top (Back pops it).
   // Rows: tap a song to play it (in the list's context), tap a playlist / album / artist to open it.
   // Swipe right = add to queue (queue tab: move to the top), swipe left = like / unlike (queue tab: remove).
-  const TABS = { queue: 'Nothing queued', recent: 'Nothing played yet', library: 'Your library is empty', search: 'Search songs, artists, albums and playlists', friends: 'No friend activity',
-    devices: 'No Spotify devices found. Open Spotify on the phone, computer or speaker you want, then come back here.' };
-  let stack = [{ which: 'queue' }], items = [], viewData = null, searchT = 0;
+  const TABS = {
+    queue: 'Nothing queued',
+    recent: 'Nothing played yet',
+    library: 'Your library is empty',
+    search: 'Search songs, artists, albums and playlists',
+    friends: 'No friend activity',
+    devices: 'No Spotify devices found. Open Spotify on the phone, computer or speaker you want, then come back here.',
+  };
+  let stack = [{ which: 'queue' }],
+    items = [],
+    viewData = null,
+    searchT = 0;
   const view = () => stack[stack.length - 1];
   const I = {
-    heart: '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/></svg>',
+    heart:
+      '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/></svg>',
     add: '<svg viewBox="0 0 24 24"><path d="M3 6h12v2H3zm0 5h12v2H3zm0 5h8v2H3zm14-2v-3h2v3h3v2h-3v3h-2v-3h-3v-2z"/></svg>',
     x: '<svg viewBox="0 0 24 24"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4z"/></svg>',
     top: '<svg viewBox="0 0 24 24"><path d="M5 4h14v2H5zm7 3 6 6h-4v7h-4v-7H6z"/></svg>',
@@ -402,37 +640,66 @@
     Computer: '<svg viewBox="0 0 24 24"><path d="M3 5h18v11H3zm2 2v7h14V7zM8 18h8v2H8z"/></svg>',
     Smartphone: '<svg viewBox="0 0 24 24"><path d="M7 2h10v20H7zm2 2v14h6V4z"/></svg>',
     Tablet: '<svg viewBox="0 0 24 24"><path d="M4 3h16v18H4zm2 2v12h12V5z"/></svg>',
-    Speaker: '<svg viewBox="0 0 24 24"><path d="M6 2h12v20H6zm6 9a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0-6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>',
+    Speaker:
+      '<svg viewBox="0 0 24 24"><path d="M6 2h12v20H6zm6 9a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0-6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>',
     grip: '<svg viewBox="0 0 24 24"><path d="M4 7h16v2H4zm0 4h16v2H4zm0 4h16v2H4z"/></svg>',
     vol: '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="vw" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.3 6.6a7.8 7.8 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="vx" d="M15.5 9.5l5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
     refresh: '<svg viewBox="0 0 24 24"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.2L13 11h7V4z"/></svg>',
   };
-  document.querySelectorAll('#lists button').forEach(b => b.onclick = () => openList(b.dataset.list));
-  document.querySelectorAll('#listTabs button').forEach(b => b.onclick = () => openList(b.dataset.tab));
+  document.querySelectorAll('#lists button').forEach(b => (b.onclick = () => openList(b.dataset.list)));
+  document.querySelectorAll('#listTabs button').forEach(b => (b.onclick = () => openList(b.dataset.tab)));
   $('listClose').onclick = () => document.body.classList.remove('lists-open');
-  $('listBack').onclick = () => { if (stack.length > 1) { stack.pop(); load(); } };
-  function openList(which) { stack = [{ which }]; document.body.classList.add('lists-open'); load(); }
-  function browse(uri, title) { stack.push({ which: 'tracks', uri, title }); document.body.classList.add('lists-open'); load(); }
-  window.dockBrowse = uri => { if (/^spotify:/.test(uri || '')) browse(uri); };
+  $('listBack').onclick = () => {
+    if (stack.length > 1) {
+      stack.pop();
+      load();
+    }
+  };
+  function openList(which) {
+    stack = [{ which }];
+    document.body.classList.add('lists-open');
+    load();
+  }
+  function browse(uri, title) {
+    stack.push({ which: 'tracks', uri, title });
+    document.body.classList.add('lists-open');
+    load();
+  }
+  window.dockBrowse = uri => {
+    if (/^spotify:/.test(uri || '')) browse(uri);
+  };
   function load() {
-    const v = view(), root = stack[0].which;
+    const v = view(),
+      root = stack[0].which;
     document.querySelectorAll('#listTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === root));
     $('listPanel').classList.toggle('deep', stack.length > 1);
     $('listCrumb').textContent = stack.length > 1 ? v.title || '' : '';
     $('listBody').scrollTop = 0;
     if (v.which === 'search') {
-      $('listBody').innerHTML = `<div class="li-search"><input id="liQ" type="search" placeholder="What do you want to play?" value="${esc(v.q || '')}" enterkeyhint="search"></div><div id="liRes"></div>`;
+      $('listBody').innerHTML =
+        `<div class="li-search"><input id="liQ" type="search" placeholder="What do you want to play?" value="${esc(v.q || '')}" enterkeyhint="search"></div><div id="liRes"></div>`;
       const q = $('liQ');
-      q.oninput = () => { clearTimeout(searchT); v.q = q.value; searchT = setTimeout(() => request(v), 450); };
-      if (v.q) request(v); else $('liRes').innerHTML = `<div class="li-empty">${TABS.search}</div>`;
+      q.oninput = () => {
+        clearTimeout(searchT);
+        v.q = q.value;
+        searchT = setTimeout(() => request(v), 450);
+      };
+      if (v.q) request(v);
+      else $('liRes').innerHTML = `<div class="li-empty">${TABS.search}</div>`;
       if (!v.q) setTimeout(() => q.focus(), 350);
       return;
     }
     const hit = cached(v);
-    if (hit) showList({ ...hit, which: v.which, uri: v.uri, cached: true }); else $('listBody').innerHTML = skeleton();
+    if (hit) showList({ ...hit, which: v.which, uri: v.uri, cached: true });
+    else $('listBody').innerHTML = skeleton();
     request(v);
   }
-  const skeleton = () => '<div class="li-skel">' + '<div class="li"><div class="li-main"><div class="li-art"></div><div class="li-txt"><i></i><i></i></div></div></div>'.repeat(7) + '</div>';
+  const skeleton = () =>
+    '<div class="li-skel">' +
+    '<div class="li"><div class="li-main"><div class="li-art"></div><div class="li-txt"><i></i><i></i></div></div></div>'.repeat(
+      7,
+    ) +
+    '</div>';
   function request(v) {
     const msg = { which: v.which, uri: v.uri, q: v.q };
     if (v.which === 'search' && !v.q?.trim()) return;
@@ -443,29 +710,56 @@
   window.onExtra = m => {
     // The queue also feeds the cover swipe. A closed panel isn't drawn (~120 ms on a slow phone, mid song change):
     // opening it asks again anyway.
-    if (m.type === 'list') { if (m.which === 'queue') window.onQueue?.(m); if (document.body.classList.contains('lists-open')) showList(m); }
-    else if (m.type === 'acted') acted(m);
-    else if (m.type === 'album' && m.id) { albums.set(m.id, m); if (m.id === P.id) albumLine(); }
+    if (m.type === 'list') {
+      if (m.which === 'queue') window.onQueue?.(m);
+      if (document.body.classList.contains('lists-open')) showList(m);
+    } else if (m.type === 'acted') acted(m);
+    else if (m.type === 'album' && m.id) {
+      albums.set(m.id, m);
+      if (m.id === P.id) albumLine();
+    }
   };
-  const ago = t => { const m = (Date.now() - t) / 60000; return m < 1 ? 'now' : m < 60 ? `${m | 0} min` : m < 1440 ? `${m / 60 | 0} h` : `${m / 1440 | 0} d`; };
-  const artBg = a => a === 'liked' ? ' liked' : '';
+  const ago = t => {
+    const m = (Date.now() - t) / 60000;
+    return m < 1 ? 'now' : m < 60 ? `${m | 0} min` : m < 1440 ? `${(m / 60) | 0} h` : `${(m / 1440) | 0} d`;
+  };
+  const artBg = a => (a === 'liked' ? ' liked' : '');
   // The URL goes inside CSS url('...'): percent-encode what could end it (esc alone is undone by the attribute parser).
-  const artStyle = a => a && a !== 'liked' ? ` style="background-image:url('${esc(String(a).replace(/['"()\\\s]/g, c => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`))}')"` : '';
+  const artStyle = a =>
+    a && a !== 'liked'
+      ? ` style="background-image:url('${esc(String(a).replace(/['"()\\\s]/g, c => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`))}')"`
+      : '';
   // Warm cache: every list / playlist / album / artist view is kept (25 most recent, localStorage) and shown at once
   // on open, then refreshed in the background; the refresh only re-renders when something changed. Cover images
   // come from the WebView's HTTP cache.
   const LC = 'dock:lists';
   let lcache = {};
-  try { lcache = JSON.parse(localStorage.getItem(LC)) || {}; } catch (e) {}
-  const ckey = v => v.which === 'search' ? null : `${v.which}|${v.uri || ''}`;
-  const cached = v => { const k = ckey(v); return k && lcache[k]; };
+  try {
+    lcache = JSON.parse(localStorage.getItem(LC)) || {};
+  } catch (e) {}
+  const ckey = v => (v.which === 'search' ? null : `${v.which}|${v.uri || ''}`);
+  const cached = v => {
+    const k = ckey(v);
+    return k && lcache[k];
+  };
   function cacheSave(v, m) {
     const k = ckey(v);
     if (!k || m.error || !m.items?.length) return false;
-    const { cached: _, ...clean } = m, same = lcache[k] && JSON.stringify(lcache[k].items) === JSON.stringify(clean.items) && JSON.stringify(lcache[k].head) === JSON.stringify(clean.head);
+    const { cached: _, ...clean } = m,
+      same =
+        lcache[k] &&
+        JSON.stringify(lcache[k].items) === JSON.stringify(clean.items) &&
+        JSON.stringify(lcache[k].head) === JSON.stringify(clean.head);
     lcache[k] = { ...clean, at: Date.now() };
-    for (const x of Object.keys(lcache).sort((a, b) => lcache[b].at - lcache[a].at).slice(25)) delete lcache[x];
-    try { localStorage.setItem(LC, JSON.stringify(lcache)); } catch (e) { lcache = { [k]: lcache[k] }; }
+    for (const x of Object.keys(lcache)
+      .sort((a, b) => lcache[b].at - lcache[a].at)
+      .slice(25))
+      delete lcache[x];
+    try {
+      localStorage.setItem(LC, JSON.stringify(lcache));
+    } catch (e) {
+      lcache = { [k]: lcache[k] };
+    }
     return same;
   }
   function showList(m) {
@@ -473,22 +767,37 @@
     if (m.which !== v.which || (v.uri && m.uri !== v.uri) || (v.which === 'search' && m.q !== v.q)) return; // stale answer
     const out = v.which === 'search' ? $('liRes') : $('listBody');
     if (!out) return;
-    if (!m.cached && cacheSave(v, m) && viewData?.cached) { viewData = { ...m }; return; } // fresh = what's shown: keep it
+    if (!m.cached && cacheSave(v, m) && viewData?.cached) {
+      viewData = { ...m };
+      return;
+    } // fresh = what's shown: keep it
     viewData = m;
     items = Array.isArray(m.items) ? m.items : [];
-    if (m.head?.title && stack.length > 1) { v.title = m.head.title; $('listCrumb').textContent = m.head.title; }
+    if (m.head?.title && stack.length > 1) {
+      v.title = m.head.title;
+      $('listCrumb').textContent = m.head.title;
+    }
     let html = '';
-    if (m.head) html += `<div class="li-head"><div class="li-hart${artBg(m.head.art)}${m.head.round ? ' round' : ''}"${artStyle(m.head.art)}></div>
+    if (m.head)
+      html += `<div class="li-head"><div class="li-hart${artBg(m.head.art)}${m.head.round ? ' round' : ''}"${artStyle(m.head.art)}></div>
       <div class="li-htxt"><div class="li-ht">${esc(m.head.title)}</div><div class="li-hs">${esc(m.head.sub || '')}</div>
       <div class="li-hbtns"><button class="li-play" data-a="play">Play</button><button data-a="shuffle">Shuffle</button></div></div></div>`;
     if (v.which === 'devices') return devices(out, m);
     reo = reorderMode(v, m);
-    if (!items.length) { out.innerHTML = html + `<div class="li-empty">${esc(m.error || TABS[stack[0].which] || 'Nothing here')}</div>`; wireHead(out, m); return; }
+    if (!items.length) {
+      out.innerHTML = html + `<div class="li-empty">${esc(m.error || TABS[stack[0].which] || 'Nothing here')}</div>`;
+      wireHead(out, m);
+      return;
+    }
     if (v.which === 'queue' && m.now) html += `<h4>Now playing</h4>${row(m.now, -1)}`;
     let section = v.which === 'queue' ? null : '';
     items.forEach((x, i) => {
-      const sec = v.which === 'queue' ? (x.queued ? 'Next in queue' : `Next from ${m.ctxName || 'this list'}`) : x.section || '';
-      if (sec !== section) { section = sec; if (sec) html += `<h4>${esc(sec)}</h4>`; }
+      const sec =
+        v.which === 'queue' ? (x.queued ? 'Next in queue' : `Next from ${m.ctxName || 'this list'}`) : x.section || '';
+      if (sec !== section) {
+        section = sec;
+        if (sec) html += `<h4>${esc(sec)}</h4>`;
+      }
       html += row(x, i);
     });
     const top = out.scrollTop;
@@ -499,22 +808,38 @@
     if (reo) wireReorder(out);
   }
   function wireHead(out, m) {
-    out.querySelectorAll('.li-head button').forEach(b => b.onclick = () => {
-      cmdOf('play', { uri: m.head.uri || m.ctx, shuffle: b.dataset.a === 'shuffle' });
-      window.notice?.(`${b.dataset.a === 'shuffle' ? 'Shuffling' : 'Playing'} ${m.head.title}`);
-      document.body.classList.remove('lists-open');
-    });
+    out.querySelectorAll('.li-head button').forEach(
+      b =>
+        (b.onclick = () => {
+          cmdOf('play', { uri: m.head.uri || m.ctx, shuffle: b.dataset.a === 'shuffle' });
+          window.notice?.(`${b.dataset.a === 'shuffle' ? 'Shuffling' : 'Playing'} ${m.head.title}`);
+          document.body.classList.remove('lists-open');
+        }),
+    );
   }
   const isTrack = x => /^spotify:(track|episode|local):/.test(x?.uri || '');
   function row(x, i) {
-    const now = i < 0, tab = stack[0].which, v = view(), q = tab === 'queue' && v.which === 'queue';
+    const now = i < 0,
+      tab = stack[0].which,
+      v = view(),
+      q = tab === 'queue' && v.which === 'queue';
     let right = '';
     if (x.device) right = x.live ? '<span class="eq"><i></i><i></i><i></i></span>' : '';
-    else if (x.friend) right = x.live ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="li-time">${esc(ago(x.time))}</span>`;
+    else if (x.friend)
+      right = x.live
+        ? '<span class="eq"><i></i><i></i><i></i></span>'
+        : `<span class="li-time">${esc(ago(x.time))}</span>`;
     else if (x.box) right = `<span class="li-go">${I.more}</span>`;
-    else if (isTrack(x) && !now) right = (q ? (x.queued ? `<button data-a="top" aria-label="Move to top">${I.top}</button><button data-a="remove" aria-label="Remove from queue">${I.x}</button>` : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`)
-      : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`) + `<button data-a="like" class="${x.liked ? 'on' : ''}" aria-label="Like">${I.heart}</button>`;
-    if (!now && movable(x)) right += `<span class="li-grip" role="button" aria-label="Drag to reorder">${I.grip}</span>`;
+    else if (isTrack(x) && !now)
+      right =
+        (q
+          ? x.queued
+            ? `<button data-a="top" aria-label="Move to top">${I.top}</button><button data-a="remove" aria-label="Remove from queue">${I.x}</button>`
+            : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`
+          : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`) +
+        `<button data-a="like" class="${x.liked ? 'on' : ''}" aria-label="Like">${I.heart}</button>`;
+    if (!now && movable(x))
+      right += `<span class="li-grip" role="button" aria-label="Drag to reorder">${I.grip}</span>`;
     const time = x.time && !x.friend && tab === 'recent' ? `<span class="li-time">${esc(ago(x.time))}</span>` : '';
     return `<div class="li${now ? ' now' : ''}${x.box ? ' box' : ''}${!now && movable(x) ? ' movable' : ''}"${now ? '' : ` data-i="${i}"`}>
       <div class="li-swipe l">${q && x.queued ? I.x : I.heart}</div><div class="li-swipe r">${q && x.queued ? I.top : I.add}</div>
@@ -524,20 +849,43 @@
   }
   // Row gestures: horizontal drag reveals the swipe action; a short tap plays / opens.
   function wireRow(el) {
-    const x = items[+el.dataset.i], main = el.querySelector('.li-main');
+    const x = items[+el.dataset.i],
+      main = el.querySelector('.li-main');
     if (!x?.uri) return;
     const q = stack[0].which === 'queue' && view().which === 'queue' && x.queued;
-    el.querySelectorAll('button[data-a]').forEach(b => b.onclick = e => { e.stopPropagation(); doAct(b.dataset.a, x, el); });
-    let sx = 0, sy = 0, dx = 0, drag = false, id = null;
-    main.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; dx = 0; drag = false; id = e.pointerId; });
+    el.querySelectorAll('button[data-a]').forEach(
+      b =>
+        (b.onclick = e => {
+          e.stopPropagation();
+          doAct(b.dataset.a, x, el);
+        }),
+    );
+    let sx = 0,
+      sy = 0,
+      dx = 0,
+      drag = false,
+      id = null;
+    main.addEventListener('pointerdown', e => {
+      sx = e.clientX;
+      sy = e.clientY;
+      dx = 0;
+      drag = false;
+      id = e.pointerId;
+    });
     main.addEventListener('pointermove', e => {
       if (e.pointerId !== id) return;
-      const mx = e.clientX - sx, my = e.clientY - sy;
-      if (!drag && Math.abs(mx) > 12 && Math.abs(mx) > Math.abs(my) * 1.5 && isTrack(x)) { drag = true; main.setPointerCapture(id); el.classList.add('dragging'); }
+      const mx = e.clientX - sx,
+        my = e.clientY - sy;
+      if (!drag && Math.abs(mx) > 12 && Math.abs(mx) > Math.abs(my) * 1.5 && isTrack(x)) {
+        drag = true;
+        main.setPointerCapture(id);
+        el.classList.add('dragging');
+      }
       if (!drag) return;
       dx = Math.max(-140, Math.min(140, mx));
       main.style.transform = `translateX(${dx}px)`;
-      el.classList.toggle('arm-r', dx > 80); el.classList.toggle('arm-l', dx < -80);
+      el.classList.toggle('arm-r', dx > 80);
+      el.classList.toggle('arm-l', dx < -80);
     });
     const end = e => {
       if (e.pointerId !== id) return;
@@ -562,20 +910,49 @@
       document.body.classList.remove('lists-open');
     };
     main.addEventListener('pointerup', end);
-    main.addEventListener('pointercancel', e => { if (e.pointerId === id) { id = null; el.classList.remove('dragging', 'arm-r', 'arm-l'); main.style.transform = ''; } });
+    main.addEventListener('pointercancel', e => {
+      if (e.pointerId === id) {
+        id = null;
+        el.classList.remove('dragging', 'arm-r', 'arm-l');
+        main.style.transform = '';
+      }
+    });
   }
   function doAct(a, x, el) {
     const cmd = { add: 'queueAdd', remove: 'queueRemove', top: 'queueTop', like: x.liked ? 'unlike' : 'like' }[a];
-    if (a === 'like') { x.liked = !x.liked; el.querySelector('button[data-a=like]')?.classList.toggle('on', x.liked); heartPop(el); }
+    if (a === 'like') {
+      x.liked = !x.liked;
+      el.querySelector('button[data-a=like]')?.classList.toggle('on', x.liked);
+      heartPop(el);
+    }
     if (a === 'remove') el.classList.add('gone');
-    window.notice?.({ queueAdd: `Added ${x.title} to the queue`, queueRemove: `Removed ${x.title}`, queueTop: `${x.title} plays next`, like: `Liked ${x.title}`, unlike: `Removed ${x.title} from Liked Songs` }[cmd]);
+    window.notice?.(
+      {
+        queueAdd: `Added ${x.title} to the queue`,
+        queueRemove: `Removed ${x.title}`,
+        queueTop: `${x.title} plays next`,
+        like: `Liked ${x.title}`,
+        unlike: `Removed ${x.title} from Liked Songs`,
+      }[cmd],
+    );
     if (P.source === 'web') Web.act(cmd, x.uri).then(r => acted({ cmd, uri: x.uri, ...r }));
     else send({ type: 'cmd', cmd, uri: x.uri, uid: x.uid });
   }
-  function heartPop(el) { el.querySelector('button[data-a=like]')?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: ms(320), easing: 'cubic-bezier(.3,1.6,.5,1)' }); }
+  function heartPop(el) {
+    el.querySelector('button[data-a=like]')?.animate(
+      [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }],
+      { duration: ms(320), easing: 'cubic-bezier(.3,1.6,.5,1)' },
+    );
+  }
   function acted(m) {
-    if (m.ok === false) window.notice?.(m.cmd === 'device' ? `Couldn't switch device: ${m.error || 'failed'} - open Spotify on it once, then try again` : `Couldn't do that: ${m.error || 'failed'}`);
-    if (view().which === 'queue' && ['queueRemove', 'queueTop', 'queueAdd'].includes(m.cmd)) setTimeout(() => request(view()), 350);
+    if (m.ok === false)
+      window.notice?.(
+        m.cmd === 'device'
+          ? `Couldn't switch device: ${m.error || 'failed'} - open Spotify on it once, then try again`
+          : `Couldn't do that: ${m.error || 'failed'}`,
+      );
+    if (view().which === 'queue' && ['queueRemove', 'queueTop', 'queueAdd'].includes(m.cmd))
+      setTimeout(() => request(view()), 350);
     // A move is already drawn; the refresh shows Spotify's own order (or puts the row back when it failed).
     if (['queueMove', 'playlistMove'].includes(m.cmd)) setTimeout(() => request(view()), m.ok === false ? 0 : 700);
     if (m.cmd === 'devVolume' && m.ok === false && view().which === 'devices') setTimeout(() => request(view()), 300);
@@ -594,23 +971,38 @@
   const movable = x => !!x?.uid && (reo === 'queue' ? !!x.queued : reo === 'playlist' && isTrack(x));
   function wireReorder(out) {
     const rows = [...out.querySelectorAll('.li.movable[data-i]')];
-    if (rows.length < 2) { rows.forEach(r => r.classList.remove('movable')); return; }
+    if (rows.length < 2) {
+      rows.forEach(r => r.classList.remove('movable'));
+      return;
+    }
     rows.forEach(el => el.querySelector('.li-grip')?.addEventListener('pointerdown', e => lift(e, el, rows)));
   }
   function lift(e, el, rows) {
     if (e.button > 0) return;
-    e.preventDefault(); e.stopPropagation();
-    const grip = e.currentTarget, body = $('listBody'), id = e.pointerId, from = rows.indexOf(el);
-    const rects = rows.map(r => r.getBoundingClientRect()), step = rows.length > 1 ? rects[1].top - rects[0].top : rects[from].height;
-    const top0 = body.scrollTop, y0 = e.clientY;
-    let y = y0, to = from, raf = 0, on = true;
-    try { grip.setPointerCapture(id); } catch (err) {}
+    e.preventDefault();
+    e.stopPropagation();
+    const grip = e.currentTarget,
+      body = $('listBody'),
+      id = e.pointerId,
+      from = rows.indexOf(el);
+    const rects = rows.map(r => r.getBoundingClientRect()),
+      step = rows.length > 1 ? rects[1].top - rects[0].top : rects[from].height;
+    const top0 = body.scrollTop,
+      y0 = e.clientY;
+    let y = y0,
+      to = from,
+      raf = 0,
+      on = true;
+    try {
+      grip.setPointerCapture(id);
+    } catch (err) {}
     el.classList.add('lifted');
     document.body.classList.add('reordering');
     call('vibrate', 12);
     const place = () => {
-      const lo = rects[0].top - rects[from].top, hi = rects[rects.length - 1].top - rects[from].top;
-      const dy = Math.max(lo - step * .4, Math.min(hi + step * .4, y - y0 + body.scrollTop - top0));
+      const lo = rects[0].top - rects[from].top,
+        hi = rects[rects.length - 1].top - rects[from].top;
+      const dy = Math.max(lo - step * 0.4, Math.min(hi + step * 0.4, y - y0 + body.scrollTop - top0));
       el.style.transform = `translateY(${dy}px)`;
       const mid = rects[from].top + rects[from].height / 2 + dy;
       // The first other row whose middle is below the dragged row's middle decides where it lands.
@@ -626,29 +1018,62 @@
         });
       }
     };
-    const tick = () => { // near the top or bottom edge the list scrolls, faster the closer the finger
+    const tick = () => {
+      // near the top or bottom edge the list scrolls, faster the closer the finger
       if (!on) return;
-      const b = body.getBoundingClientRect(), edge = 64;
+      const b = body.getBoundingClientRect(),
+        edge = 64;
       const v = y < b.top + edge ? -(b.top + edge - y) : y > b.bottom - edge ? y - (b.bottom - edge) : 0;
-      if (v) { body.scrollTop += Math.max(-18, Math.min(18, v / 3)); place(); }
+      if (v) {
+        body.scrollTop += Math.max(-18, Math.min(18, v / 3));
+        place();
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    const move = ev => { if (ev.pointerId !== id) return; y = ev.clientY; place(); };
+    const move = ev => {
+      if (ev.pointerId !== id) return;
+      y = ev.clientY;
+      place();
+    };
     const drop = ev => {
       if (ev.pointerId !== id) return;
-      on = false; cancelAnimationFrame(raf);
-      grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', drop); grip.removeEventListener('pointercancel', drop);
+      on = false;
+      cancelAnimationFrame(raf);
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', drop);
+      grip.removeEventListener('pointercancel', drop);
       document.body.classList.remove('reordering');
-      const done = () => { el.classList.remove('lifted', 'landing'); rows.forEach(r => { r.style.transform = ''; }); };
-      if (ev.type === 'pointercancel' || to === from) { el.classList.add('landing'); el.style.transform = ''; rows.forEach(r => { r.style.transform = ''; }); return setTimeout(done, 260); }
+      const done = () => {
+        el.classList.remove('lifted', 'landing');
+        rows.forEach(r => {
+          r.style.transform = '';
+        });
+      };
+      if (ev.type === 'pointercancel' || to === from) {
+        el.classList.add('landing');
+        el.style.transform = '';
+        rows.forEach(r => {
+          r.style.transform = '';
+        });
+        return setTimeout(done, 260);
+      }
       done();
-      commitMove(rows.map(r => +r.dataset.i), from, to);
+      commitMove(
+        rows.map(r => +r.dataset.i),
+        from,
+        to,
+      );
     };
-    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', drop); grip.addEventListener('pointercancel', drop);
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', drop);
+    grip.addEventListener('pointercancel', drop);
   }
   function commitMove(group, from, to) {
-    const v = view(), x = items[group[from]], y = items[group[to]], after = to > from;
+    const v = view(),
+      x = items[group[from]],
+      y = items[group[to]],
+      after = to > from;
     if (!x || !y) return;
     const next = items.filter(it => it !== x);
     next.splice(next.indexOf(y) + (after ? 1 : 0), 0, x);
@@ -656,33 +1081,58 @@
     cacheSave(v, m);
     showList({ ...m, cached: true });
     const moved = $('listBody').querySelector(`.li[data-i="${next.indexOf(x)}"]`);
-    moved?.animate([{ background: 'rgba(255, 255, 255, .08)' }, { background: 'transparent' }], { duration: ms(700), easing: 'ease-out' });
-    send({ type: 'cmd', cmd: reo === 'queue' ? 'queueMove' : 'playlistMove', uri: x.uri, uid: x.uid, to: y.uid, after, list: v.uri });
+    moved?.animate([{ background: 'rgba(255, 255, 255, .08)' }, { background: 'transparent' }], {
+      duration: ms(700),
+      easing: 'ease-out',
+    });
+    send({
+      type: 'cmd',
+      cmd: reo === 'queue' ? 'queueMove' : 'playlistMove',
+      uri: x.uri,
+      uid: x.uid,
+      to: y.uid,
+      after,
+      list: v.uri,
+    });
   }
 
   // ---- Devices: where Spotify plays, as cards. The one playing on top, big, with the song and its volume; every other
   // device below with "Play here" and its own volume when Spotify lets it be set. Switching keeps the panel open and
   // looks again a moment later, so the card that lights up is the real answer.
-  let devDrag = 0, devPending = null, devSync = 0;
+  let devDrag = 0,
+    devPending = null,
+    devSync = 0;
   const DEV = { Computer: 'Computer', Smartphone: 'Phone', Tablet: 'Tablet', Speaker: 'Speaker' };
-  const volRow = (x, big) => x.vol === null || x.vol === undefined ? '' : `<div class="dv-vol${big ? ' big' : ''}${+x.vol === 0 ? ' muted' : ''}">
+  const volRow = (x, big) =>
+    x.vol === null || x.vol === undefined
+      ? ''
+      : `<div class="dv-vol${big ? ' big' : ''}${+x.vol === 0 ? ' muted' : ''}">
       <button class="dv-mute" aria-label="${+x.vol === 0 ? 'Unmute' : 'Mute'} ${esc(x.title)}">${I.vol}</button>
       <input type="range" min="0" max="100" step="1" value="${+x.vol}" style="--p:${+x.vol}%" aria-label="Volume on ${esc(x.title)}">
       <output>${+x.vol}</output></div>`;
   function devices(out, m) {
-    if (devDrag) { viewData = m; return; } // a slider is in the finger: the refresh waits for the next one
-    const live = items.find(x => x.live), rest = items.filter(x => x !== live);
-    const cur = P.cur, ic = x => I[x.dtype] || I.Speaker, kind = x => esc(x.kind || DEV[x.dtype] || x.dtype || 'Device');
+    if (devDrag) {
+      viewData = m;
+      return;
+    } // a slider is in the finger: the refresh waits for the next one
+    const live = items.find(x => x.live),
+      rest = items.filter(x => x !== live);
+    const cur = P.cur,
+      ic = x => I[x.dtype] || I.Speaker,
+      kind = x => esc(x.kind || DEV[x.dtype] || x.dtype || 'Device');
     let html = '<div class="dv">';
-    if (live) html += `<section class="dv-now" data-i="${items.indexOf(live)}">
+    if (live)
+      html += `<section class="dv-now" data-i="${items.indexOf(live)}">
         <div class="dv-head"><div class="dv-ic">${ic(live)}</div><div class="dv-txt"><small>Playing on</small><b>${esc(live.title)}</b><span>${kind(live)}</span></div>
           <span class="eq${P.playing ? '' : ' paused'}"><i></i><i></i><i></i></span></div>
         ${cur?.title ? `<div class="dv-song"><div class="dv-art"${artStyle(P.art || cur.art)}></div><div class="dv-txt"><b>${esc(cur.title)}</b><span>${esc(cur.artist || '')}</span></div></div>` : ''}
         ${volRow(live, true)}</section>`;
-    else if (items.length) html += `<section class="dv-now idle"><div class="dv-head"><div class="dv-ic">${I.Speaker}</div><div class="dv-txt"><small>Not playing</small><b>Pick a device</b><span>Spotify starts there</span></div></div></section>`;
+    else if (items.length)
+      html += `<section class="dv-now idle"><div class="dv-head"><div class="dv-ic">${I.Speaker}</div><div class="dv-txt"><small>Not playing</small><b>Pick a device</b><span>Spotify starts there</span></div></div></section>`;
     if (rest.length) {
       html += `<h4>${live ? 'Other devices' : 'Devices'}</h4><div class="dv-grid">`;
-      for (const x of rest) html += `<section class="dv-card${devPending === x.device ? ' pending' : ''}" data-i="${items.indexOf(x)}">
+      for (const x of rest)
+        html += `<section class="dv-card${devPending === x.device ? ' pending' : ''}" data-i="${items.indexOf(x)}">
           <button class="dv-go" aria-label="Play on ${esc(x.title)}"><div class="dv-ic">${ic(x)}</div><div class="dv-txt"><b>${esc(x.title)}</b><span>${kind(x)}</span></div>
           <span class="dv-cta">${devPending === x.device ? 'Switching…' : 'Play here'}</span></button>${volRow(x)}</section>`;
       html += '</div>';
@@ -690,7 +1140,10 @@
     if (!items.length) html += `<div class="li-empty">${esc(m.error || TABS.devices)}</div>`;
     html += `<button class="dv-refresh">${I.refresh}<span>Refresh</span></button><p class="dv-hint">Don't see a device? Open Spotify on it once, on the same account.</p></div>`;
     out.innerHTML = html;
-    out.querySelector('.dv-refresh').onclick = e => { e.currentTarget.classList.add('spin'); request(view()); };
+    out.querySelector('.dv-refresh').onclick = e => {
+      e.currentTarget.classList.add('spin');
+      request(view());
+    };
     out.querySelectorAll('[data-i]').forEach(card => {
       const x = items[+card.dataset.i];
       if (!x) return;
@@ -701,7 +1154,10 @@
         card.classList.add('pending');
         card.querySelector('.dv-cta').textContent = 'Switching…';
         setTimeout(() => view().which === 'devices' && request(view()), 1400);
-        setTimeout(() => { devPending = null; if (view().which === 'devices') request(view()); }, 4000);
+        setTimeout(() => {
+          devPending = null;
+          if (view().which === 'devices') request(view());
+        }, 4000);
       });
       const box = card.querySelector('.dv-vol');
       if (box) wireDevVol(box, x);
@@ -710,37 +1166,67 @@
     // The playing device's slider follows the main volume (keys, Spotify itself) while nobody is dragging it.
     devSync = setInterval(() => {
       if (view().which !== 'devices' || !document.body.classList.contains('lists-open')) return clearInterval(devSync);
-      const lv = items.find(x => x.live), box = lv && out.querySelector('.dv-now .dv-vol');
+      const lv = items.find(x => x.live),
+        box = lv && out.querySelector('.dv-now .dv-vol');
       if (!box || devDrag) return;
       const v = +$('vol').value;
-      if (Number.isFinite(v) && v !== lv.vol) { lv.vol = v; showVol(box, v); }
+      if (Number.isFinite(v) && v !== lv.vol) {
+        lv.vol = v;
+        showVol(box, v);
+      }
     }, 1000);
   }
   function showVol(box, v) {
     const r = box.querySelector('input');
-    r.value = v; r.style.setProperty('--p', `${v}%`);
+    r.value = v;
+    r.style.setProperty('--p', `${v}%`);
     box.querySelector('output').textContent = v;
     box.classList.toggle('muted', v === 0);
   }
   function wireDevVol(box, x) {
     const r = box.querySelector('input');
-    let sentAt = 0, t = 0, before = x.vol || 50;
+    let sentAt = 0,
+      t = 0,
+      before = x.vol || 50;
     const send_ = (v, now) => {
       clearTimeout(t);
       const go = () => {
         sentAt = performance.now();
-        if (x.live) { const mv = $('vol'); mv.value = v; mv.dispatchEvent(new Event('input')); } // the main slider's own path
+        if (x.live) {
+          const mv = $('vol');
+          mv.value = v;
+          mv.dispatchEvent(new Event('input'));
+        } // the main slider's own path
         else cmdOf('devVolume', { id: x.device, vol: v });
       };
-      if (now || performance.now() - sentAt > 250) go(); else t = setTimeout(go, 250 - (performance.now() - sentAt));
+      if (now || performance.now() - sentAt > 250) go();
+      else t = setTimeout(go, 250 - (performance.now() - sentAt));
     };
-    const set = (v, now) => { v = Math.max(0, Math.min(100, Math.round(v))); if (v > 0) before = v; x.vol = v; showVol(box, v); send_(v, now); };
-    r.addEventListener('pointerdown', () => { devDrag++; });
-    const up = () => { if (devDrag) devDrag--; };
-    r.addEventListener('pointerup', up); r.addEventListener('pointercancel', up);
+    const set = (v, now) => {
+      v = Math.max(0, Math.min(100, Math.round(v)));
+      if (v > 0) before = v;
+      x.vol = v;
+      showVol(box, v);
+      send_(v, now);
+    };
+    r.addEventListener('pointerdown', () => {
+      devDrag++;
+    });
+    const up = () => {
+      if (devDrag) devDrag--;
+    };
+    r.addEventListener('pointerup', up);
+    r.addEventListener('pointercancel', up);
     r.addEventListener('input', () => set(+r.value));
-    r.addEventListener('change', () => { set(+r.value, true); devDrag = 0; });
-    box.querySelector('.dv-mute').onclick = e => { e.stopPropagation(); set(x.vol > 0 ? 0 : before || 50, true); call('vibrate', 10); };
+    r.addEventListener('change', () => {
+      set(+r.value, true);
+      devDrag = 0;
+    });
+    box.querySelector('.dv-mute').onclick = e => {
+      e.stopPropagation();
+      set(x.vol > 0 ? 0 : before || 50, true);
+      call('vibrate', 10);
+    };
   }
 
   // ---- settings live preview: the sheet slides to one side so the player behind it shows every change live.
@@ -754,7 +1240,10 @@
   // time shows where you would land, and the seek happens on release (app.js then ignores stale beats for a moment).
   const tlHit = $('tlhit');
   let tls = null;
-  const tlAt = e => { const r = $('tltrack').getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
+  const tlAt = e => {
+    const r = $('tltrack').getBoundingClientRect();
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  };
   function tlMove(e) {
     tls.f = tlAt(e);
     window.fillPreview(tls.f);
@@ -773,8 +1262,12 @@
   tlHit.addEventListener('pointermove', e => {
     if (!tls || e.pointerId !== tls.id) return;
     if (!tls.on) {
-      const dx = e.clientX - tls.x, dy = e.clientY - tls.y;
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { tls = null; return; } // vertical: not a scrub
+      const dx = e.clientX - tls.x,
+        dy = e.clientY - tls.y;
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        tls = null;
+        return;
+      } // vertical: not a scrub
       if (Math.abs(dx) < 6 || !Gesture.claim('timeline')) return;
       tlStart(e);
     }
@@ -782,11 +1275,16 @@
   });
   const tlEnd = e => {
     if (!tls || e.pointerId !== tls.id) return;
-    if (!tls.on) { // a plain tap: seek there
-      if (e.type !== 'pointerup' || !Gesture.tap()) { tls = null; return; }
+    if (!tls.on) {
+      // a plain tap: seek there
+      if (e.type !== 'pointerup' || !Gesture.tap()) {
+        tls = null;
+        return;
+      }
       tlStart(e);
     }
-    const at = Math.round(tls.f * P.dur), ok = e.type === 'pointerup';
+    const at = Math.round(tls.f * P.dur),
+      ok = e.type === 'pointerup';
     tls = null;
     document.body.classList.remove('tl-drag');
     if (ok) seek(at);
@@ -800,135 +1298,393 @@
   const LAYOUTS = () => Settings.schema().find(x => x.k === 'layout')?.opts || [];
   const layoutName = () => LAYOUTS().find(([v]) => v === S.layout)?.[1] || '';
   const SVG = p => `<svg viewBox="0 0 24 24">${p}</svg>`;
-  const cycle = (k, list, names) => { const v = list[(list.indexOf(S[k]) + 1) % list.length]; Settings.set(k, v); window.notice?.(names[v], 1400); };
+  const cycle = (k, list, names) => {
+    const v = list[(list.indexOf(S[k]) + 1) % list.length];
+    Settings.set(k, v);
+    window.notice?.(names[v], 1400);
+  };
   const QB = {
-    swap: { html: SVG('<path d="M6 8h12m0 0-3.5-3.5M18 8l-3.5 3.5M18 16H6m0 0 3.5-3.5M6 16l3.5 3.5"/>'), tip: 'Swap cover side',
-      run: () => { const v = S.artSide === 'left' ? 'right' : 'left'; Settings.set('artSide', v); window.notice?.(`Cover on the ${v}`, 1400); } },
-    roman: { html: 'Aa', tip: 'Romanization', on: () => S.roman !== 'off',
-      run: () => cycle('roman', ['smart', 'always', 'off'], { smart: 'Romanize · keep Hindi', always: 'Romanize everything', off: 'Original script' }) },
-    layout: { html: SVG('<path d="M4 5.5h16v13H4zM10 5.5v13"/>'), tip: 'Choose a layout', run: () => openQuick('layouts') },
-    theme: { html: SVG('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>'), tip: 'Card colour',
-      run: () => cycle('clockTheme', ['dark', 'light', 'auto'], { dark: 'Dark cards', light: 'Light cards', auto: 'Automatic card colour' }) },
-    secs: { html: 'ss', tip: 'Seconds', on: () => S.clockSeconds,
-      run: () => { Settings.set('clockSeconds', !S.clockSeconds); window.notice?.(S.clockSeconds ? 'Seconds on' : 'Seconds off', 1200); } },
-    h24: { html: () => (S.clock24 === '24' ? '24' : '12'), tip: '12 / 24 hour',
-      run: () => { Settings.set('clock24', S.clock24 === '24' ? '12' : '24'); window.notice?.(S.clock24 === '24' ? '24-hour clock' : '12-hour clock', 1200); } },
-    tune: { html: SVG('<path d="M4 7h8M18 7h2M4 17h2M12 17h8"/><circle cx="15" cy="7" r="2.4"/><circle cx="9" cy="17" r="2.4"/>'), tip: 'Quick settings', run: () => openQuick() },
+    swap: {
+      html: SVG('<path d="M6 8h12m0 0-3.5-3.5M18 8l-3.5 3.5M18 16H6m0 0 3.5-3.5M6 16l3.5 3.5"/>'),
+      tip: 'Swap cover side',
+      run: () => {
+        const v = S.artSide === 'left' ? 'right' : 'left';
+        Settings.set('artSide', v);
+        window.notice?.(`Cover on the ${v}`, 1400);
+      },
+    },
+    roman: {
+      html: 'Aa',
+      tip: 'Romanization',
+      on: () => S.roman !== 'off',
+      run: () =>
+        cycle('roman', ['smart', 'always', 'off'], {
+          smart: 'Romanize · keep Hindi',
+          always: 'Romanize everything',
+          off: 'Original script',
+        }),
+    },
+    layout: {
+      html: SVG('<path d="M4 5.5h16v13H4zM10 5.5v13"/>'),
+      tip: 'Choose a layout',
+      run: () => openQuick('layouts'),
+    },
+    theme: {
+      html: SVG('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>'),
+      tip: 'Card colour',
+      run: () =>
+        cycle('clockTheme', ['dark', 'light', 'auto'], {
+          dark: 'Dark cards',
+          light: 'Light cards',
+          auto: 'Automatic card colour',
+        }),
+    },
+    secs: {
+      html: 'ss',
+      tip: 'Seconds',
+      on: () => S.clockSeconds,
+      run: () => {
+        Settings.set('clockSeconds', !S.clockSeconds);
+        window.notice?.(S.clockSeconds ? 'Seconds on' : 'Seconds off', 1200);
+      },
+    },
+    h24: {
+      html: () => (S.clock24 === '24' ? '24' : '12'),
+      tip: '12 / 24 hour',
+      run: () => {
+        Settings.set('clock24', S.clock24 === '24' ? '12' : '24');
+        window.notice?.(S.clock24 === '24' ? '24-hour clock' : '12-hour clock', 1200);
+      },
+    },
+    tune: {
+      html: SVG(
+        '<path d="M4 7h8M18 7h2M4 17h2M12 17h8"/><circle cx="15" cy="7" r="2.4"/><circle cx="9" cy="17" r="2.4"/>',
+      ),
+      tip: 'Quick settings',
+      run: () => openQuick(),
+    },
     // A quarter turn per tap from however the screen stands now, then held there: no waiting on the tilt sensor.
-    rotate: { html: SVG('<rect x="7.5" y="3.5" width="9" height="17" rx="2"/><path d="M3 9.5a9 9 0 0 1 3-5M21 14.5a9 9 0 0 1-3 5"/><path d="M3.5 5v4.5H8M20.5 19v-4.5H16"/>'),
-      tip: 'Rotate the screen', on: () => ROT.includes(S.orientation),
+    rotate: {
+      html: SVG(
+        '<rect x="7.5" y="3.5" width="9" height="17" rx="2"/><path d="M3 9.5a9 9 0 0 1 3-5M21 14.5a9 9 0 0 1-3 5"/><path d="M3.5 5v4.5H8M20.5 19v-4.5H16"/>',
+      ),
+      tip: 'Rotate the screen',
+      on: () => ROT.includes(S.orientation),
       run: async () => {
-        const i = ROT.indexOf(ROT.includes(S.orientation) ? S.orientation : screen.orientation?.type), o = ROT[(i + 1) % 4];
+        const i = ROT.indexOf(ROT.includes(S.orientation) ? S.orientation : screen.orientation?.type),
+          o = ROT[(i + 1) % 4];
         // The web can only turn the screen where the browser allows it (web/public/install.js lyricdockRotate).
         if (window.LYRICDOCK_WEB && !(await window.lyricdockRotate?.(o))) {
-          const apple = /iPhone|iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-          return window.notice?.(apple ? 'iPhone and iPad turn with the device - Apple doesn\'t let a page lock the screen. Use rotation lock in Control Centre.'
-            : 'This screen can\'t be turned from a browser - turn the device, or use the LyricDock Android app', 5000);
+          const apple =
+            /iPhone|iPad/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+          return window.notice?.(
+            apple
+              ? "iPhone and iPad turn with the device - Apple doesn't let a page lock the screen. Use rotation lock in Control Centre."
+              : "This screen can't be turned from a browser - turn the device, or use the LyricDock Android app",
+            5000,
+          );
         }
         Settings.set('orientation', o);
         window.notice?.('Rotation locked - Settings → Orientation → Auto-rotate to undo', 2600);
-      } },
+      },
+    },
   };
   // Full screen, next to rotate everywhere. Web: the browser's own (web/public/install.js). Android app: the system
   // bars on or off (MainActivity.setFullscreen). Corners in, while full screen, to leave it.
   const nativeFull = () => !window.LYRICDOCK_WEB && typeof window.Dock?.setFullscreen === 'function';
-  const isFull = () => nativeFull() ? !!Dock.isFullscreen() : !!(document.fullscreenElement || document.webkitFullscreenElement)
-    || matchMedia('(display-mode: fullscreen)').matches;
-  QB.full = { html: () => SVG(isFull() ? '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>' : '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
-    tip: 'Full screen', on: isFull, run: () => {
-      if (nativeFull()) { Dock.setFullscreen(!isFull()); renderQs(); window.notice?.(isFull() ? 'Full screen' : 'Status and navigation bars shown', 1400); }
-      else window.lyricdockFullscreen?.();
-    } };
+  const isFull = () =>
+    nativeFull()
+      ? !!Dock.isFullscreen()
+      : !!(document.fullscreenElement || document.webkitFullscreenElement) ||
+        matchMedia('(display-mode: fullscreen)').matches;
+  QB.full = {
+    html: () =>
+      SVG(
+        isFull()
+          ? '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>'
+          : '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+      ),
+    tip: 'Full screen',
+    on: isFull,
+    run: () => {
+      if (nativeFull()) {
+        Dock.setFullscreen(!isFull());
+        renderQs();
+        window.notice?.(isFull() ? 'Full screen' : 'Status and navigation bars shown', 1400);
+      } else window.lyricdockFullscreen?.();
+    },
+  };
   for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => renderQs());
   const ROT = ['landscape-primary', 'portrait-primary', 'landscape-secondary', 'portrait-secondary']; // a quarter turn apart, in order
-  const QBAR = { split: ['swap', 'roman', 'rotate', 'full', 'layout', 'tune'], player: ['roman', 'rotate', 'full', 'layout', 'tune'],
-    lyrics: ['roman', 'rotate', 'full', 'layout', 'tune'], cinema: ['roman', 'rotate', 'full', 'layout', 'tune'], nowbar: ['roman', 'rotate', 'full', 'layout', 'tune'],
-    clocksplit: ['swap', 'theme', 'secs', 'rotate', 'full', 'layout', 'tune'], clock: ['theme', 'secs', 'h24', 'rotate', 'full', 'layout', 'tune'] };
+  const QBAR = {
+    split: ['swap', 'roman', 'rotate', 'full', 'layout', 'tune'],
+    player: ['roman', 'rotate', 'full', 'layout', 'tune'],
+    lyrics: ['roman', 'rotate', 'full', 'layout', 'tune'],
+    cinema: ['roman', 'rotate', 'full', 'layout', 'tune'],
+    nowbar: ['roman', 'rotate', 'full', 'layout', 'tune'],
+    clocksplit: ['swap', 'theme', 'secs', 'rotate', 'full', 'layout', 'tune'],
+    clock: ['theme', 'secs', 'h24', 'rotate', 'full', 'layout', 'tune'],
+  };
   // Keys are Settings schema keys; a row only shows while its own "when" holds.
   const LYR = ['roman', 'size', 'align', 'weight', 'lineGap', 'lineOpacity', 'blurLines', 'glow', 'scroll'];
   const STATUS = ['timeStyle', 'battery', 'battStyle', 'statPos'];
-  const CLK = ['clockTheme', 'clockSeconds', 'clock24', 'clockLayout', 'clockAnim', 'clockIntro', 'clockCards', 'clockScale', 'clockDigitGap', 'clockGroupGap', 'clockDim', 'clockSound', 'clockVolume', 'clockHaptic'];
+  const CLK = [
+    'clockTheme',
+    'clockSeconds',
+    'clock24',
+    'clockLayout',
+    'clockAnim',
+    'clockIntro',
+    'clockCards',
+    'clockScale',
+    'clockDigitGap',
+    'clockGroupGap',
+    'clockDim',
+    'clockSound',
+    'clockVolume',
+    'clockHaptic',
+  ];
   const QUICK = {
-    split: ['artSide', 'progress', ...LYR], player: [...LYR, ...STATUS],
-    lyrics: [...LYR, ...STATUS], cinema: [...LYR, ...STATUS], nowbar: ['spin', ...LYR, ...STATUS],
-    clocksplit: ['artSide', ...CLK], clock: [...CLK, ...STATUS],
+    split: ['artSide', 'progress', ...LYR],
+    player: [...LYR, ...STATUS],
+    lyrics: [...LYR, ...STATUS],
+    cinema: [...LYR, ...STATUS],
+    nowbar: ['spin', ...LYR, ...STATUS],
+    clocksplit: ['artSide', ...CLK],
+    clock: [...CLK, ...STATUS],
   };
   function renderQs() {
     // Rotate and full screen on every device (the miniplayer window has neither); where a platform can't do one, the
     // button says why instead of vanishing. An Android app too old for the bars toggle leaves full screen out.
-    const box = $('qs'), ids = (QBAR[S.layout] || ['layout', 'tune'])
-      .filter(id => !window.LYRICDOCK_MINI || (id !== 'full' && id !== 'rotate')).filter(id => id !== 'full' || window.LYRICDOCK_WEB || nativeFull());
-    box.replaceChildren(...ids.map(id => {
-      const q = QB[id], b = document.createElement('button');
-      b.dataset.q = id; b.title = q.tip; b.setAttribute('aria-label', q.tip);
-      b.innerHTML = typeof q.html === 'function' ? q.html() : q.html;
-      if (q.on?.()) b.classList.add('on');
-      return b;
-    }));
+    const box = $('qs'),
+      ids = (QBAR[S.layout] || ['layout', 'tune'])
+        .filter(id => !window.LYRICDOCK_MINI || (id !== 'full' && id !== 'rotate'))
+        .filter(id => id !== 'full' || window.LYRICDOCK_WEB || nativeFull());
+    box.replaceChildren(
+      ...ids.map(id => {
+        const q = QB[id],
+          b = document.createElement('button');
+        b.dataset.q = id;
+        b.title = q.tip;
+        b.setAttribute('aria-label', q.tip);
+        b.innerHTML = typeof q.html === 'function' ? q.html() : q.html;
+        if (q.on?.()) b.classList.add('on');
+        return b;
+      }),
+    );
   }
-  $('qs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { QB[b.dataset.q]?.run(); showUi(true); } });
+  $('qs').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b) {
+      QB[b.dataset.q]?.run();
+      showUi(true);
+    }
+  });
   // ---- layout picker (the quick bar's layout button, and the top of Settings -> Layout): every layout as a small,
   // true-to-scale sketch of where its blocks sit - measured on the phone in both orientations (docs/layout-map.md) -
   // with its name; the current one is ringed. A tap switches at once and the sheet stays, so trying them is quick.
-  const THUMBS = { land: { split: { cover: [8.8, 3.3, 30.5, 64.4], np: [6.7, 79.7, 35, 15.8], lyr: [43.6, 0, 50, 100], tl: [8.8, 69.7, 30.5, 2.8] },
-    player: { np: [6.2, 19.4, 41.4, 18.9], lyr: [49.1, 0, 44.5, 100], tl: [8, 42.8, 37.6, 5], deck: [6.7, 40.3, 40.5, 38.9] }, lyrics: { lyr: [6.7, 0, 86.8, 100], tl: [2.5, 96.1, 95, 0.8] },
-    cinema: { cover: [6.7, 78.3, 4.7, 10], np: [12.4, 77.8, 10.5, 11.1], lyr: [8.8, 0, 82.6, 100], tl: [2.5, 96.1, 95, 0.8] },
-    nowbar: { pill: [40, 75.6, 20.7, 13.3], lyr: [6.7, 0, 86.8, 86.1], tl: [2.5, 96.1, 95, 0.8] },
-    clocksplit: { cover: [9.5, 4.7, 29.3, 61.9], np: [6.7, 78.3, 35, 15.8], clock: [43.6, 0, 55.3, 100], tl: [9.5, 68.3, 29.3, 2.8] }, clock: { clock: [0, 0, 100, 100] } },
-  port: { split: { cover: [18.1, 10, 61.9, 29.3], np: [5.3, 44.5, 88.1, 7.5], lyr: [5.3, 52.9, 88.1, 43.8], tl: [18.1, 40.1, 61.9, 1.3] },
-    player: { np: [3.1, 10, 96.7, 10.7], lyr: [3.1, 21.7, 91.9, 61.8], tl: [6.1, 85.7, 86.1, 2.4], deck: [3.1, 84.5, 91.9, 13.6] }, lyrics: { lyr: [4.2, 10, 91.4, 90], tl: [5.3, 98.2, 89.4, 0.4] },
-    cinema: { cover: [4.2, 90, 10, 4.7], np: [16.1, 89.7, 22.2, 5.3], lyr: [8.6, 10, 82.5, 82.4], tl: [5.3, 98.2, 89.4, 0.4] },
-    nowbar: { pill: [27.2, 88.7, 43.6, 6.3], lyr: [4.2, 10, 91.4, 75.8], tl: [5.3, 98.2, 89.4, 0.4] },
-    clocksplit: { cover: [18.1, 10, 61.9, 29.3], np: [5.3, 44.5, 88.1, 7.5], clock: [5.3, 52.9, 88.1, 43.8], tl: [18.1, 40.1, 61.9, 1.3] }, clock: { clock: [0, 0, 100, 100] } } };
-  const HINT = { split: 'Cover beside the lyrics', player: 'Mini player + lyrics', lyrics: 'Just the lyrics',
-    cinema: 'Huge centred lyrics', nowbar: 'Lyrics + floating pill', clocksplit: 'Cover + flip clock', clock: 'Flip clock, full screen' };
+  const THUMBS = {
+    land: {
+      split: {
+        cover: [8.8, 3.3, 30.5, 64.4],
+        np: [6.7, 79.7, 35, 15.8],
+        lyr: [43.6, 0, 50, 100],
+        tl: [8.8, 69.7, 30.5, 2.8],
+      },
+      player: {
+        np: [6.2, 19.4, 41.4, 18.9],
+        lyr: [49.1, 0, 44.5, 100],
+        tl: [8, 42.8, 37.6, 5],
+        deck: [6.7, 40.3, 40.5, 38.9],
+      },
+      lyrics: { lyr: [6.7, 0, 86.8, 100], tl: [2.5, 96.1, 95, 0.8] },
+      cinema: {
+        cover: [6.7, 78.3, 4.7, 10],
+        np: [12.4, 77.8, 10.5, 11.1],
+        lyr: [8.8, 0, 82.6, 100],
+        tl: [2.5, 96.1, 95, 0.8],
+      },
+      nowbar: { pill: [40, 75.6, 20.7, 13.3], lyr: [6.7, 0, 86.8, 86.1], tl: [2.5, 96.1, 95, 0.8] },
+      clocksplit: {
+        cover: [9.5, 4.7, 29.3, 61.9],
+        np: [6.7, 78.3, 35, 15.8],
+        clock: [43.6, 0, 55.3, 100],
+        tl: [9.5, 68.3, 29.3, 2.8],
+      },
+      clock: { clock: [0, 0, 100, 100] },
+    },
+    port: {
+      split: {
+        cover: [18.1, 10, 61.9, 29.3],
+        np: [5.3, 44.5, 88.1, 7.5],
+        lyr: [5.3, 52.9, 88.1, 43.8],
+        tl: [18.1, 40.1, 61.9, 1.3],
+      },
+      player: {
+        np: [3.1, 10, 96.7, 10.7],
+        lyr: [3.1, 21.7, 91.9, 61.8],
+        tl: [6.1, 85.7, 86.1, 2.4],
+        deck: [3.1, 84.5, 91.9, 13.6],
+      },
+      lyrics: { lyr: [4.2, 10, 91.4, 90], tl: [5.3, 98.2, 89.4, 0.4] },
+      cinema: {
+        cover: [4.2, 90, 10, 4.7],
+        np: [16.1, 89.7, 22.2, 5.3],
+        lyr: [8.6, 10, 82.5, 82.4],
+        tl: [5.3, 98.2, 89.4, 0.4],
+      },
+      nowbar: { pill: [27.2, 88.7, 43.6, 6.3], lyr: [4.2, 10, 91.4, 75.8], tl: [5.3, 98.2, 89.4, 0.4] },
+      clocksplit: {
+        cover: [18.1, 10, 61.9, 29.3],
+        np: [5.3, 44.5, 88.1, 7.5],
+        clock: [5.3, 52.9, 88.1, 43.8],
+        tl: [18.1, 40.1, 61.9, 1.3],
+      },
+      clock: { clock: [0, 0, 100, 100] },
+    },
+  };
+  const HINT = {
+    split: 'Cover beside the lyrics',
+    player: 'Mini player + lyrics',
+    lyrics: 'Just the lyrics',
+    cinema: 'Huge centred lyrics',
+    nowbar: 'Lyrics + floating pill',
+    clocksplit: 'Cover + flip clock',
+    clock: 'Flip clock, full screen',
+  };
   function sketch(L) {
-    const land = innerWidth > innerHeight, t = THUMBS[land ? 'land' : 'port'][L] || {}, H = land ? 47.4 : 211;
-    const box = (r, cls, rx = 1.4) => { const [x, y, w, h] = [r[0], r[1] * H / 100, r[2], r[3] * H / 100]; return { x, y, w, h, svg: `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>` }; };
-    const bar = (x, y, w, h, cls) => `<rect class="${cls}" x="${x}" y="${y}" width="${Math.max(1, w)}" height="${h}" rx="${h / 2}"/>`;
+    const land = innerWidth > innerHeight,
+      t = THUMBS[land ? 'land' : 'port'][L] || {},
+      H = land ? 47.4 : 211;
+    const box = (r, cls, rx = 1.4) => {
+      const [x, y, w, h] = [r[0], (r[1] * H) / 100, r[2], (r[3] * H) / 100];
+      return { x, y, w, h, svg: `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>` };
+    };
+    const bar = (x, y, w, h, cls) =>
+      `<rect class="${cls}" x="${x}" y="${y}" width="${Math.max(1, w)}" height="${h}" rx="${h / 2}"/>`;
     let s = '';
     if (t.cover) s += box(t.cover, 'c').svg;
-    if (t.pill) { const p = box(t.pill, 'p', t.pill[3] * H / 200); s += p.svg + `<circle class="c" cx="${p.x + p.h / 2}" cy="${p.y + p.h / 2}" r="${p.h * .34}"/>` + bar(p.x + p.h, p.y + p.h * .3, p.w * .45, p.h * .16, 't1') + bar(p.x + p.h, p.y + p.h * .56, p.w * .3, p.h * .12, 't'); }
-    if (t.np) { const n = box(t.np, 'x'), mid = ['split', 'clocksplit'].includes(L), h = Math.min(n.h * .24, 3.2), w1 = n.w * .5, w2 = n.w * .34;
-      s += bar(mid ? n.x + (n.w - w1) / 2 : n.x + 1, n.y + n.h * .14, w1, h, 't1') + bar(mid ? n.x + (n.w - w2) / 2 : n.x + 1, n.y + n.h * .52, w2, h * .8, 't'); }
-    if (t.lyr) { const l = box(t.lyr, 'x'), h = Math.min(l.h * .07, land ? 4.2 : 6), gap = h * 1.9, cx = L === 'cinema';
-      [.78, .55, .92, .6, .7, .5].forEach((f, i) => { const y = l.y + l.h * .12 + i * gap; if (y + h > l.y + l.h - 1) return; const w = l.w * f * .92; s += bar(cx ? l.x + (l.w - w) / 2 : l.x + 1, y, w, h, i === 1 ? 'l1' : 'l'); }); }
-    if (t.clock) { const k = box(t.clock, 'x'), rows = !land && k.h > k.w ? 2 : 1, per = 4 / rows, cw = Math.min(k.w * .9 / per / 1.06, k.h * .8 / rows / 1.45), ch = cw * 1.45, g = cw * .1;
-      const W = per * cw + (per - 1) * g + (rows === 1 ? cw * .3 : 0), x0 = k.x + (k.w - W) / 2, y0 = k.y + (k.h - rows * ch - (rows - 1) * g * 2) / 2;
-      for (let i = 0; i < 4; i++) { const r = rows === 1 ? 0 : i >> 1, c = rows === 1 ? i : i & 1; s += `<rect class="k" x="${x0 + c * (cw + g) + (rows === 1 && i > 1 ? cw * .3 : 0)}" y="${y0 + r * (ch + g * 2)}" width="${cw}" height="${ch}" rx="${cw * .12}"/>`; } }
-    if (t.deck) { const d = box(t.deck, 'd', 2.4); s += d.svg; [.3, .5, .7].forEach((f, i) => { s += `<circle class="${i === 1 ? 't1' : 't'}" cx="${d.x + d.w * f}" cy="${d.y + d.h * .55}" r="${Math.min(d.h, d.w) * (i === 1 ? .14 : .08)}"/>`; }); }
-    if (t.tl) { const b = box(t.tl, 'x'), h = Math.max(.8, Math.min(b.h, 1.4)); s += bar(b.x, b.y + (b.h - h) / 2, b.w, h, 'tl') + bar(b.x, b.y + (b.h - h) / 2, b.w * .35, h, 'tf'); }
+    if (t.pill) {
+      const p = box(t.pill, 'p', (t.pill[3] * H) / 200);
+      s +=
+        p.svg +
+        `<circle class="c" cx="${p.x + p.h / 2}" cy="${p.y + p.h / 2}" r="${p.h * 0.34}"/>` +
+        bar(p.x + p.h, p.y + p.h * 0.3, p.w * 0.45, p.h * 0.16, 't1') +
+        bar(p.x + p.h, p.y + p.h * 0.56, p.w * 0.3, p.h * 0.12, 't');
+    }
+    if (t.np) {
+      const n = box(t.np, 'x'),
+        mid = ['split', 'clocksplit'].includes(L),
+        h = Math.min(n.h * 0.24, 3.2),
+        w1 = n.w * 0.5,
+        w2 = n.w * 0.34;
+      s +=
+        bar(mid ? n.x + (n.w - w1) / 2 : n.x + 1, n.y + n.h * 0.14, w1, h, 't1') +
+        bar(mid ? n.x + (n.w - w2) / 2 : n.x + 1, n.y + n.h * 0.52, w2, h * 0.8, 't');
+    }
+    if (t.lyr) {
+      const l = box(t.lyr, 'x'),
+        h = Math.min(l.h * 0.07, land ? 4.2 : 6),
+        gap = h * 1.9,
+        cx = L === 'cinema';
+      [0.78, 0.55, 0.92, 0.6, 0.7, 0.5].forEach((f, i) => {
+        const y = l.y + l.h * 0.12 + i * gap;
+        if (y + h > l.y + l.h - 1) return;
+        const w = l.w * f * 0.92;
+        s += bar(cx ? l.x + (l.w - w) / 2 : l.x + 1, y, w, h, i === 1 ? 'l1' : 'l');
+      });
+    }
+    if (t.clock) {
+      const k = box(t.clock, 'x'),
+        rows = !land && k.h > k.w ? 2 : 1,
+        per = 4 / rows,
+        cw = Math.min((k.w * 0.9) / per / 1.06, (k.h * 0.8) / rows / 1.45),
+        ch = cw * 1.45,
+        g = cw * 0.1;
+      const W = per * cw + (per - 1) * g + (rows === 1 ? cw * 0.3 : 0),
+        x0 = k.x + (k.w - W) / 2,
+        y0 = k.y + (k.h - rows * ch - (rows - 1) * g * 2) / 2;
+      for (let i = 0; i < 4; i++) {
+        const r = rows === 1 ? 0 : i >> 1,
+          c = rows === 1 ? i : i & 1;
+        s += `<rect class="k" x="${x0 + c * (cw + g) + (rows === 1 && i > 1 ? cw * 0.3 : 0)}" y="${y0 + r * (ch + g * 2)}" width="${cw}" height="${ch}" rx="${cw * 0.12}"/>`;
+      }
+    }
+    if (t.deck) {
+      const d = box(t.deck, 'd', 2.4);
+      s += d.svg;
+      [0.3, 0.5, 0.7].forEach((f, i) => {
+        s += `<circle class="${i === 1 ? 't1' : 't'}" cx="${d.x + d.w * f}" cy="${d.y + d.h * 0.55}" r="${Math.min(d.h, d.w) * (i === 1 ? 0.14 : 0.08)}"/>`;
+      });
+    }
+    if (t.tl) {
+      const b = box(t.tl, 'x'),
+        h = Math.max(0.8, Math.min(b.h, 1.4));
+      s += bar(b.x, b.y + (b.h - h) / 2, b.w, h, 'tl') + bar(b.x, b.y + (b.h - h) / 2, b.w * 0.35, h, 'tf');
+    }
     return `<svg viewBox="0 0 100 ${H}" aria-hidden="true">${s}</svg>`;
   }
   window.layoutGrid = () => {
     const g = document.createElement('div');
     g.className = 'lp-grid';
-    g.innerHTML = LAYOUTS().map(([v, name]) => `<button class="lp-card${v === S.layout ? ' on' : ''}" data-l="${v}" aria-pressed="${v === S.layout}">${sketch(v)}<b>${name}</b><small>${HINT[v] || ''}</small></button>`).join('');
+    g.innerHTML = LAYOUTS()
+      .map(
+        ([v, name]) =>
+          `<button class="lp-card${v === S.layout ? ' on' : ''}" data-l="${v}" aria-pressed="${v === S.layout}">${sketch(v)}<b>${name}</b><small>${HINT[v] || ''}</small></button>`,
+      )
+      .join('');
     g.addEventListener('click', e => {
       const c = e.target.closest('.lp-card');
       if (!c || c.dataset.l === S.layout || !Gesture.tap()) return;
       Settings.set('layout', c.dataset.l); // the blocks glide to their new places (layout morph, below)
-      if (!MORPH_OK) $('wrap').animate([{ opacity: 0.2, scale: 0.985 }, { opacity: 1, scale: 1 }], { duration: ms(380), easing: 'cubic-bezier(.2,.8,.2,1)' });
-      g.querySelectorAll('.lp-card').forEach(x => { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c); });
+      if (!MORPH_OK)
+        $('wrap').animate(
+          [
+            { opacity: 0.2, scale: 0.985 },
+            { opacity: 1, scale: 1 },
+          ],
+          { duration: ms(380), easing: 'cubic-bezier(.2,.8,.2,1)' },
+        );
+      g.querySelectorAll('.lp-card').forEach(x => {
+        x.classList.toggle('on', x === c);
+        x.setAttribute('aria-pressed', x === c);
+      });
     });
     // the portrait carousel opens on the current layout
-    requestAnimationFrame(() => { const c = g.querySelector('.lp-card.on'); if (c && g.scrollWidth > g.clientWidth) g.scrollLeft = c.getBoundingClientRect().left - g.getBoundingClientRect().left + g.scrollLeft - (g.clientWidth - c.offsetWidth) / 2; });
+    requestAnimationFrame(() => {
+      const c = g.querySelector('.lp-card.on');
+      if (c && g.scrollWidth > g.clientWidth)
+        g.scrollLeft =
+          c.getBoundingClientRect().left -
+          g.getBoundingClientRect().left +
+          g.scrollLeft -
+          (g.clientWidth - c.offsetWidth) / 2;
+    });
     return g;
   };
   // Settings -> Lyrics -> Lyrics sources (Better Lyrics' provider list): drag a row by its grip to reorder, the switch
   // turns that source off. Saved as S.srcOrder ('-' in front = off); Lyrics.rank reads it, app.js re-picks on change.
   const SYNC = { word: ['Word', 'w'], line: ['Line', 'l'], static: ['Unsynced', 's'] };
-  const GRIP = '<svg viewBox="0 0 10 16" aria-hidden="true"><circle cx="3" cy="3" r="1.3"/><circle cx="7" cy="3" r="1.3"/><circle cx="3" cy="8" r="1.3"/><circle cx="7" cy="8" r="1.3"/><circle cx="3" cy="13" r="1.3"/><circle cx="7" cy="13" r="1.3"/></svg>';
+  const GRIP =
+    '<svg viewBox="0 0 10 16" aria-hidden="true"><circle cx="3" cy="3" r="1.3"/><circle cx="7" cy="3" r="1.3"/><circle cx="3" cy="8" r="1.3"/><circle cx="7" cy="8" r="1.3"/><circle cx="3" cy="13" r="1.3"/><circle cx="7" cy="13" r="1.3"/></svg>';
   window.sourceList = () => {
-    const box = document.createElement('div'), rows = document.createElement('div');
+    const box = document.createElement('div'),
+      rows = document.createElement('div');
     box.className = 'src-list';
-    box.innerHTML = '<div class="src-head"><b>Lyrics sources</b><small>Drag to reorder: higher sources win. Switch one off to never use it.</small></div>';
+    box.innerHTML =
+      '<div class="src-head"><b>Lyrics sources</b><small>Drag to reorder: higher sources win. Switch one off to never use it.</small></div>';
     rows.className = 'src-rows';
     box.append(rows);
     const order = () => [...rows.children].map(r => (r.querySelector('input').checked ? '' : '-') + r.dataset.k);
-    const save = () => { const o = order(); if (o.join() !== S.srcOrder.join()) Settings.set('srcOrder', o, false); };
+    const save = () => {
+      const o = order();
+      if (o.join() !== S.srcOrder.join()) Settings.set('srcOrder', o, false);
+    };
     for (const raw of S.srcOrder) {
-      const k = raw.replace(/^-/, ''), [src, kind] = k.split(':'), sy = SYNC[kind];
+      const k = raw.replace(/^-/, ''),
+        [src, kind] = k.split(':'),
+        sy = SYNC[kind];
       if (!sy) continue;
       const r = document.createElement('div');
       r.className = 'src-row';
@@ -949,7 +1705,9 @@
       const move = ev => {
         if (ev.pointerId !== e.pointerId) return;
         const top = row.offsetTop;
-        const next = [...rows.children].find(s => s !== row && ev.clientY < s.getBoundingClientRect().top + s.offsetHeight / 2);
+        const next = [...rows.children].find(
+          s => s !== row && ev.clientY < s.getBoundingClientRect().top + s.offsetHeight / 2,
+        );
         if (next !== row.nextElementSibling) rows.insertBefore(row, next ?? null);
         y0 += row.offsetTop - top; // the row moved in the list: keep it under the finger
         row.style.transform = `translateY(${ev.clientY - y0}px)`;
@@ -971,52 +1729,125 @@
   };
   let qMode = 'settings';
   function renderQuick() {
-    const body = $('qbody'), top = body.scrollTop;
-    $('qtitle').innerHTML = qMode === 'layouts' ? `Layout<small>${layoutName()}</small>` : `Quick settings<small>${layoutName()}</small>`;
-    body.replaceChildren(...(qMode === 'layouts' ? [window.layoutGrid()] : Settings.rows(QUICK[S.layout] || ['roman', 'size'])));
+    const body = $('qbody'),
+      top = body.scrollTop;
+    $('qtitle').innerHTML =
+      qMode === 'layouts' ? `Layout<small>${layoutName()}</small>` : `Quick settings<small>${layoutName()}</small>`;
+    body.replaceChildren(
+      ...(qMode === 'layouts' ? [window.layoutGrid()] : Settings.rows(QUICK[S.layout] || ['roman', 'size'])),
+    );
     body.scrollTop = top;
   }
   const quickOpen = () => document.body.classList.contains('qs-open');
-  function openQuick(mode = 'settings') { qMode = mode; document.body.classList.toggle('qs-layouts', mode === 'layouts'); document.body.classList.add('qs-open'); renderQuick(); showUi(true); }
-  function closeQuick() { document.body.classList.remove('qs-open'); showUi(true); }
+  function openQuick(mode = 'settings') {
+    qMode = mode;
+    document.body.classList.toggle('qs-layouts', mode === 'layouts');
+    document.body.classList.add('qs-open');
+    renderQuick();
+    showUi(true);
+  }
+  function closeQuick() {
+    document.body.classList.remove('qs-open');
+    showUi(true);
+  }
   $('qclose').onclick = closeQuick;
-  document.addEventListener('pointerdown', e => { if (quickOpen() && !e.target.closest('#qpanel, #qs')) closeQuick(); }, true);
-  window.onSettingsRender = () => { if (quickOpen()) renderQuick(); };
+  document.addEventListener(
+    'pointerdown',
+    e => {
+      if (quickOpen() && !e.target.closest('#qpanel, #qs')) closeQuick();
+    },
+    true,
+  );
+  window.onSettingsRender = () => {
+    if (quickOpen()) renderQuick();
+  };
 
   // ---- layout morph: switching layouts or the cover side moves each block from where it was to where it now sits
   // (FLIP on a spring, like iOS's matched geometry). Blocks the new layout doesn't have fade out where they were; blocks
   // it adds fade and grow into place. Text blocks only move (scaling text reads as a glitch); the cover also scales.
   // Uses the translate / scale properties (Chrome 104+), which stack on whatever transform a block already has.
-  const MORPH = ['artbox', 'meta', 'lyrics', 'tl', 'deck', 'clockPane'], SCALES = new Set(['artbox', 'clockPane']);
+  const MORPH = ['artbox', 'meta', 'lyrics', 'tl', 'deck', 'clockPane'],
+    SCALES = new Set(['artbox', 'clockPane']);
   const MORPH_OK = CSS.supports('translate', '0 1px') && CSS.supports('scale', '1');
-  const SPRINGY = 'linear(0, .009, .035 2.1%, .141 4.4%, .723 12.9%, .938 16.7%, 1.017 19.4%, 1.067, 1.077 24.1%, 1.07 26.5%, 1.045 30.4%, .997 38.3%, .983 42.9%, .993 57.1%, 1)';
+  const SPRINGY =
+    'linear(0, .009, .035 2.1%, .141 4.4%, .723 12.9%, .938 16.7%, 1.017 19.4%, 1.067, 1.077 24.1%, 1.07 26.5%, 1.045 30.4%, .997 38.3%, .983 42.9%, .993 57.1%, 1)';
   const morphEase = CSS.supports('animation-timing-function', SPRINGY) ? SPRINGY : 'cubic-bezier(.2, .9, .25, 1.06)';
-  const shown = el => { if (!el?.isConnected) return null; const cs = getComputedStyle(el), r = el.getBoundingClientRect();
-    return cs.display === 'none' || cs.visibility === 'hidden' || r.width < 2 || r.height < 2 || r.right < 0 || r.left > innerWidth ? null : r; };
-  function ghost(el, r) { // a still copy where the block was, fading away (a video or canvas inside can't be copied: left out)
+  const shown = el => {
+    if (!el?.isConnected) return null;
+    const cs = getComputedStyle(el),
+      r = el.getBoundingClientRect();
+    return cs.display === 'none' ||
+      cs.visibility === 'hidden' ||
+      r.width < 2 ||
+      r.height < 2 ||
+      r.right < 0 ||
+      r.left > innerWidth
+      ? null
+      : r;
+  };
+  function ghost(el, r) {
+    // a still copy where the block was, fading away (a video or canvas inside can't be copied: left out)
     const c = el.cloneNode(true);
-    c.removeAttribute('id'); c.querySelectorAll('[id], video, canvas').forEach(x => (x.matches('video, canvas') ? x.remove() : x.removeAttribute('id')));
-    Object.assign(c.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', margin: 0, zIndex: 2, pointerEvents: 'none', transform: 'none', translate: 'none', scale: 'none' });
+    c.removeAttribute('id');
+    c.querySelectorAll('[id], video, canvas').forEach(x =>
+      x.matches('video, canvas') ? x.remove() : x.removeAttribute('id'),
+    );
+    Object.assign(c.style, {
+      position: 'fixed',
+      left: r.left + 'px',
+      top: r.top + 'px',
+      width: r.width + 'px',
+      height: r.height + 'px',
+      margin: 0,
+      zIndex: 2,
+      pointerEvents: 'none',
+      transform: 'none',
+      translate: 'none',
+      scale: 'none',
+    });
     $('wrap').append(c);
     const end = () => c.remove();
-    c.animate([{ opacity: getComputedStyle(el).opacity }, { opacity: 0, scale: 0.94, filter: 'blur(6px)' }], { duration: ms(300), easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' }).finished.then(end, end);
+    c.animate([{ opacity: getComputedStyle(el).opacity }, { opacity: 0, scale: 0.94, filter: 'blur(6px)' }], {
+      duration: ms(300),
+      easing: 'cubic-bezier(.4, 0, .6, 1)',
+      fill: 'forwards',
+    }).finished.then(end, end);
   }
   let morphing = false;
   window.beforeSet = k => {
     if (!MORPH_OK || !['layout', 'artSide'].includes(k) || !P.shown || morphing) return;
-    for (const id of MORPH) $(id)?.getAnimations().forEach(a => a.id === 'morph' && a.finish()); // one still running: read resting places
+    for (const id of MORPH)
+      $(id)
+        ?.getAnimations()
+        .forEach(a => a.id === 'morph' && a.finish()); // one still running: read resting places
     const before = MORPH.map(id => [id, $(id), shown($(id))]);
     morphing = true;
-    queueMicrotask(() => { // set() has applied the change by now (app.js apply, afterApply): read the new places
+    queueMicrotask(() => {
+      // set() has applied the change by now (app.js apply, afterApply): read the new places
       morphing = false;
       for (const [id, el, a] of before) {
         const b = shown(el);
         if (a && b) {
-          const big = SCALES.has(id), sc = big ? Math.min(4, a.width / b.width) : 1;
-          const dx = big ? a.left + a.width / 2 - (b.left + b.width / 2) : a.left - b.left, dy = big ? a.top + a.height / 2 - (b.top + b.height / 2) : a.top - b.top;
+          const big = SCALES.has(id),
+            sc = big ? Math.min(4, a.width / b.width) : 1;
+          const dx = big ? a.left + a.width / 2 - (b.left + b.width / 2) : a.left - b.left,
+            dy = big ? a.top + a.height / 2 - (b.top + b.height / 2) : a.top - b.top;
           if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sc - 1) < 0.01) continue;
-          el.animate([{ translate: `${dx}px ${dy}px`, scale: String(sc) }, { translate: '0 0', scale: '1' }], { duration: ms(620), easing: morphEase, id: 'morph' });
-        } else if (b) el.animate([{ opacity: 0, scale: 0.92, translate: '0 2vmin' }, { opacity: 1, scale: 1, translate: '0 0' }], { duration: ms(520), delay: ms(90), easing: morphEase, fill: 'backwards', id: 'morph' });
+          el.animate(
+            [
+              { translate: `${dx}px ${dy}px`, scale: String(sc) },
+              { translate: '0 0', scale: '1' },
+            ],
+            { duration: ms(620), easing: morphEase, id: 'morph' },
+          );
+        } else if (b)
+          el.animate(
+            [
+              { opacity: 0, scale: 0.92, translate: '0 2vmin' },
+              { opacity: 1, scale: 1, translate: '0 0' },
+            ],
+            { duration: ms(520), delay: ms(90), easing: morphEase, fill: 'backwards', id: 'morph' },
+          );
         else if (a && el) ghost(el, a);
       }
     });
@@ -1025,12 +1856,25 @@
   // ---- block names: an overlay outlining every [data-block] (docs/layout-map.md), refreshed while it is on
   function blocks() {
     const ov = $('blkov');
-    if (!S.showBlocks) { if (ov.firstChild) ov.replaceChildren(); return; }
+    if (!S.showBlocks) {
+      if (ov.firstChild) ov.replaceChildren();
+      return;
+    }
     const out = [];
     document.querySelectorAll('[data-block]').forEach(el => {
-      const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
-      if (r.width < 4 || r.height < 4 || cs.visibility === 'hidden' || cs.opacity === '0' || r.right < 0 || r.left > innerWidth) return;
-      const d = document.createElement('div'), t = document.createElement('span');
+      const r = el.getBoundingClientRect(),
+        cs = getComputedStyle(el);
+      if (
+        r.width < 4 ||
+        r.height < 4 ||
+        cs.visibility === 'hidden' ||
+        cs.opacity === '0' ||
+        r.right < 0 ||
+        r.left > innerWidth
+      )
+        return;
+      const d = document.createElement('div'),
+        t = document.createElement('span');
       d.className = 'bk';
       d.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;
       t.textContent = el.dataset.block;
@@ -1050,12 +1894,16 @@
     b.classList.toggle('line-accent', S.lineColor === 'accent');
     b.classList.toggle('duet', S.duetColors);
     b.classList.toggle('outline', S.outline);
-    b.classList.toggle('drift', S.bgDrift && (S.bg === 'blur' || S.bg === 'canvas' || S.bg === 'motion' || S.bg === 'motionblur'));
+    b.classList.toggle(
+      'drift',
+      S.bgDrift && (S.bg === 'blur' || S.bg === 'canvas' || S.bg === 'motion' || S.bg === 'motionblur'),
+    );
     call('setVolKeys', !!S.volKeys);
     b.classList.toggle('qs-on', !!S.qsEnabled);
     b.classList.toggle('show-blocks', !!S.showBlocks);
     for (const p of ['tr', 'tl', 'br', 'bl']) b.classList.toggle(`stat-${p}`, S.statPos === p);
-    for (const k of ['wave', 'status', 'glow', 'led']) b.classList.toggle(`qi-${k}`, S.showQuality && S.qualityIcon === k);
+    for (const k of ['wave', 'status', 'glow', 'led'])
+      b.classList.toggle(`qi-${k}`, S.showQuality && S.qualityIcon === k);
     placeHeart();
     placeTags();
     placeQw();
@@ -1065,13 +1913,25 @@
     if (!k || k === '*' || ['marquee', 'layout', 'size'].includes(k)) setTimeout(remarquee, 50);
     if (k === 'albumLine') albumLine();
     if (k === 'hideExplicit') Lyrics.rebuild();
-    if (['clockScale', 'clockDim', 'clockDigitGap', 'clockGroupGap'].includes(k)) Flip.layout(); // size / dim: CSS variables only, no rebuild while dragging
-    else if (k && /^clock/.test(k)) { Flip.rebuild(); Flip.layout(); }
+    if (['clockScale', 'clockDim', 'clockDigitGap', 'clockGroupGap'].includes(k))
+      Flip.layout(); // size / dim: CSS variables only, no rebuild while dragging
+    else if (k && /^clock/.test(k)) {
+      Flip.rebuild();
+      Flip.layout();
+    }
     // Cover + clock: the flip clock (HH:MM) lives where the lyrics would be.
     if (!k || k === '*' || k === 'layout') {
-      if (S.layout === 'clocksplit') { Flip.mount($('clockPane'), { secs: false }); Flip.show(); }
-      else if (clockOn && S.layout !== 'clock') setClock(false); // leaving the Flip clock layout: the cards roll out first
-      else { Flip.hide(); Flip.mount($('clockScreen')); clockOn = false; document.body.classList.remove('clock'); }
+      if (S.layout === 'clocksplit') {
+        Flip.mount($('clockPane'), { secs: false });
+        Flip.show();
+      } else if (clockOn && S.layout !== 'clock')
+        setClock(false); // leaving the Flip clock layout: the cards roll out first
+      else {
+        Flip.hide();
+        Flip.mount($('clockScreen'));
+        clockOn = false;
+        document.body.classList.remove('clock');
+      }
       setTimeout(() => Flip.layout(), 60);
     }
   };
@@ -1082,35 +1942,84 @@
   // whole (16:9, never cropped) with its blurred thumbnail filling the rest of the screen. The blurred cover shows until
   // (and if) a video is found. Like the animated covers, found videos are remembered across restarts and the next song's
   // is looked up (and its thumbnail fetched) while this one plays, so a song change starts its video at once.
-  const VKEY = 'dock:ytIds', finding = new Map();
-  const vids = new Map((() => { try { return JSON.parse(localStorage.getItem(VKEY) || '[]'); } catch (e) { return []; } })());
-  const remember = (song, id) => { // a miss is kept for this session only: the search may find it another day
-    vids.delete(song); vids.set(song, id);
+  const VKEY = 'dock:ytIds',
+    finding = new Map();
+  const vids = new Map(
+    (() => {
+      try {
+        return JSON.parse(localStorage.getItem(VKEY) || '[]');
+      } catch (e) {
+        return [];
+      }
+    })(),
+  );
+  const remember = (song, id) => {
+    // a miss is kept for this session only: the search may find it another day
+    vids.delete(song);
+    vids.set(song, id);
     while (vids.size > 400) vids.delete(vids.keys().next().value);
-    try { localStorage.setItem(VKEY, JSON.stringify([...vids].filter(([, v]) => v))); } catch (e) {}
+    try {
+      localStorage.setItem(VKEY, JSON.stringify([...vids].filter(([, v]) => v)));
+    } catch (e) {}
   };
-  const findVid = (song, title, artist) => vids.has(song) ? Promise.resolve(vids.get(song))
-    : finding.get(song) ?? finding.set(song, findVideo(title, artist).then(id => { finding.delete(song); remember(song, id); return id; })).get(song);
+  const findVid = (song, title, artist) =>
+    vids.has(song)
+      ? Promise.resolve(vids.get(song))
+      : (finding.get(song) ??
+        finding
+          .set(
+            song,
+            findVideo(title, artist).then(id => {
+              finding.delete(song);
+              remember(song, id);
+              return id;
+            }),
+          )
+          .get(song));
   const thumb = id => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`; // 16:9 without bars, exists for every video
-  let vidFor = null, vidAt = 0, warmedVid = '', preconnected = false;
+  let vidFor = null,
+    vidAt = 0,
+    warmedVid = '',
+    preconnected = false;
   function warmVideo() {
     const n = P.next;
-    if (S.bg !== 'video' || !n?.id || !n.title || warmedVid === n.id || performance.now() - (P.curAt || 0) < 3000 || document.hidden) return;
+    if (
+      S.bg !== 'video' ||
+      !n?.id ||
+      !n.title ||
+      warmedVid === n.id ||
+      performance.now() - (P.curAt || 0) < 3000 ||
+      document.hidden
+    )
+      return;
     warmedVid = n.id;
-    if (!preconnected) { // the player's hosts, before the first video is needed
+    if (!preconnected) {
+      // the player's hosts, before the first video is needed
       preconnected = true;
       for (const h of ['https://www.youtube-nocookie.com', 'https://i.ytimg.com'])
-        document.head.append(Object.assign(document.createElement('link'), { rel: 'preconnect', href: h, crossOrigin: '' }));
+        document.head.append(
+          Object.assign(document.createElement('link'), { rel: 'preconnect', href: h, crossOrigin: '' }),
+        );
     }
-    findVid(n.id, n.title, n.artist).then(id => { if (id) new Image().src = thumb(id); });
+    findVid(n.id, n.title, n.artist).then(id => {
+      if (id) new Image().src = thumb(id);
+    });
   }
   // fetch with a timeout (public instances can hang forever; AbortSignal.timeout needs Chrome 103+).
-  const tfetch = (u, ms = 6000) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
-    return fetch(u, { signal: c.signal }).then(x => x.ok ? x.json() : null).catch(() => null).finally(() => clearTimeout(t)); };
+  const tfetch = (u, ms = 6000) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), ms);
+    return fetch(u, { signal: c.signal })
+      .then(x => (x.ok ? x.json() : null))
+      .catch(() => null)
+      .finally(() => clearTimeout(t));
+  };
   async function findVideo(title, artist) {
     const q = `${title} ${String(artist || '').split(',')[0]} official video`;
     if (S.videoKey) {
-      const r = await tfetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=1&q=${encodeURIComponent(q)}&key=${encodeURIComponent(S.videoKey)}`);
+      const r = await tfetch(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=1&q=${encodeURIComponent(q)}&key=${encodeURIComponent(S.videoKey)}`,
+      );
       const id = r?.items?.[0]?.id?.videoId;
       if (id) return id;
     }
@@ -1125,26 +2034,39 @@
     }
     return null;
   }
-  function ytCmd(func, args = []) { $('yt')?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); }
+  function ytCmd(func, args = []) {
+    $('yt')?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+  }
   async function video() {
     const want = S.bg === 'video' && !document.body.classList.contains('night') ? P.id : null;
     if (want === vidFor) return;
     vidFor = want;
     const old = $('ytbox'); // the last song's video dissolves instead of blinking out
-    if (old) { old.removeAttribute('id'); old.querySelector('iframe')?.removeAttribute('id'); old.classList.remove('on'); setTimeout(() => old.remove(), ms(800)); }
+    if (old) {
+      old.removeAttribute('id');
+      old.querySelector('iframe')?.removeAttribute('id');
+      old.classList.remove('on');
+      setTimeout(() => old.remove(), ms(800));
+    }
     if (!want) return;
     const id = await findVid(want, $('title').textContent, $('artist').textContent);
-    if (vidFor !== want || !id) { if (!id && vidFor === want) window.notice?.('No music video found for this song'); return; }
-    const box = document.createElement('div'), frame = document.createElement('div'), f = document.createElement('iframe');
+    if (vidFor !== want || !id) {
+      if (!id && vidFor === want) window.notice?.('No music video found for this song');
+      return;
+    }
+    const box = document.createElement('div'),
+      frame = document.createElement('div'),
+      f = document.createElement('iframe');
     box.id = 'ytbox';
     box.style.setProperty('--thumb', `url("${thumb(id)}")`); // the still frame shows until the player has started
     frame.className = 'ytv';
     f.id = 'yt';
     f.allow = 'autoplay; encrypted-media';
     const host = window.LYRICDOCK_WEB ? location.origin : 'https://video.lyricdock.app'; // phone: PageClient.java; web: player.html
-    f.src = `${host}/player?v=${id}&t=${Math.max(0, now() / 1000 | 0)}`;
+    f.src = `${host}/player?v=${id}&t=${Math.max(0, (now() / 1000) | 0)}`;
     f.onload = () => setTimeout(() => box.classList.add('on'), 400);
-    frame.append(f); box.append(frame);
+    frame.append(f);
+    box.append(frame);
     $('bg').after(box); // above the blurred-cover fallback, below the dim layer and the lyrics
     setTimeout(() => box.classList.add('on'), 3000); // a slow player: the thumbnail comes in anyway
     vidAt = Date.now();
@@ -1155,10 +2077,16 @@
     if (!document.getElementById('yt')) return;
     // Muted embeds turn YouTube's automatic captions on; unloading the module keeps them off (cc_load_policy alone
     // doesn't). Cheap to repeat: the player may load late, and a no-op once they're gone.
-    ytCmd('unloadModule', ['captions']); ytCmd('unloadModule', ['cc']);
+    ytCmd('unloadModule', ['captions']);
+    ytCmd('unloadModule', ['cc']);
     // The embed reports nothing without the IFrame API handshake; re-seek every 20s (and on pause/play) to stay close.
-    if (P.playing) { ytCmd('playVideo'); if (Date.now() - vidAt > 20000) { vidAt = Date.now(); ytCmd('seekTo', [now() / 1000, true]); } }
-    else ytCmd('pauseVideo');
+    if (P.playing) {
+      ytCmd('playVideo');
+      if (Date.now() - vidAt > 20000) {
+        vidAt = Date.now();
+        ytCmd('seekTo', [now() / 1000, true]);
+      }
+    } else ytCmd('pauseVideo');
   }, 2000);
 
   // ---- Videos iOS won't start. In Low Power Mode (and on some data-saver setups) Safari refuses play() without a tap
@@ -1168,26 +2096,42 @@
   const refused = new Set();
   function playOr(v) {
     if (!v) return;
-    v.play().then(() => refused.delete(v), e => {
-      if (e?.name !== 'NotAllowedError') return;
-      refused.add(v);
-      if (v.classList.contains('on')) { v.classList.remove('on'); v.dataset.wasOn = '1'; }
-      if (v.id === 'mv') $('art').classList.remove('animated');
-    });
+    v.play().then(
+      () => refused.delete(v),
+      e => {
+        if (e?.name !== 'NotAllowedError') return;
+        refused.add(v);
+        if (v.classList.contains('on')) {
+          v.classList.remove('on');
+          v.dataset.wasOn = '1';
+        }
+        if (v.id === 'mv') $('art').classList.remove('animated');
+      },
+    );
   }
   const unrefuse = () => {
     if (!refused.size || !P.playing) return;
     for (const v of [...refused]) {
       refused.delete(v);
       if (!v.isConnected) continue;
-      v.play().then(() => { if (v.dataset.wasOn || v.id === 'mv') { delete v.dataset.wasOn; v.classList.add('on'); } if (v.id === 'mv') motionTick(); }, () => {});
+      v.play().then(
+        () => {
+          if (v.dataset.wasOn || v.id === 'mv') {
+            delete v.dataset.wasOn;
+            v.classList.add('on');
+          }
+          if (v.id === 'mv') motionTick();
+        },
+        () => {},
+      );
     }
   };
   addEventListener('pointerdown', unrefuse, true);
   addEventListener('keydown', unrefuse, true);
 
   // ---- Spotify Canvas background: the song's short looping video (sent by the bridge), over the blurred cover.
-  const canvases = new Map(), baseExtra = window.onExtra;
+  const canvases = new Map(),
+    baseExtra = window.onExtra;
   window.onExtra = m => {
     if (m.type !== 'canvas') return baseExtra(m);
     if (typeof m.id !== 'string' || !/^https:\/\/[^"'\s]+\.mp4(\?\S*)?$/.test(m.url || '')) return;
@@ -1199,13 +2143,37 @@
   function canvasTick() {
     const night = document.body.classList.contains('night');
     const mirror = !night && S.bg === 'motionblur' && S.motionArt; // blur copies the cover video's frames: no second <video>
-    if (mirror) blurMirror(); else $('cvb')?.remove();
-    const want = night || mirror ? null : S.bg === 'canvas' ? canvases.get(P.id) : S.bg === 'motion' ? motion.get(`bg:${P.id}`) : S.bg === 'motionblur' ? motion.get(`cover:${P.id}`) : null;
+    if (mirror) blurMirror();
+    else $('cvb')?.remove();
+    const want =
+      night || mirror
+        ? null
+        : S.bg === 'canvas'
+          ? canvases.get(P.id)
+          : S.bg === 'motion'
+            ? motion.get(`bg:${P.id}`)
+            : S.bg === 'motionblur'
+              ? motion.get(`cover:${P.id}`)
+              : null;
     let v = document.getElementById('cv');
-    if (!want) { v?.remove(); return; }
-    if (v?.dataset.src === want) { if (P.playing && v.paused) playOr(v); else if (!P.playing && !v.paused) v.pause(); return; }
+    if (!want) {
+      v?.remove();
+      return;
+    }
+    if (v?.dataset.src === want) {
+      if (P.playing && v.paused) playOr(v);
+      else if (!P.playing && !v.paused) v.pause();
+      return;
+    }
     v?.remove();
-    v = Object.assign(document.createElement('video'), { id: 'cv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
+    v = Object.assign(document.createElement('video'), {
+      id: 'cv',
+      muted: true,
+      loop: true,
+      autoplay: true,
+      playsInline: true,
+      src: want,
+    });
     v.dataset.src = want;
     v.onplaying = () => v.classList.add('on'); // shown once it really plays (iOS Low Power Mode refuses autoplay: the still cover stays)
     $('bg').after(v);
@@ -1219,12 +2187,31 @@
     if (!$('cvb')) $('bg').after(Object.assign(document.createElement('canvas'), { id: 'cvb', width: 64, height: 32 }));
     if (blurT) return;
     blurT = setInterval(() => {
-      const c = $('cvb'), v = $('mv');
-      if (!c) { clearInterval(blurT); blurT = 0; return; }
-      if (!v || v.readyState < 2) { c.classList.remove('on'); return; } // no animated cover: the blurred still shows
-      const h = Math.max(8, Math.round(64 * innerHeight / innerWidth)), sh = v.videoWidth * h / 64;
+      const c = $('cvb'),
+        v = $('mv');
+      if (!c) {
+        clearInterval(blurT);
+        blurT = 0;
+        return;
+      }
+      if (!v || v.readyState < 2) {
+        c.classList.remove('on');
+        return;
+      } // no animated cover: the blurred still shows
+      const h = Math.max(8, Math.round((64 * innerHeight) / innerWidth)),
+        sh = (v.videoWidth * h) / 64;
       if (c.height !== h) c.height = h;
-      c.getContext('2d').drawImage(v, 0, Math.max(0, (v.videoHeight - sh) / 2), v.videoWidth, Math.min(sh, v.videoHeight), 0, 0, 64, h);
+      c.getContext('2d').drawImage(
+        v,
+        0,
+        Math.max(0, (v.videoHeight - sh) / 2),
+        v.videoWidth,
+        Math.min(sh, v.videoHeight),
+        0,
+        0,
+        64,
+        h,
+      );
       c.classList.add('on');
     }, 66);
   }
@@ -1235,34 +2222,65 @@
   // Size asked = pixels shown x the quality setting; the cloud picks the matching Apple encode.
   const ART_API = 'https://art.lyricdock.losthusky.qzz.io/v1';
   // iPhones have no MediaSource (only ManagedMediaSource) but play HEVC: ask the video element too.
-  const HEVC = (() => { try { return window.MediaSource ? MediaSource.isTypeSupported('video/mp4; codecs="hvc1.2.4.L153.B0"') : document.createElement('video').canPlayType('video/mp4; codecs="hvc1"') !== ''; } catch (e) { return false; } })();
-  const DEVICE = (() => { try { let d = localStorage.getItem('dock:device'); if (!d) localStorage.setItem('dock:device', d = crypto.randomUUID()); return d; } catch (e) { return ''; } })();
+  const HEVC = (() => {
+    try {
+      return window.MediaSource
+        ? MediaSource.isTypeSupported('video/mp4; codecs="hvc1.2.4.L153.B0"')
+        : document.createElement('video').canPlayType('video/mp4; codecs="hvc1"') !== '';
+    } catch (e) {
+      return false;
+    }
+  })();
+  const DEVICE = (() => {
+    try {
+      let d = localStorage.getItem('dock:device');
+      if (!d) localStorage.setItem('dock:device', (d = crypto.randomUUID()));
+      return d;
+    } catch (e) {
+      return '';
+    }
+  })();
   const who = () => `&hevc=${HEVC ? 1 : 0}&d=${DEVICE}&v=${encodeURIComponent(appVersion)}`;
   const QUALITY = { saver: 0.75, auto: 1, sharp: 1.5, max: 2 };
-  const timed = (url, ms, headers) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, { signal: c.signal, headers }).finally(() => clearTimeout(t)); };
+  const timed = (url, ms, headers) => {
+    const c = new AbortController(),
+      t = setTimeout(() => c.abort(), ms);
+    return fetch(url, { signal: c.signal, headers }).finally(() => clearTimeout(t));
+  };
   const cloud = (url, ms) => timed(url, ms, window.Account?.headers()); // the cover API answers signed-in apps only (account.js)
-  const motion = window.dockMotion = new Map(); // `${slot}:${song id}` -> playable URL, '' = none / looking (exposed for debugging)
+  const motion = (window.dockMotion = new Map()); // `${slot}:${song id}` -> playable URL, '' = none / looking (exposed for debugging)
   const lookupUrl = (t, slot, warm) => {
-    const portrait = innerHeight > innerWidth, q = QUALITY[S.motionQuality] || 1;
+    const portrait = innerHeight > innerWidth,
+      q = QUALITY[S.motionQuality] || 1;
     const shape = slot === 'bg' ? (portrait ? 'tall' : 'square') : coverTall() ? 'tall' : 'square';
-    const shown = slot === 'bg' ? Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio, 1.5) : ($('art').offsetWidth || 300) * devicePixelRatio;
-    return [shape, `${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${Math.round(shown * q)}${S.motionQuality === 'max' ? '&q=max' : ''}${warm ? '&warm=1' : ''}${who()}`];
+    const shown =
+      slot === 'bg'
+        ? Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio, 1.5)
+        : ($('art').offsetWidth || 300) * devicePixelRatio;
+    return [
+      shape,
+      `${ART_API}/cover?artist=${encodeURIComponent(t.artist)}&album=${encodeURIComponent(t.album)}&shape=${shape}&px=${Math.round(shown * q)}${S.motionQuality === 'max' ? '&q=max' : ''}${warm ? '&warm=1' : ''}${who()}`,
+    ];
   };
   async function lookup(t, slot, warm) {
-    const [asked, url] = lookupUrl(t, slot, warm), r = await cloud(url, 15000);
+    const [asked, url] = lookupUrl(t, slot, warm),
+      r = await cloud(url, 15000);
     // Only 404 means "no animated cover". 401 (the sign-in token not there yet on a first start), 429 or 5xx used to count
     // as none too, for the rest of the session: they're asked again (motionFor / warm).
     if (!r.ok && r.status !== 404) throw new Error(`cover ${r.status}`);
     const j = r.ok ? await r.json() : null;
     const shape = j?.shape || asked; // a tall request falls back to square when the album has no tall cover
-    return typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video) ? { url: j.video, key: `${j.album.id}/${shape}/${j.variant.n}`, shape } : null;
+    return typeof j?.video === 'string' && /^https:\/\/[^"'\s]+\.mp4$/.test(j.video)
+      ? { url: j.video, key: `${j.album.id}/${shape}/${j.variant.n}`, shape }
+      : null;
   }
   // Warming (like the still covers): while a song plays, the next one's animated cover is looked up, and downloaded
   // too when the keep setting would save it on this play anyway. Logged as 'warm', so it never counts as a play.
   // Cover shape: 'auto' = tall (3:4) in portrait where the height is free, square in landscape.
   const coverTall = () => S.coverShape === 'tall' || (S.coverShape === 'auto' && innerHeight > innerWidth);
-  const tallOf = new Map(), keyOf = new Map(); // `cover:${song id}` -> the cover video is the tall one / its file (album/shape/variant)
-  const warmed = window.dockWarm = new Map(); // `${slot}:${song id}` -> { url, key } | null
+  const tallOf = new Map(),
+    keyOf = new Map(); // `cover:${song id}` -> the cover video is the tall one / its file (album/shape/variant)
+  const warmed = (window.dockWarm = new Map()); // `${slot}:${song id}` -> { url, key } | null
   async function warm(t, slot) {
     const k = `${slot}:${t?.id}`;
     if (!t?.id || !t.artist || !t.album || warmed.has(k) || motion.has(k)) return;
@@ -1270,8 +2288,11 @@
     try {
       const w = await lookup(t, slot, true);
       warmed.set(k, w);
-      if (w && (S.motionKeep === 'first' || (S.motionKeep === 'second' && (vcIdx()[vcId(w.key)]?.[2] || 0) >= 1))) save(w.url, w.key);
-    } catch (e) { setTimeout(() => warmed.delete(k), 15000); } // offline / refused: try again in a while, not every second
+      if (w && (S.motionKeep === 'first' || (S.motionKeep === 'second' && (vcIdx()[vcId(w.key)]?.[2] || 0) >= 1)))
+        save(w.url, w.key);
+    } catch (e) {
+      setTimeout(() => warmed.delete(k), 15000);
+    } // offline / refused: try again in a while, not every second
     while (warmed.size > 8) warmed.delete(warmed.keys().next().value);
   }
   async function motionFor(t, slot) {
@@ -1280,28 +2301,61 @@
     motion.set(k, '');
     try {
       let w = warmed.get(k);
-      if (w) cloud(lookupUrl(t, slot)[1], 15000).catch(() => {}); // already known: just count the play
+      if (w)
+        cloud(lookupUrl(t, slot)[1], 15000).catch(() => {}); // already known: just count the play
       else w = await lookup(t, slot);
-      if (w) { motion.set(k, await playable(w.url, w.key)); tallOf.set(k, w.shape === 'tall'); keyOf.set(k, w.key); }
-    } catch (e) { setTimeout(() => motion.get(k) === '' && motion.delete(k), 15000); } // offline / slow / refused: ask again soon
-    while (motion.size > 12) { const old = motion.keys().next().value; if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old)); motion.delete(old); }
-    motionTick(); canvasTick();
+      if (w) {
+        motion.set(k, await playable(w.url, w.key));
+        tallOf.set(k, w.shape === 'tall');
+        keyOf.set(k, w.key);
+      }
+    } catch (e) {
+      setTimeout(() => motion.get(k) === '' && motion.delete(k), 15000);
+    } // offline / slow / refused: ask again soon
+    while (motion.size > 12) {
+      const old = motion.keys().next().value;
+      if (motion.get(old)?.startsWith('blob:')) URL.revokeObjectURL(motion.get(old));
+      motion.delete(old);
+    }
+    motionTick();
+    canvasTick();
   }
 
   // Device copies (Cache Storage, size cap = setting, least recently played out first), a ladder like the cloud's:
   // 'Save on the device' = second play (default: 1st play streams, 2nd downloads once, then free) / first play / never.
   // Keyed by album/shape/variant, so a file the cloud moves from Apple's CDN to R2 isn't fetched again.
-  const vcId = key => `https://dock.local/${key}`, vcIdx = () => { try { return JSON.parse(localStorage.getItem('dock:videos') || '{}'); } catch (e) { return {}; } };
-  const vcSave = idx => { try { localStorage.setItem('dock:videos', JSON.stringify(idx)); } catch (e) {} };
+  const vcId = key => `https://dock.local/${key}`,
+    vcIdx = () => {
+      try {
+        return JSON.parse(localStorage.getItem('dock:videos') || '{}');
+      } catch (e) {
+        return {};
+      }
+    };
+  const vcSave = idx => {
+    try {
+      localStorage.setItem('dock:videos', JSON.stringify(idx));
+    } catch (e) {}
+  };
   // A play of this file: [bytes, last played, plays] for the keep ladder, and a background copy when it says so.
   // Not on the device yet: it streams now. Waiting for the copy first kept the still cover up for the whole download -
   // on an iPad that's a 1662x2216 HEVC at 17 Mbit/s, so a song started directly often never showed its animated cover.
   function note(url, key, cached) {
-    const id = vcId(key), idx = vcIdx(), e = idx[id] || [0, 0, 0];
-    e[1] = Date.now(); e[2]++; idx[id] = e; vcSave(idx);
+    const id = vcId(key),
+      idx = vcIdx(),
+      e = idx[id] || [0, 0, 0];
+    e[1] = Date.now();
+    e[2]++;
+    idx[id] = e;
+    vcSave(idx);
     if (!cached && (S.motionKeep === 'first' || (S.motionKeep === 'second' && e[2] >= 2))) save(url, key);
   }
-  const cachedBlob = key => caches.open('dock-videos').then(c => c.match(vcId(key))).then(r => r ? r.blob() : null).catch(() => null);
+  const cachedBlob = key =>
+    caches
+      .open('dock-videos')
+      .then(c => c.match(vcId(key)))
+      .then(r => (r ? r.blob() : null))
+      .catch(() => null);
   async function playable(url, key) {
     const blob = await cachedBlob(key);
     note(url, key, !!blob);
@@ -1310,25 +2364,40 @@
   const inflight = new Map(); // device id -> Promise<Blob | null>
   function save(url, key) {
     const id = vcId(key);
-    if (!inflight.has(id)) inflight.set(id, (async () => {
-      try {
-        const c = await caches.open('dock-videos'), hit = await c.match(id);
-        if (hit) return await hit.blob();
-        const r = await timed(url, 90000);
-        if (!r.ok) return null;
-        const blob = await r.blob();
-        await c.put(id, new Response(blob, { headers: { 'content-type': 'video/mp4' } }));
-        const idx = vcIdx(), e = idx[id] || [0, Date.now(), 0];
-        e[0] = blob.size; idx[id] = e;
-        let total = Object.values(idx).reduce((n, x) => n + (x[0] || 0), 0);
-        for (const [u, x] of Object.entries(idx).sort((p, q) => p[1][1] - q[1][1])) {
-          if (total <= S.motionCacheMB * 2 ** 20) break;
-          if (u !== id && x[0]) { await c.delete(u); total -= x[0]; x[0] = 0; }
-        }
-        vcSave(idx);
-        return blob;
-      } catch (err) { return null; } finally { setTimeout(() => inflight.delete(id), 0); }
-    })());
+    if (!inflight.has(id))
+      inflight.set(
+        id,
+        (async () => {
+          try {
+            const c = await caches.open('dock-videos'),
+              hit = await c.match(id);
+            if (hit) return await hit.blob();
+            const r = await timed(url, 90000);
+            if (!r.ok) return null;
+            const blob = await r.blob();
+            await c.put(id, new Response(blob, { headers: { 'content-type': 'video/mp4' } }));
+            const idx = vcIdx(),
+              e = idx[id] || [0, Date.now(), 0];
+            e[0] = blob.size;
+            idx[id] = e;
+            let total = Object.values(idx).reduce((n, x) => n + (x[0] || 0), 0);
+            for (const [u, x] of Object.entries(idx).sort((p, q) => p[1][1] - q[1][1])) {
+              if (total <= S.motionCacheMB * 2 ** 20) break;
+              if (u !== id && x[0]) {
+                await c.delete(u);
+                total -= x[0];
+                x[0] = 0;
+              }
+            }
+            vcSave(idx);
+            return blob;
+          } catch (err) {
+            return null;
+          } finally {
+            setTimeout(() => inflight.delete(id), 0);
+          }
+        })(),
+      );
     return inflight.get(id);
   }
 
@@ -1347,110 +2416,246 @@
   //   and a tall one springs the box open.
   //  Same song: a video that becomes ready dissolves in (a tall one springs the box open); one that goes (setting off,
   //   night, rotation) dissolves out (.mv-old) and the box springs back. Pause / play: the cover's own spring (style.css).
-  let primed = null, kept = null, pend = null; // the next song's video, loaded; the last one shown (for "previous"); a change in flight
-  const free = x => { if (!x || x.v.id === 'mv') return; x.v.removeAttribute('src'); x.v.load(); if (x.src.startsWith('blob:') && ![...motion.values()].includes(x.src)) URL.revokeObjectURL(x.src); };
+  let primed = null,
+    kept = null,
+    pend = null; // the next song's video, loaded; the last one shown (for "previous"); a change in flight
+  const free = x => {
+    if (!x || x.v.id === 'mv') return;
+    x.v.removeAttribute('src');
+    x.v.load();
+    if (x.src.startsWith('blob:') && ![...motion.values()].includes(x.src)) URL.revokeObjectURL(x.src);
+  };
   // The next song's video, loaded and paused on its first frame (only with "Load the next animated cover early").
   function prime() {
     // Warmed now, or played earlier this session (warming skips those: its file is already known, and that play counted).
-    const t = P.next, k = `cover:${t?.id}`, known = motion.get(k);
-    const w = warmed.get(k) || (known ? { url: known, key: keyOf.get(k) || '', shape: tallOf.get(k) ? 'tall' : 'square' } : null);
+    const t = P.next,
+      k = `cover:${t?.id}`,
+      known = motion.get(k);
+    const w =
+      warmed.get(k) ||
+      (known ? { url: known, key: keyOf.get(k) || '', shape: tallOf.get(k) ? 'tall' : 'square' } : null);
     if (!t?.id || !w || primed?.k === k || kept?.k === k || !S.motionArt || !S.motionWarm || document.hidden) return;
     free(primed);
-    const v = Object.assign(document.createElement('video'), { muted: true, loop: true, playsInline: true, preload: 'auto' });
-    const p = primed = { k, v, t: known ? null : t, w, src: w.url, tall: w.shape === 'tall', cached: false };
+    const v = Object.assign(document.createElement('video'), {
+      muted: true,
+      loop: true,
+      playsInline: true,
+      preload: 'auto',
+    });
+    const p = (primed = { k, v, t: known ? null : t, w, src: w.url, tall: w.shape === 'tall', cached: false });
     if (known) v.src = known;
-    else cachedBlob(w.key).then(b => { if (primed !== p) return; if (b) { p.src = URL.createObjectURL(b); p.cached = true; } v.src = p.src; });
+    else
+      cachedBlob(w.key).then(b => {
+        if (primed !== p) return;
+        if (b) {
+          p.src = URL.createObjectURL(b);
+          p.cached = true;
+        }
+        v.src = p.src;
+      });
   }
   window.videoHandover = (mode, dur, id) => {
-    const k = `cover:${id}`, art = $('art'), body = document.body, old = $('mv'), on = S.motionArt && !body.classList.contains('night');
+    const k = `cover:${id}`,
+      art = $('art'),
+      body = document.body,
+      old = $('mv'),
+      on = S.motionArt && !body.classList.contains('night');
     if (old?.dataset.k === k) return; // already handed over (a swipe does it at landing, then swap() asks again)
     pend = { id, until: performance.now() + 3000 }; // motionTick waits until swap() makes this the song (it could undo the change)
-    const ready = x => x?.k === k && x.v.readyState >= 2 ? x : null, next = on ? ready(primed) || ready(kept) : null;
-    const wasOn = !!old?.classList.contains('on'), w = next?.w || warmed.get(k);
-    if (wasOn && mode !== 'landed' && old.dataset.key && old.dataset.key === w?.key) { // same album, same file: it keeps playing
-      old.dataset.k = k; motion.set(k, old.dataset.src); tallOf.set(k, old.dataset.tall === '1');
-      if (P.next?.id === id && w.url) { cloud(lookupUrl(P.next, 'cover')[1], 15000).catch(() => {}); note(w.url, w.key, old.dataset.src.startsWith('blob:')); }
+    const ready = x => (x?.k === k && x.v.readyState >= 2 ? x : null),
+      next = on ? ready(primed) || ready(kept) : null;
+    const wasOn = !!old?.classList.contains('on'),
+      w = next?.w || warmed.get(k);
+    if (wasOn && mode !== 'landed' && old.dataset.key && old.dataset.key === w?.key) {
+      // same album, same file: it keeps playing
+      old.dataset.k = k;
+      motion.set(k, old.dataset.src);
+      tallOf.set(k, old.dataset.tall === '1');
+      if (P.next?.id === id && w.url) {
+        cloud(lookupUrl(P.next, 'cover')[1], 15000).catch(() => {});
+        note(w.url, w.key, old.dataset.src.startsWith('blob:'));
+      }
       art.querySelectorAll('.art-x').forEach(x => x.remove()); // its still is under the video anyway
       return;
     }
     if (old) {
       old.removeAttribute('id');
-      if (wasOn) { if (kept?.v !== old) free(kept); kept = { k: old.dataset.k, v: old, src: old.dataset.src, tall: old.dataset.tall === '1', w: { key: old.dataset.key } }; }
-      if (mode === 'landed' || !dur || !wasOn) { old.remove(); old.pause(); } // a swipe took it off screen with its card
+      if (wasOn) {
+        if (kept?.v !== old) free(kept);
+        kept = {
+          k: old.dataset.k,
+          v: old,
+          src: old.dataset.src,
+          tall: old.dataset.tall === '1',
+          w: { key: old.dataset.key },
+        };
+      }
+      if (mode === 'landed' || !dur || !wasOn) {
+        old.remove();
+        old.pause();
+      } // a swipe took it off screen with its card
       else {
         art.querySelectorAll('.art-x').forEach(x => x.remove()); // the old still is under the old video: it would show through
-        old.className = 'mv-old'; old.style.zIndex = 1; // over the new song's video (or cover) while it dissolves
+        old.className = 'mv-old';
+        old.style.zIndex = 1; // over the new song's video (or cover) while it dissolves
         old.fade?.cancel();
-        (old.fade = old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' }))
-          .onfinish = () => { if (old.id !== 'mv') { old.remove(); old.pause(); } };
+        (old.fade = old.animate([{ opacity: 1 }, { opacity: 0 }], {
+          duration: dur,
+          easing: 'cubic-bezier(.4,0,.2,1)',
+          fill: 'forwards',
+        })).onfinish = () => {
+          if (old.id !== 'mv') {
+            old.remove();
+            old.pause();
+          }
+        };
       }
     }
     // The box: a swipe's landed card is square, so the box is square at once; then it springs to the new shape.
     if (mode === 'landed' && body.classList.contains('cover-tall')) {
-      body.classList.add('art-snap'); body.classList.remove('cover-tall'); getComputedStyle(body).getPropertyValue('--art-h');
-      body.classList.remove('art-snap'); getComputedStyle(body).getPropertyValue('--art-h');
+      body.classList.add('art-snap');
+      body.classList.remove('cover-tall');
+      getComputedStyle(body).getPropertyValue('--art-h');
+      body.classList.remove('art-snap');
+      getComputedStyle(body).getPropertyValue('--art-h');
     }
     if (next) {
-      if (next === primed) primed = null; else kept = null;
+      if (next === primed) primed = null;
+      else kept = null;
       const v = next.v;
-      v.fade?.cancel(); v.fade = null; // a kept video still carries its fade-out (getAnimations misses it while detached)
-      Object.assign(v, { id: 'mv', className: 'on' }); v.style.zIndex = v.style.visibility = '';
+      v.fade?.cancel();
+      v.fade = null; // a kept video still carries its fade-out (getAnimations misses it while detached)
+      Object.assign(v, { id: 'mv', className: 'on' });
+      v.style.zIndex = v.style.visibility = '';
       Object.assign(v.dataset, { src: next.src, k, key: next.w?.key || '', tall: next.tall ? '1' : '' });
       art.prepend(v); // under the old video / the old cover's fade (.art-x): they dissolve into it
       if (P.playing) playOr(v);
       // Nothing dissolves over it (a swipe, or the same still): it fades in itself.
-      if (mode === 'landed' || !(wasOn || art.querySelector('.art-x'))) v.animate([{ opacity: 0 }, { opacity: 1 }], { duration: mode === 'landed' ? ms(300) : Math.max(dur, ms(450)), easing: 'cubic-bezier(.32,.72,0,1)' });
-      motion.set(k, next.src); tallOf.set(k, next.tall);
-      if (next.t) { cloud(lookupUrl(next.t, 'cover')[1], 15000).catch(() => {}); note(next.w.url, next.w.key, next.cached); } // the play counts, like motionFor
+      if (mode === 'landed' || !(wasOn || art.querySelector('.art-x')))
+        v.animate([{ opacity: 0 }, { opacity: 1 }], {
+          duration: mode === 'landed' ? ms(300) : Math.max(dur, ms(450)),
+          easing: 'cubic-bezier(.32,.72,0,1)',
+        });
+      motion.set(k, next.src);
+      tallOf.set(k, next.tall);
+      if (next.t) {
+        cloud(lookupUrl(next.t, 'cover')[1], 15000).catch(() => {});
+        note(next.w.url, next.w.key, next.cached);
+      } // the play counts, like motionFor
     }
     art.classList.toggle('animated', !!next);
     // Not ready yet but tall too: the box stays tall for it (motionTick lets go after 4 s).
     const tall = next ? next.tall : on && body.classList.contains('cover-tall') && w?.shape === 'tall';
-    if (tall !== body.classList.contains('cover-tall')) { body.classList.toggle('cover-tall', tall); fitArt(); }
+    if (tall !== body.classList.contains('cover-tall')) {
+      body.classList.toggle('cover-tall', tall);
+      fitArt();
+    }
   };
 
   // A video that goes (setting off, night, a new file for the same song) dissolves away the way it came (style.css
   // .mv-old), never just vanishes.
-  const retire = v => { if (!v) return; v.removeAttribute('id'); if (!v.classList.contains('on')) return v.remove(); v.className = 'mv-old'; setTimeout(() => v.id !== 'mv' && v.remove(), 1000); };
+  const retire = v => {
+    if (!v) return;
+    v.removeAttribute('id');
+    if (!v.classList.contains('on')) return v.remove();
+    v.className = 'mv-old';
+    setTimeout(() => v.id !== 'mv' && v.remove(), 1000);
+  };
   function motionTick() {
-    if (pend) { if (pend.id === P.id || performance.now() > pend.until) pend = null; else return; }
-    const k = `cover:${P.id}`, on = S.motionArt && !document.body.classList.contains('night'), want = on ? motion.get(k) : '';
+    if (pend) {
+      if (pend.id === P.id || performance.now() > pend.until) pend = null;
+      else return;
+    }
+    const k = `cover:${P.id}`,
+      on = S.motionArt && !document.body.classList.contains('night'),
+      want = on ? motion.get(k) : '';
     let v = $('mv');
     const live = !!want && !!v?.classList.contains('on') && v.dataset.src === want;
     $('art').classList.toggle('animated', live);
     // Square <-> tall morphs (style.css --art-h) together with the video fading in. Through a song change from one tall
     // video to another (known from warming) the box stays tall for a moment instead of shrinking and growing again.
-    const hold = on && !live && document.body.classList.contains('cover-tall') && warmed.get(k)?.shape === 'tall' && performance.now() - (P.curAt || 0) < 4000;
+    const hold =
+      on &&
+      !live &&
+      document.body.classList.contains('cover-tall') &&
+      warmed.get(k)?.shape === 'tall' &&
+      performance.now() - (P.curAt || 0) < 4000;
     const tall = (live && !!tallOf.get(k)) || hold;
-    if (tall !== document.body.classList.contains('cover-tall')) { document.body.classList.toggle('cover-tall', tall); fitArt(); }
-    if (!want) { retire(v); return; }
-    if (v?.dataset.src === want) { if (P.playing && v.paused) playOr(v); else if (!P.playing && !v.paused) v.pause(); return; }
+    if (tall !== document.body.classList.contains('cover-tall')) {
+      document.body.classList.toggle('cover-tall', tall);
+      fitArt();
+    }
+    if (!want) {
+      retire(v);
+      return;
+    }
+    if (v?.dataset.src === want) {
+      if (P.playing && v.paused) playOr(v);
+      else if (!P.playing && !v.paused) v.pause();
+      return;
+    }
     retire(v);
-    v = Object.assign(document.createElement('video'), { id: 'mv', muted: true, loop: true, autoplay: true, playsInline: true, src: want });
+    v = Object.assign(document.createElement('video'), {
+      id: 'mv',
+      muted: true,
+      loop: true,
+      autoplay: true,
+      playsInline: true,
+      src: want,
+    });
     Object.assign(v.dataset, { src: want, k, key: keyOf.get(k) || '', tall: tallOf.get(k) ? '1' : '' }); // (videoHandover)
     // Fades in only once the song change has settled (app.js showArt): never pops in mid-transition.
-    v.onplaying = () => { v.onplaying = null; setTimeout(() => { if (v.isConnected) { v.classList.add('on'); motionTick(); } }, Math.max(0, (P.settleAt || 0) - performance.now())); };
+    v.onplaying = () => {
+      v.onplaying = null;
+      setTimeout(
+        () => {
+          if (v.isConnected) {
+            v.classList.add('on');
+            motionTick();
+          }
+        },
+        Math.max(0, (P.settleAt || 0) - performance.now()),
+      );
+    };
     $('art').prepend(v); // first child: the controls, ripple and heart badge stay on top
   }
   const swapBase = window.afterSwap;
-  window.afterSwap = m => { swapBase(m); motionTick(); canvasTick(); }; // the old song's video leaves with its cover
+  window.afterSwap = m => {
+    swapBase(m);
+    motionTick();
+    canvasTick();
+  }; // the old song's video leaves with its cover
   setInterval(() => {
     const cover = S.motionArt || S.bg === 'motionblur';
     if (cover) motionFor(P.cur, 'cover');
     if (S.bg === 'motion') motionFor(P.cur, 'bg');
-    if (S.motionWarm && performance.now() - (P.curAt || 0) > 3000) for (const t of [P.next, P.next2]) { // the next two, once the current one has started
-      if (cover) warm(t, 'cover');
-      if (S.bg === 'motion') warm(t, 'bg');
-    }
+    if (S.motionWarm && performance.now() - (P.curAt || 0) > 3000)
+      for (const t of [P.next, P.next2]) {
+        // the next two, once the current one has started
+        if (cover) warm(t, 'cover');
+        if (S.bg === 'motion') warm(t, 'bg');
+      }
     prime();
     motionTick();
   }, 1000);
   let wasTall = coverTall();
-  const reshape = () => { const t = coverTall(); if (t !== wasTall) { for (const k of [...motion.keys()]) if (k.startsWith('cover:')) motion.delete(k); warmed.clear(); } wasTall = t; };
-  addEventListener('resize', reshape); Settings.onChange(reshape);
+  const reshape = () => {
+    const t = coverTall();
+    if (t !== wasTall) {
+      for (const k of [...motion.keys()]) if (k.startsWith('cover:')) motion.delete(k);
+      warmed.clear();
+    }
+    wasTall = t;
+  };
+  addEventListener('resize', reshape);
+  Settings.onChange(reshape);
   const swapAt = window.afterSwap;
   // (the new song's video is looked up now, not on the next tick: a second sooner)
-  window.afterSwap = m => { P.curAt = performance.now(); if (S.motionArt || S.bg === 'motionblur') motionFor(P.cur, 'cover'); swapAt(m); };
+  window.afterSwap = m => {
+    P.curAt = performance.now();
+    if (S.motionArt || S.bg === 'motionblur') motionFor(P.cur, 'cover');
+    swapAt(m);
+  };
 
   // ---- Lyrics kept on the device (Cache Storage 'dock-lyrics', newest 500 songs): replays and offline start instantly.
   const lyId = id => `https://dock.local/lyrics/${id}`;
@@ -1458,39 +2663,73 @@
     put(id, lyr) {
       if (!id || !Lyrics.rank(lyr)) return;
       let body;
-      try { body = JSON.stringify(lyr); } catch (e) { return; } // now, before the renderer decorates the object
-      caches.open('dock-lyrics').then(async c => {
-        await c.put(lyId(id), new Response(body, { headers: { 'content-type': 'application/json' } }));
-        const keys = await c.keys();
-        for (const k of keys.slice(0, Math.max(0, keys.length - 500))) await c.delete(k);
-      }).catch(() => {});
+      try {
+        body = JSON.stringify(lyr);
+      } catch (e) {
+        return;
+      } // now, before the renderer decorates the object
+      caches
+        .open('dock-lyrics')
+        .then(async c => {
+          await c.put(lyId(id), new Response(body, { headers: { 'content-type': 'application/json' } }));
+          const keys = await c.keys();
+          for (const k of keys.slice(0, Math.max(0, keys.length - 500))) await c.delete(k);
+        })
+        .catch(() => {});
     },
-    get: id => caches.open('dock-lyrics').then(c => c.match(lyId(id))).then(r => r ? r.json() : null).catch(() => null),
+    get: id =>
+      caches
+        .open('dock-lyrics')
+        .then(c => c.match(lyId(id)))
+        .then(r => (r ? r.json() : null))
+        .catch(() => null),
   };
 
   // ---- Settings -> Storage: what is kept on this phone, and clearing it.
-  const fmtMB = b => b < 2 ** 20 ? `${Math.round(b / 1024)} KB` : `${(b / 2 ** 20).toFixed(b < 10 * 2 ** 20 ? 1 : 0)} MB`;
+  const fmtMB = b =>
+    b < 2 ** 20 ? `${Math.round(b / 1024)} KB` : `${(b / 2 ** 20).toFixed(b < 10 * 2 ** 20 ? 1 : 0)} MB`;
   const st = { at: 0 };
   async function measure() {
     st.at = Date.now();
     const vids = Object.values(vcIdx()).filter(x => x[0] > 0);
     st.videos = `${vids.length} saved · ${fmtMB(vids.reduce((n, x) => n + x[0], 0))}`;
     try {
-      const c = await caches.open('dock-lyrics'), keys = await c.keys();
+      const c = await caches.open('dock-lyrics'),
+        keys = await c.keys();
       let bytes = 0;
       for (const k of keys) bytes += (await (await c.match(k)).blob()).size;
       st.lyrics = `${keys.length} songs · ${fmtMB(bytes)}`;
-    } catch (e) { st.lyrics = 'unavailable'; }
-    try { st.web = fmtMB(Dock.webCacheBytes()); } catch (e) { st.web = 'unavailable'; }
-    try { const e = await navigator.storage.estimate(); st.total = `${fmtMB(e.usage || 0)} used by the app's web storage`; } catch (e) { st.total = ''; }
+    } catch (e) {
+      st.lyrics = 'unavailable';
+    }
+    try {
+      st.web = fmtMB(Dock.webCacheBytes());
+    } catch (e) {
+      st.web = 'unavailable';
+    }
+    try {
+      const e = await navigator.storage.estimate();
+      st.total = `${fmtMB(e.usage || 0)} used by the app's web storage`;
+    } catch (e) {
+      st.total = '';
+    }
     window.settingsRender?.();
   }
   window.dockStorage = {
-    text: k => { if (Date.now() - st.at > 4000) measure(); return st[k] ?? 'Counting…'; },
+    text: k => {
+      if (Date.now() - st.at > 4000) measure();
+      return st[k] ?? 'Counting…';
+    },
     async clear(k) {
-      if (k === 'videos' || k === 'all') { await caches.delete('dock-videos'); localStorage.removeItem('dock:videos'); }
+      if (k === 'videos' || k === 'all') {
+        await caches.delete('dock-videos');
+        localStorage.removeItem('dock:videos');
+      }
       if (k === 'lyrics' || k === 'all') await caches.delete('dock-lyrics');
-      if (k === 'web' || k === 'all') try { Dock.clearWebCache(); } catch (e) {}
+      if (k === 'web' || k === 'all')
+        try {
+          Dock.clearWebCache();
+        } catch (e) {}
       window.notice?.(k === 'all' ? 'Everything cleared' : 'Cleared');
       setTimeout(measure, 600);
     },
@@ -1498,16 +2737,26 @@
   // Anonymous usage for the dashboard: which platform and screen, never who or what. Heartbeat every 10 min
   // ("active devices"), plus events from the web app (open / install / update / error).
   const env = () => {
-    const app = matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone === true;
+    const app =
+      matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone === true;
     const plat = window.LYRICDOCK_WEB ? (app ? 'pwa' : 'web') : 'android';
     let tz = '';
-    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    } catch (e) {}
     return `&plat=${plat}&scr=${screen.width}x${screen.height}@${+devicePixelRatio.toFixed(2)}&tz=${encodeURIComponent(tz)}&lang=${encodeURIComponent(navigator.language || '')}`;
   };
-  window.cloudPing = (e, detail) => timed(`${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${e ? `&e=${e}` : ''}`
-    + `${detail ? `&x=${encodeURIComponent(String(detail).slice(0, 300))}` : ''}${who()}${env()}`, 15000).catch(() => {});
+  window.cloudPing = (e, detail) =>
+    timed(
+      `${ART_API}/ping?px=${Math.round(($('art').offsetWidth || 300) * devicePixelRatio)}${e ? `&e=${e}` : ''}` +
+        `${detail ? `&x=${encodeURIComponent(String(detail).slice(0, 300))}` : ''}${who()}${env()}`,
+      15000,
+    ).catch(() => {});
   const ping = () => window.cloudPing();
-  if (!window.LYRICDOCK_MINI) { setTimeout(ping, 5000); setInterval(ping, 10 * 60000); }
+  if (!window.LYRICDOCK_MINI) {
+    setTimeout(ping, 5000);
+    setInterval(ping, 10 * 60000);
+  }
 
   // ---- phone hardware: volume keys (MainActivity forwards them while the setting is on), media notification,
   // brightness schedule, and "wake" from Spotify (Ctrl+Alt+W / right-click menu).
@@ -1523,9 +2772,12 @@
   $('volDn').onclick = () => window.volKey(-2); // the speakers step by 10
   $('volUp').onclick = () => window.volKey(2);
   $('vol').addEventListener('input', window.volMuted);
-  window.mediaCmd = c => { if (['toggle', 'next', 'prev'].includes(c)) cmdOf(c); };
+  window.mediaCmd = c => {
+    if (['toggle', 'next', 'prev'].includes(c)) cmdOf(c);
+  };
   window.dockWake = () => {
-    lastPlayAt = Date.now(); clockDismissedAt = Date.now();
+    lastPlayAt = Date.now();
+    clockDismissedAt = Date.now();
     setClock(false);
     call('wake');
   };
@@ -1534,25 +2786,58 @@
   window.connCard = () => {
     const card = document.createElement('div');
     card.className = 'cc';
-    const p = Rtc.path?.(), linked = Rtc.open?.(), desk = Rtc.desk?.() || 'Spotify on your computer', vis = Rtc.discoverable?.() ?? {};
-    let dockOn = false; try { dockOn = !!Dock.kioskOn(); } catch (e) {}
-    const state = linked ? `Connected to ${desk}` : P.source === 'web' ? 'Following your Spotify account' : 'Not connected';
+    const p = Rtc.path?.(),
+      linked = Rtc.open?.(),
+      desk = Rtc.desk?.() || 'Spotify on your computer',
+      vis = Rtc.discoverable?.() ?? {};
+    let dockOn = false;
+    try {
+      dockOn = !!Dock.kioskOn();
+    } catch (e) {}
+    const state = linked
+      ? `Connected to ${desk}`
+      : P.source === 'web'
+        ? 'Following your Spotify account'
+        : 'Not connected';
     // USB tethering: the link's local address isn't the phone's Wi-Fi one (myIp: app.js)
-    const how = linked ? `${p?.relayed ? 'Through a TURN relay' : p?.local && myIp && p.local !== myIp ? 'USB cable' : 'Same network'}${p?.rtt != null ? ` · ${Math.round(p.rtt * 1000)} ms` : ''}`
-      : P.source === 'web' ? 'Spotify on your computer isn\'t linked. Playback comes from your account instead.'
-      : 'Waiting for Spotify on your computer.';
+    const how = linked
+      ? `${p?.relayed ? 'Through a TURN relay' : p?.local && myIp && p.local !== myIp ? 'USB cable' : 'Same network'}${p?.rtt != null ? ` · ${Math.round(p.rtt * 1000)} ms` : ''}`
+      : P.source === 'web'
+        ? "Spotify on your computer isn't linked. Playback comes from your account instead."
+        : 'Waiting for Spotify on your computer.';
     card.innerHTML = `<div class="cc-top"><i class="cc-dot${linked ? ' on' : P.source === 'web' ? ' mid' : ''}"></i><div><b>${esc(state)}</b><small>${esc(how)}</small></div></div>
       <div class="cc-grid">
         <div><small>Find it from Spotify</small><b>LyricDock button → Devices → Find devices</b><span>${vis.network ? '✓ Visible on this network' : '… checking the network'}${vis.account ? ' · ✓ your Spotify account' : ' · sign in (Playback source) to be found anywhere'}</span></div>
         <div><small>Or type this pairing code</small><div class="cc-coderow"><b class="cc-code">${esc(Rtc.code)}</b><button class="cc-copy" type="button">Copy</button></div><span>Spotify → LyricDock → Devices → Pairing code</span></div>
       </div>`;
-    card.querySelector('.cc-copy').onclick = e => { e.stopPropagation(); copyText(Rtc.code); e.target.textContent = 'Copied'; setTimeout(() => { e.target.textContent = 'Copy'; }, 1500); };
+    card.querySelector('.cc-copy').onclick = e => {
+      e.stopPropagation();
+      copyText(Rtc.code);
+      e.target.textContent = 'Copied';
+      setTimeout(() => {
+        e.target.textContent = 'Copy';
+      }, 1500);
+    };
     return card;
   };
   // Clipboard from a file:// page: the async API may be refused, so fall back to a selected textarea + copy.
   function copyText(t, what = 'Pairing code') {
-    const fallback = () => { const a = Object.assign(document.createElement('textarea'), { value: t }); a.style.position = 'fixed'; a.style.opacity = '0'; document.body.append(a); a.select(); try { document.execCommand('copy'); } catch (x) {} a.remove(); };
-    try { navigator.clipboard.writeText(t).catch(fallback); } catch (x) { fallback(); }
+    const fallback = () => {
+      const a = Object.assign(document.createElement('textarea'), { value: t });
+      a.style.position = 'fixed';
+      a.style.opacity = '0';
+      document.body.append(a);
+      a.select();
+      try {
+        document.execCommand('copy');
+      } catch (x) {}
+      a.remove();
+    };
+    try {
+      navigator.clipboard.writeText(t).catch(fallback);
+    } catch (x) {
+      fallback();
+    }
     window.notice?.(`${what} copied`, 1500);
   }
 
@@ -1561,17 +2846,43 @@
   // so the web shows it immediately; the phone first gives its adb bridge 3 s to say hello. A signed-in screen
   // never sees it and goes straight to "Waiting for Spotify…" while the first poll runs.
   const setup = (() => {
-    let el = null, view = 'home', skipped = false, forced = false, wasIn = false, pcAt = 0, lna = '';
-    const LS = 'dock:linked', web = !!window.LYRICDOCK_WEB;
-    const ever = () => { try { return !!localStorage.getItem(LS); } catch (e) { return false; } };
-    const mark = () => { try { localStorage.setItem(LS, '1'); } catch (e) {} };
-    const back = '<button class="su-back" data-a="home" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>';
+    let el = null,
+      view = 'home',
+      skipped = false,
+      forced = false,
+      wasIn = false,
+      pcAt = 0,
+      lna = '';
+    const LS = 'dock:linked',
+      web = !!window.LYRICDOCK_WEB;
+    const ever = () => {
+      try {
+        return !!localStorage.getItem(LS);
+      } catch (e) {
+        return false;
+      }
+    };
+    const mark = () => {
+      try {
+        localStorage.setItem(LS, '1');
+      } catch (e) {}
+    };
+    const back =
+      '<button class="su-back" data-a="home" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>';
     // The phone's kiosk has no browser to open a link in: there the address is just shown.
-    const link = (url, text) => web ? `<a class="su-link" href="${url}" target="_blank" rel="noopener">${text} ↗</a>` : `<b>${text}</b>`;
-    const btnLink = (url, text) => web ? `<a class="su-go" href="${url}" target="_blank" rel="noopener">${text} ↗</a>` : `<span class="su-note">Open <b>${url.replace('https://', '')}</b> on a computer or phone</span>`;
+    const link = (url, text) =>
+      web ? `<a class="su-link" href="${url}" target="_blank" rel="noopener">${text} ↗</a>` : `<b>${text}</b>`;
+    const btnLink = (url, text) =>
+      web
+        ? `<a class="su-go" href="${url}" target="_blank" rel="noopener">${text} ↗</a>`
+        : `<span class="su-note">Open <b>${url.replace('https://', '')}</b> on a computer or phone</span>`;
     const DASH = 'https://developer.spotify.com/dashboard';
     // One field of Spotify's "Create app" form, the way it looks there, with the value to put in it.
-    const field = (label, value, { req, hint } = {}) => `<div class="sx-f"><label>${label}${req ? ' <em>*</em>' : ''}</label>
+    const field = (
+      label,
+      value,
+      { req, hint } = {},
+    ) => `<div class="sx-f"><label>${label}${req ? ' <em>*</em>' : ''}</label>
       <div class="sx-v"><span>${esc(value)}</span><button class="sx-copy" data-a="cp" data-v="${esc(value)}" data-l="${label}">Copy</button></div>${hint ? `<small>${hint}</small>` : ''}</div>`;
     let wstep = 0; // 0: pick when first shown (straight to the Client ID if one was entered before)
     const wsteps = {
@@ -1599,13 +2910,31 @@
           <small class="su-msg" id="suMsg"></small>`,
     };
     const FAQ = [
-      ['There is no "Create app" button', 'Verify your email first (step 1) and accept the Developer Terms. If it still doesn\'t show, Spotify isn\'t letting your account make apps: use a friend\'s Client ID instead. They add <b>your</b> Spotify email under <b>User Management</b> in their app.'],
-      ['Do I need Premium?', 'The account that owns the app needs Premium (Spotify\'s rule for apps in development mode). Up to 5 people can use one app.'],
-      ['"INVALID_CLIENT: Invalid redirect URI"', `The Redirect URI must be exactly <code>${esc(Web.redirect)}</code>. Open your app → <b>Edit</b>, paste it, click <b>Add</b>, then <b>Save</b> at the bottom.`],
-      ['"User not registered in the Developer Dashboard"', 'You signed in with a different Spotify account than the app\'s. In the app open <b>User Management</b> and add that account\'s name and email, or sign in with the owner account.'],
-      ['Spotify says "Something went wrong"', 'Wait a minute and try again: new apps can take a moment to activate. Check that <b>Web API</b> is ticked under <b>APIs used</b>.'],
+      [
+        'There is no "Create app" button',
+        "Verify your email first (step 1) and accept the Developer Terms. If it still doesn't show, Spotify isn't letting your account make apps: use a friend's Client ID instead. They add <b>your</b> Spotify email under <b>User Management</b> in their app.",
+      ],
+      [
+        'Do I need Premium?',
+        "The account that owns the app needs Premium (Spotify's rule for apps in development mode). Up to 5 people can use one app.",
+      ],
+      [
+        '"INVALID_CLIENT: Invalid redirect URI"',
+        `The Redirect URI must be exactly <code>${esc(Web.redirect)}</code>. Open your app → <b>Edit</b>, paste it, click <b>Add</b>, then <b>Save</b> at the bottom.`,
+      ],
+      [
+        '"User not registered in the Developer Dashboard"',
+        "You signed in with a different Spotify account than the app's. In the app open <b>User Management</b> and add that account's name and email, or sign in with the owner account.",
+      ],
+      [
+        'Spotify says "Something went wrong"',
+        'Wait a minute and try again: new apps can take a moment to activate. Check that <b>Web API</b> is ticked under <b>APIs used</b>.',
+      ],
       ['Do I need the client secret?', 'No. LyricDock signs in without it. Never paste the secret anywhere.'],
-      ['What can LyricDock do with my account?', 'See what is playing and control playback - nothing else. You can remove it any time at spotify.com/account/apps.'],
+      [
+        'What can LyricDock do with my account?',
+        'See what is playing and control playback - nothing else. You can remove it any time at spotify.com/account/apps.',
+      ],
     ];
     const views = {
       home: () => `<div class="su-side"><div class="su-logo"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h11M4 17h7"/></svg></div>
@@ -1621,7 +2950,7 @@
       // with its own Copy button, and the questions people actually hit underneath.
       web: () => `<div class="su-side">${back}<h1>Sign in with Spotify</h1><p>Spotify lets LyricDock in only through an app you register. It's free, takes a few minutes, and needs no secret.</p>
           <div class="su-tabs">${['Account', 'Create app', 'Client ID'].map((t, i) => `<button data-a="w${i + 1}" class="${wstep === i + 1 ? 'on' : ''}"><i>${i + 1}</i>${t}</button>`).join('')}</div></div>
-        <div class="su-main">${wsteps[wstep ||= S.spClientId ? 3 : 1]()}
+        <div class="su-main">${wsteps[(wstep ||= S.spClientId ? 3 : 1)]()}
           <details class="su-faq"><summary>Questions</summary>${FAQ.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('')}</details></div>`,
       pc: () => `<div class="su-side">${back}<h1>Use Spotify on your computer</h1><p>Spotify desktop with the LyricDock extension: ${link('https://github.com/DhakadG/lyricdock#readme', 'how to install it')}.</p></div>
         <div class="su-main"><ol class="su-steps">
@@ -1636,7 +2965,11 @@
       el.innerHTML = `<div class="su-card">${views[view]()}</div>`;
       if (view === 'pc') {
         pcAt = performance.now();
-        if (web) window.lyricdockLna?.ensure?.().then(s => { lna = s; update(); }); // the browser asks now, not after a delay
+        if (web)
+          window.lyricdockLna?.ensure?.().then(s => {
+            lna = s;
+            update();
+          }); // the browser asks now, not after a delay
       }
       update();
     }
@@ -1647,28 +2980,58 @@
       el.setAttribute('role', 'dialog');
       el.setAttribute('aria-label', 'Set up LyricDock');
       el.addEventListener('click', e => {
-        const b = e.target.closest('[data-a]'), a = b?.dataset.a;
+        const b = e.target.closest('[data-a]'),
+          a = b?.dataset.a;
         if (!a) return;
-        if (a === 'skip') { skipped = true; close(); }
-        else if (a === 'copy') { copyText(Rtc.code); b.textContent = 'Copied'; }
-        else if (a === 'cp') { copyText(b.dataset.v, b.dataset.l); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); }
-        else if (a === 'paste') navigator.clipboard?.readText?.().then(t => { el.querySelector('#suCid').value = t.trim(); }).catch(() => el.querySelector('#suCid').focus());
-        else if (/^w\d$/.test(a)) { wstep = +a[1]; draw(); }
-        else if (a === 'lna') window.lyricdockLna?.request().then(update);
+        if (a === 'skip') {
+          skipped = true;
+          close();
+        } else if (a === 'copy') {
+          copyText(Rtc.code);
+          b.textContent = 'Copied';
+        } else if (a === 'cp') {
+          copyText(b.dataset.v, b.dataset.l);
+          b.textContent = 'Copied';
+          setTimeout(() => {
+            b.textContent = 'Copy';
+          }, 1500);
+        } else if (a === 'paste')
+          navigator.clipboard
+            ?.readText?.()
+            .then(t => {
+              el.querySelector('#suCid').value = t.trim();
+            })
+            .catch(() => el.querySelector('#suCid').focus());
+        else if (/^w\d$/.test(a)) {
+          wstep = +a[1];
+          draw();
+        } else if (a === 'lna') window.lyricdockLna?.request().then(update);
         else if (a === 'login') {
-          const v = el.querySelector('#suCid').value.trim().toLowerCase(), msg = el.querySelector('#suMsg');
+          const v = el.querySelector('#suCid').value.trim().toLowerCase(),
+            msg = el.querySelector('#suMsg');
           msg.classList.add('bad', 'local');
-          if (!/^[0-9a-f]{32}$/.test(v)) { msg.textContent = 'That doesn\'t look like a Client ID: it is 32 letters and numbers (0-9, a-f).'; return; }
+          if (!/^[0-9a-f]{32}$/.test(v)) {
+            msg.textContent = "That doesn't look like a Client ID: it is 32 letters and numbers (0-9, a-f).";
+            return;
+          }
           msg.classList.remove('bad', 'local');
           Settings.set('spClientId', v);
           Web.login();
           update();
-        } else { view = a; draw(); }
+        } else {
+          view = a;
+          draw();
+        }
       });
       draw();
       document.body.append(el);
     }
-    function close() { el?.remove(); el = null; view = 'home'; forced = false; }
+    function close() {
+      el?.remove();
+      el = null;
+      view = 'home';
+      forced = false;
+    }
     // What the open view shows live: the sign-in result, or what is (not) in the way of finding Spotify on the computer.
     function update() {
       if (!el) return;
@@ -1680,29 +3043,70 @@
       }
       const box = el.querySelector('#suChecks');
       if (!box) return;
-      const vis = Rtc.discoverable?.() ?? {}, rows = [];
-      if (web && lna === 'prompt') rows.push(['!', 'Your browser must allow this page to reach your network.', '<button class="su-mini" data-a="lna">Allow</button>']);
-      else if (web && lna === 'denied') rows.push(['✕', 'Local network is blocked for this site: allow it in the site settings (the icon left of the address), then reload.']);
+      const vis = Rtc.discoverable?.() ?? {},
+        rows = [];
+      if (web && lna === 'prompt')
+        rows.push([
+          '!',
+          'Your browser must allow this page to reach your network.',
+          '<button class="su-mini" data-a="lna">Allow</button>',
+        ]);
+      else if (web && lna === 'denied')
+        rows.push([
+          '✕',
+          'Local network is blocked for this site: allow it in the site settings (the icon left of the address), then reload.',
+        ]);
       rows.push(vis.network ? ['✓', 'Visible to Spotify on this network'] : ['…', 'Announcing on this network']);
-      rows.push(vis.account ? ['✓', 'Findable through your Spotify account'] : ['·', 'Signing in with Spotify too lets it be found from any network']);
-      if (performance.now() - pcAt > 30000) rows.push(['?', 'Not found yet? Spotify desktop must be open with the LyricDock extension installed, and its LyricDock → Devices list open.']);
+      rows.push(
+        vis.account
+          ? ['✓', 'Findable through your Spotify account']
+          : ['·', 'Signing in with Spotify too lets it be found from any network'],
+      );
+      if (performance.now() - pcAt > 30000)
+        rows.push([
+          '?',
+          'Not found yet? Spotify desktop must be open with the LyricDock extension installed, and its LyricDock → Devices list open.',
+        ]);
       box.innerHTML = rows.map(([i, t, x = '']) => `<div><i>${i}</i><span>${t}</span>${x}</div>`).join('');
     }
     // ponytail: 1 s poll, the same cadence as the "alive" beat.
     function tick() {
-      const bridge = Rtc.open?.() || P.gotHello, signed = Web.loggedIn();
+      const bridge = Rtc.open?.() || P.gotHello,
+        signed = Web.loggedIn();
       if (bridge || signed) mark();
-      if (forced) { if ((signed && !wasIn) || (bridge && view === 'pc')) return close(); } // opened on purpose: stays until done or closed
-      else if (bridge || signed || P.id || ever() || skipped || window.LYRICDOCK_MINI || Web.busy() || (!web && performance.now() < 3000)) return close();
+      if (forced) {
+        if ((signed && !wasIn) || (bridge && view === 'pc')) return close();
+      } // opened on purpose: stays until done or closed
+      else if (
+        bridge ||
+        signed ||
+        P.id ||
+        ever() ||
+        skipped ||
+        window.LYRICDOCK_MINI ||
+        Web.busy() ||
+        (!web && performance.now() < 3000)
+      )
+        return close();
       else open();
-      if (web && view === 'pc') window.lyricdockLna?.state().then(s => { lna = s; });
+      if (web && view === 'pc')
+        window.lyricdockLna?.state().then(s => {
+          lna = s;
+        });
       update();
     }
     setInterval(tick, 1000);
     setTimeout(tick, 0); // after install.js has run (it hands the sign-in result over on load)
     return {
-      open: (v = 'home') => { forced = true; wasIn = Web.loggedIn(); view = v; if (el) draw(); else open(); },
-      close, isOpen: () => !!el,
+      open: (v = 'home') => {
+        forced = true;
+        wasIn = Web.loggedIn();
+        view = v;
+        if (el) draw();
+        else open();
+      },
+      close,
+      isOpen: () => !!el,
     };
   })();
   window.Setup = setup;
@@ -1710,38 +3114,66 @@
   function hardware(h) {
     const inNight = S.nightFrom > S.nightTo ? h >= S.nightFrom || h < S.nightTo : h >= S.nightFrom && h < S.nightTo;
     const b = S.bright === 'system' ? -1 : S.bright === 'schedule' && inNight ? S.brightNight : S.brightDay;
-    if (b !== window.__bright) { window.__bright = b; call('brightness', b); }
+    if (b !== window.__bright) {
+      window.__bright = b;
+      call('brightness', b);
+    }
     if (S.mediaNotif && S.lockLyric) return; // the lyric loop below owns the notification (the line replaces the artist)
     // (+ where Spotify plays: the web shim keeps its audio off while Spotify plays on this iPad / iPhone)
     const mk = S.mediaNotif && P.id ? `${P.id}|${!!P.playing}|${$('title').textContent}|${window.playingOnType()}` : '';
-    if (mk !== mediaKey) { mediaKey = mk; call('media', mk ? $('title').textContent : '', $('artist').textContent, P.art || '', !!P.playing); }
+    if (mk !== mediaKey) {
+      mediaKey = mk;
+      call('media', mk ? $('title').textContent : '', $('artist').textContent, P.art || '', !!P.playing);
+    }
   }
   setInterval(() => hardware(new Date().getHours()), 1000);
 
   // ---- Home-screen widgets + lock screen (docs/widgets-plan.md). The shared now-playing state (the same shape an iOS
   // Live Activity will use) goes to Android when the song, play state or sung line changes - and only while a widget
   // is placed or a lock-screen option is on. Throttling and drawing happen natively (NowPlaying.java).
-  let widgets = false, sentKey = '', overLock = null;
-  const checkWidgets = () => { widgets = !!call('hasWidgets'); };
+  let widgets = false,
+    sentKey = '',
+    overLock = null;
+  const checkWidgets = () => {
+    widgets = !!call('hasWidgets');
+  };
   checkWidgets();
   setInterval(checkWidgets, 60000);
-  window.dockWidgets = () => { checkWidgets(); sentKey = ''; }; // a widget was placed / resized (NowPlaying.redraw)
+  window.dockWidgets = () => {
+    checkWidgets();
+    sentKey = '';
+  }; // a widget was placed / resized (NowPlaying.redraw)
   function nowState() {
-    const p = pos(), l = Lyrics.lineAt(p);
+    const p = pos(),
+      l = Lyrics.lineAt(p);
     return {
-      v: 1, id: P.id, title: $('title').textContent, artist: $('artist').textContent, album: P.album || '', art: P.art || '',
+      v: 1,
+      id: P.id,
+      title: $('title').textContent,
+      artist: $('artist').textContent,
+      album: P.album || '',
+      art: P.art || '',
       accent: S.widgetAccent ? getComputedStyle(document.documentElement).getPropertyValue('--acc').trim() : '',
-      playing: !!P.playing, posMs: Math.round(p), atMs: Date.now(), durMs: Math.round(P.dur || 0),
-      line: l?.text ? { i: l.i, text: l.text, t: l.t, e: l.e } : null, prev: l?.prev || '', next: l?.next || [],
+      playing: !!P.playing,
+      posMs: Math.round(p),
+      atMs: Date.now(),
+      durMs: Math.round(P.dur || 0),
+      line: l?.text ? { i: l.i, text: l.text, t: l.t, e: l.e } : null,
+      prev: l?.prev || '',
+      next: l?.next || [],
       src: P.source === 'web' ? 'webapi' : 'bridge',
     };
   }
   setInterval(() => {
     const lock = !!(S.lockShow && P.playing);
-    if (lock !== overLock) { overLock = lock; call('showOverLock', lock); }
+    if (lock !== overLock) {
+      overLock = lock;
+      call('showOverLock', lock);
+    }
     const lockLine = S.mediaNotif && S.lockLyric;
     if (!P.id || (!widgets && !lockLine)) return;
-    const s = nowState(), key = `${s.id}|${s.playing}|${s.line?.i ?? -1}|${s.accent}`;
+    const s = nowState(),
+      key = `${s.id}|${s.playing}|${s.line?.i ?? -1}|${s.accent}`;
     if (key === sentKey) return;
     sentKey = key;
     if (widgets) call('nowPlaying', JSON.stringify(s));
@@ -1751,23 +3183,41 @@
   // ---- release notes: Settings -> Updates -> What's new, and once after the app updated itself.
   // **bold** and [text](link) -> bold / plain text (the input is already escaped).
   const inl = s => s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
-  const md = t => '<ul>' + esc(t).split(/\r?\n/).map(l => l.trim()).filter(l => l && !/^#+\s*$/.test(l))
-    .map(l => /^#+\s/.test(l) ? `</ul><b>${l.replace(/^#+\s*/, '')}</b><ul>` : `<li>${inl(l.replace(/^[-*]\s+/, ''))}</li>`).join('') + '</ul>';
+  const md = t =>
+    '<ul>' +
+    esc(t)
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l && !/^#+\s*$/.test(l))
+      .map(l =>
+        /^#+\s/.test(l) ? `</ul><b>${l.replace(/^#+\s*/, '')}</b><ul>` : `<li>${inl(l.replace(/^[-*]\s+/, ''))}</li>`,
+      )
+      .join('') +
+    '</ul>';
   async function changelog() {
-    const rs = await fetch('https://api.github.com/repos/DhakadG/lyricdock/releases?per_page=8').then(r => r.json()).catch(() => null);
+    const rs = await fetch('https://api.github.com/repos/DhakadG/lyricdock/releases?per_page=8')
+      .then(r => r.json())
+      .catch(() => null);
     if (!Array.isArray(rs)) return window.notice?.('Could not load the release notes');
-    $('newsBody').innerHTML = rs.map(r => `<h5>${esc(r.name || r.tag_name)}<small>${esc((r.published_at || '').slice(0, 10))}${r.prerelease ? ' · beta' : ''}</small></h5>${md(r.body || '')}`).join('');
+    $('newsBody').innerHTML = rs
+      .map(
+        r =>
+          `<h5>${esc(r.name || r.tag_name)}<small>${esc((r.published_at || '').slice(0, 10))}${r.prerelease ? ' · beta' : ''}</small></h5>${md(r.body || '')}`,
+      )
+      .join('');
     document.body.classList.add('news-open');
   }
   window.showChangelog = changelog;
   $('newsClose').onclick = () => document.body.classList.remove('news-open');
   try {
-    const v = Dock.version(), seen = localStorage.getItem('dock:seenVersion');
+    const v = Dock.version(),
+      seen = localStorage.getItem('dock:seenVersion');
     if (v && seen && seen !== v) setTimeout(changelog, 5000);
     if (v) localStorage.setItem('dock:seenVersion', v);
   } catch (e) {}
 
   // ---- explicit filter used by lyrics.js when building lines
-  const BAD = /\b(f+u+c+k\w*|s+h+i+t+\w*|b+i+t+c+h\w*|a+s+s+h+o+l+e\w*|d+i+c+k\w*|p+u+s+s+y\w*|c+u+n+t\w*|n+i+g+g+\w*|m+o+t+h+e+r+f+u+c+k\w*|b+a+s+t+a+r+d\w*|w+h+o+r+e\w*|s+l+u+t\w*)/gi;
+  const BAD =
+    /\b(f+u+c+k\w*|s+h+i+t+\w*|b+i+t+c+h\w*|a+s+s+h+o+l+e\w*|d+i+c+k\w*|p+u+s+s+y\w*|c+u+n+t\w*|n+i+g+g+\w*|m+o+t+h+e+r+f+u+c+k\w*|b+a+s+t+a+r+d\w*|w+h+o+r+e\w*|s+l+u+t\w*)/gi;
   window.cleanWords = t => (S.hideExplicit && t ? t.replace(BAD, w => w[0] + '*'.repeat(w.length - 1)) : t);
 })();

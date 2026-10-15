@@ -8,8 +8,10 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { webcrypto as crypto } from 'node:crypto';
 
-const root = new URL('..', import.meta.url), KEY = new URL('secrets/EXTENSION_SIGNING_JWK.json', root);
-const ALG = { name: 'ECDSA', namedCurve: 'P-256' }, SIG = { name: 'ECDSA', hash: 'SHA-256' };
+const root = new URL('..', import.meta.url),
+  KEY = new URL('secrets/EXTENSION_SIGNING_JWK.json', root);
+const ALG = { name: 'ECDSA', namedCurve: 'P-256' },
+  SIG = { name: 'ECDSA', hash: 'SHA-256' };
 
 if (process.argv.includes('--new-key')) {
   if (existsSync(KEY)) throw new Error('secrets/EXTENSION_SIGNING_JWK.json exists already - refusing to replace it');

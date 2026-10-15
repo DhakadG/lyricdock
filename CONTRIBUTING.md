@@ -16,12 +16,13 @@ Thanks for helping. LyricDock is three small pieces: a Spicetify extension (`ext
 
 ## Building
 
-| What | How |
-|---|---|
-| Android app | `./scripts/build-apk.ps1` (no Gradle needed; uses `ANDROID_HOME` or `.tools/sdk`). `./scripts/deploy.ps1` builds and installs over USB adb. |
-| Extension (development) | `./scripts/install-extension.ps1 -Dev` installs `extension/dock-bridge.js` directly (no auto-updates), then `spicetify apply`. |
-| Helper | `cd helper/src-tauri && cargo build --release` |
-| Page preview in a desktop browser | `./scripts/preview.ps1` |
+| What                              | How                                                                                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android app                       | `./scripts/build-apk.ps1` (no Gradle needed; uses `ANDROID_HOME` or `.tools/sdk`). `./scripts/deploy.ps1` builds and installs over USB adb. |
+| Extension (development)           | `./scripts/install-extension.ps1 -Dev` installs `extension/dock-bridge.js` directly (no auto-updates), then `spicetify apply`.              |
+| Helper                            | `cd helper/src-tauri && cargo build --release`                                                                                              |
+| Page preview in a desktop browser | `./scripts/preview.ps1`                                                                                                                     |
+| Formatting                        | `npm install` once, then `npm run format` before committing (Prettier, google-java-format, PSScriptAnalyzer, rustfmt; layout only).         |
 
 The Java side uses no inner, anonymous or lambda classes (the Gradle-free `d8` step), so every callback is a small top-level class (`UiOp`, `MediaCb`, …).
 

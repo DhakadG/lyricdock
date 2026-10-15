@@ -9,25 +9,46 @@
 // Spotify turns its refresh token over on each use: every screen pushes the new one, and a screen whose token was
 // turned over elsewhere takes the newer one from here instead of signing out (spotify.js -> Sync.rescue).
 const Sync = (() => {
-  const API = 'https://art.lyricdock.losthusky.qzz.io/v1/sync', SEEN = 'dock:syncSeen';
+  const API = 'https://art.lyricdock.losthusky.qzz.io/v1/sync',
+    SEEN = 'dock:syncSeen';
   const KEYS = ['apiKey', 'videoKey', 'spClientId'];
-  let pulled = false, applying = false, pushT = 0, busy = null;
+  let pulled = false,
+    applying = false,
+    pushT = 0,
+    busy = null;
   const scope = () => Settings.S.syncScope || 'all';
   const seen = () => +(localStorage.getItem(SEEN) || 0);
-  const setSeen = v => { try { localStorage.setItem(SEEN, String(v)); } catch (e) {} };
+  const setSeen = v => {
+    try {
+      localStorage.setItem(SEEN, String(v));
+    } catch (e) {}
+  };
 
   // Which settings travel: every one the schema doesn't mark as this device's own (local: hardware, network).
-  const shared = () => Settings.schema().filter(x => x.k && !x.local).map(x => x.k);
+  const shared = () =>
+    Settings.schema()
+      .filter(x => x.k && !x.local)
+      .map(x => x.k);
   const pack = () => {
-    const S = Settings.S, sc = scope();
+    const S = Settings.S,
+      sc = scope();
     const keys = sc === 'all' ? shared() : KEYS;
-    return { scope: sc, settings: Object.fromEntries(keys.filter(k => k in S).map(k => [k, S[k]])), spotify: Web.syncToken() };
+    return {
+      scope: sc,
+      settings: Object.fromEntries(keys.filter(k => k in S).map(k => [k, S[k]])),
+      spotify: Web.syncToken(),
+    };
   };
 
   async function call(method, body) {
     const h = Account.headers();
     if (!h.Authorization) return null;
-    const r = await fetch(API, { method, headers: { ...h, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body && JSON.stringify(body), cache: 'no-store' }).catch(() => null);
+    const r = await fetch(API, {
+      method,
+      headers: { ...h, ...(body ? { 'content-type': 'application/json' } : {}) },
+      body: body && JSON.stringify(body),
+      cache: 'no-store',
+    }).catch(() => null);
     return r?.ok ? r.json().catch(() => null) : null;
   }
 
@@ -37,10 +58,19 @@ const Sync = (() => {
     try {
       const allowed = new Set(scope() === 'all' ? shared() : KEYS);
       const s = d.settings || {};
-      for (const k of Object.keys(s)) if (allowed.has(k) && k in Settings.defaults && typeof s[k] === typeof Settings.defaults[k] && Settings.S[k] !== s[k]) Settings.set(k, s[k], false);
+      for (const k of Object.keys(s))
+        if (
+          allowed.has(k) &&
+          k in Settings.defaults &&
+          typeof s[k] === typeof Settings.defaults[k] &&
+          Settings.S[k] !== s[k]
+        )
+          Settings.set(k, s[k], false);
       if (d.spotify?.refresh) Web.adopt(d.spotify);
       Settings.render();
-    } finally { applying = false; }
+    } finally {
+      applying = false;
+    }
     setSeen(remote.v);
   }
 
@@ -62,7 +92,9 @@ const Sync = (() => {
       if (r?.v) setSeen(r.v);
     }, 2000);
   }
-  const changed = () => { if (!applying && pulled) push(); };
+  const changed = () => {
+    if (!applying && pulled) push();
+  };
 
   // Spotify said invalid_grant: another screen used (and so replaced) the refresh token. The newest one is pushed
   // within a few seconds of that, so look twice.
@@ -72,18 +104,41 @@ const Sync = (() => {
       await new Promise(r => setTimeout(r, wait));
       const r = await call('GET');
       const t = r?.data?.spotify;
-      if (t?.refresh && t.refresh !== old) { setSeen(Math.max(seen(), r.v)); return t; }
+      if (t?.refresh && t.refresh !== old) {
+        setSeen(Math.max(seen(), r.v));
+        return t;
+      }
     }
     return null;
   }
 
-  if (!window.LYRICDOCK_MINI) { // the miniplayer is this same screen
-    Settings.onChange(k => { if (k === 'syncScope') { if (Settings.S.syncScope !== 'off') pull().then(push); } else changed(); });
+  if (!window.LYRICDOCK_MINI) {
+    // the miniplayer is this same screen
+    Settings.onChange(k => {
+      if (k === 'syncScope') {
+        if (Settings.S.syncScope !== 'off') pull().then(push);
+      } else changed();
+    });
     // Signed in a moment after start (web: the cookie buys the app token), so keep trying until the first pull lands.
-    const first = setInterval(async () => { if (pulled || scope() === 'off') return clearInterval(first); if (await pull()) clearInterval(first); }, 2000);
+    const first = setInterval(async () => {
+      if (pulled || scope() === 'off') return clearInterval(first);
+      if (await pull()) clearInterval(first);
+    }, 2000);
     setInterval(pull, 10 * 60000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && pulled) pull(); });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && pulled) pull();
+    });
   }
-  return { pull, push: changed, rescue, status: () => (scope() === 'off' ? 'Off' : pulled ? `Synced${seen() ? ` · ${new Date(seen()).toLocaleString()}` : ''}` : 'Waiting for sign-in') };
+  return {
+    pull,
+    push: changed,
+    rescue,
+    status: () =>
+      scope() === 'off'
+        ? 'Off'
+        : pulled
+          ? `Synced${seen() ? ` · ${new Date(seen()).toLocaleString()}` : ''}`
+          : 'Waiting for sign-in',
+  };
 })();
 window.Sync = Sync;

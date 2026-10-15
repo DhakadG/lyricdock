@@ -33,7 +33,9 @@ const CHECK = `(() => {
   return issues;
 })()`;
 
-const layouts = JSON.parse(await ev(`JSON.stringify(Settings.schema().find(x => x.k === 'layout').opts.map(o => o[0]))`));
+const layouts = JSON.parse(
+  await ev(`JSON.stringify(Settings.schema().find(x => x.k === 'layout').opts.map(o => o[0]))`),
+);
 const orig = await ev(`Settings.S.layout`);
 const orient = await ev(`innerWidth > innerHeight ? 'land' : 'port'`);
 const states = [
@@ -51,17 +53,28 @@ for (const L of layouts) {
     const f = `${out}/${orient}-${L}-${s}.png`;
     shot(f);
     const issues = await ev(CHECK);
-    const blocks = JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('[data-block]')].map(e => { const r = e.getBoundingClientRect(); let v = true; for (let x = e; x && x !== document.documentElement; x = x.parentElement) { const c = getComputedStyle(x); if (+c.opacity < .05 || c.visibility === 'hidden' || c.display === 'none') v = false; } return { name: e.dataset.block, x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), v }; }).filter(b => b.v && b.w > 2 && b.h > 2 && b.x < innerWidth && b.y < innerHeight && b.x + b.w > 0 && b.y + b.h > 0))`));
+    const blocks = JSON.parse(
+      await ev(
+        `JSON.stringify([...document.querySelectorAll('[data-block]')].map(e => { const r = e.getBoundingClientRect(); let v = true; for (let x = e; x && x !== document.documentElement; x = x.parentElement) { const c = getComputedStyle(x); if (+c.opacity < .05 || c.visibility === 'hidden' || c.display === 'none') v = false; } return { name: e.dataset.block, x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), v }; }).filter(b => b.v && b.w > 2 && b.h > 2 && b.x < innerWidth && b.y < innerHeight && b.x + b.w > 0 && b.y + b.h > 0))`,
+      ),
+    );
     report.push({ screen: `${L} / ${s}`, issues, blocks, size: await ev(`[innerWidth, innerHeight]`) });
     console.log(`${(L + ' / ' + s).padEnd(22)} ${issues.length ? issues.join(' | ') : 'ok'}`);
   }
   await ev(`document.body.classList.remove('ui','qs-open'); 1`);
 }
 // the sheets
-await ev(`Settings.set('layout', '${orig}'); 1`); await sleep(2000);
-for (const [s, js] of [['settings', `Settings.open(); 1`], ['lists', `document.body.classList.remove('settings-open'); document.querySelector('#lists button')?.click(); 1`]]) {
-  await ev(js); await sleep(1500); shot(`${out}/sheet-${s}.png`);
-  const issues = await ev(CHECK); report.push({ screen: s, issues });
+await ev(`Settings.set('layout', '${orig}'); 1`);
+await sleep(2000);
+for (const [s, js] of [
+  ['settings', `Settings.open(); 1`],
+  ['lists', `document.body.classList.remove('settings-open'); document.querySelector('#lists button')?.click(); 1`],
+]) {
+  await ev(js);
+  await sleep(1500);
+  shot(`${out}/sheet-${s}.png`);
+  const issues = await ev(CHECK);
+  report.push({ screen: s, issues });
   console.log(`${s.padEnd(22)} ${issues.length ? issues.join(' | ') : 'ok'}`);
 }
 await ev(`document.body.classList.remove('settings-open','lists-open','ui'); 1`);

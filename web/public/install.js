@@ -2,29 +2,37 @@
 // Loaded after the app scripts (web build only). Docs: docs/web-app.md.
 (() => {
   const ping = (e, detail) => window.cloudPing?.(e, detail);
-  const standalone = () => matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone === true;
+  const standalone = () =>
+    matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone === true;
 
   // ---- service worker: offline shell, updates on our terms
   // The first install claims the page (sw.js clients.claim), which also fires controllerchange: not an update.
-  let reloading = false, hadController = !!navigator.serviceWorker?.controller;
+  let reloading = false,
+    hadController = !!navigator.serviceWorker?.controller;
   window.lyricdockApplyUpdate = async () => {
     const reg = await navigator.serviceWorker?.getRegistration();
     reg?.waiting?.postMessage('apply-update');
   };
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').then(reg => {
-      reg.addEventListener('updatefound', () => {
-        const next = reg.installing;
-        next?.addEventListener('statechange', () => {
-          if (next.state !== 'installed' || !navigator.serviceWorker.controller) return; // first install: nothing to replace
-          if (Settings.S.autoUpdate) window.lyricdockApplyUpdate();
-          else window.notice?.('A new version of LyricDock is ready - Settings -> Updates', 6000);
+    navigator.serviceWorker
+      .register('sw.js')
+      .then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const next = reg.installing;
+          next?.addEventListener('statechange', () => {
+            if (next.state !== 'installed' || !navigator.serviceWorker.controller) return; // first install: nothing to replace
+            if (Settings.S.autoUpdate) window.lyricdockApplyUpdate();
+            else window.notice?.('A new version of LyricDock is ready - Settings -> Updates', 6000);
+          });
         });
-      });
-      setInterval(() => reg.update().catch(() => {}), 30 * 60000);
-    }).catch(() => {});
+        setInterval(() => reg.update().catch(() => {}), 30 * 60000);
+      })
+      .catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadController) { hadController = true; return; }
+      if (!hadController) {
+        hadController = true;
+        return;
+      }
       if (reloading) return;
       reloading = true;
       ping('update');
@@ -40,7 +48,8 @@
   }
 
   // ---- "Install as an app": Chrome / Edge / Android give us the prompt; iPhone needs Share -> Add to Home Screen.
-  const SNOOZE = 'dock:installSnooze', snoozed = () => Date.now() < +(localStorage.getItem(SNOOZE) || 0);
+  const SNOOZE = 'dock:installSnooze',
+    snoozed = () => Date.now() < +(localStorage.getItem(SNOOZE) || 0);
   let deferred = null;
   const ios = /iPhone|iPad/.test(navigator.userAgent) && !window.MSStream;
 
@@ -53,8 +62,12 @@
     el.innerHTML = `<img src="icons/icon-192.png" alt=""><span></span><button class="go"></button><button class="later" aria-label="Not now">✕</button>`;
     el.querySelector('span').textContent = text;
     const go = el.querySelector('.go');
-    if (actionLabel) go.textContent = actionLabel; else go.remove();
-    go.onclick = () => { el.remove(); action?.(); };
+    if (actionLabel) go.textContent = actionLabel;
+    else go.remove();
+    go.onclick = () => {
+      el.remove();
+      action?.();
+    };
     el.querySelector('.later').onclick = () => {
       el.remove();
       localStorage.setItem(snooze, String(Date.now() + 14 * 864e5));
@@ -68,7 +81,10 @@
   addEventListener('beforeinstallprompt', e => {
     e.preventDefault();
     deferred = e;
-    setTimeout(() => chip('Install LyricDock as an app: its own window, no browser bars', 'Install', promptInstall), 8000); // after the first song is on screen
+    setTimeout(
+      () => chip('Install LyricDock as an app: its own window, no browser bars', 'Install', promptInstall),
+      8000,
+    ); // after the first song is on screen
   });
   // The browser's prompt can be shown once: the chip and Settings -> Install share it.
   async function promptInstall() {
@@ -80,72 +96,161 @@
     const { outcome } = await d.userChoice;
     ping(outcome === 'accepted' ? 'install-accepted' : 'install-dismissed');
   }
-  addEventListener('appinstalled', () => { document.getElementById('installChip')?.remove(); ping('installed'); });
+  addEventListener('appinstalled', () => {
+    document.getElementById('installChip')?.remove();
+    ping('installed');
+  });
   // iPadOS says it's a Mac: a Mac with a touch screen is an iPad. Safari 17+ on a Mac has File -> Add to Dock instead.
   const ipad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-  const macSafari = !ipad && /Macintosh/.test(navigator.userAgent) && /Version\/1[7-9]|Version\/[2-9]\d/.test(navigator.userAgent) && !/Chrome|Chromium|Edg|Firefox/.test(navigator.userAgent);
+  const macSafari =
+    !ipad &&
+    /Macintosh/.test(navigator.userAgent) &&
+    /Version\/1[7-9]|Version\/[2-9]\d/.test(navigator.userAgent) &&
+    !/Chrome|Chromium|Edg|Firefox/.test(navigator.userAgent);
   // The Home Screen app keeps its own storage, apart from Safari: say so, or the second sign-in is a surprise.
-  if ((ios || ipad) && !standalone()) setTimeout(() => chip('Add LyricDock to your Home Screen: its own icon, full screen, no browser bars.', 'Show me', showGuide), 8000);
-  else if (macSafari && !standalone()) setTimeout(() => chip('Add LyricDock to your Dock: its own window and icon, like an app.', 'Show me', showGuide), 8000);
+  if ((ios || ipad) && !standalone())
+    setTimeout(
+      () =>
+        chip('Add LyricDock to your Home Screen: its own icon, full screen, no browser bars.', 'Show me', showGuide),
+      8000,
+    );
+  else if (macSafari && !standalone())
+    setTimeout(
+      () => chip('Add LyricDock to your Dock: its own window and icon, like an app.', 'Show me', showGuide),
+      8000,
+    );
 
   // ---- The steps for this browser, as a card (Settings -> Install, the chip, full screen where a page can't have it).
   // Where the browser has its own prompt (Chrome / Edge on a computer, Android) that prompt is used instead.
   const SHARE = '<svg viewBox="0 0 24 24" aria-label="Share"><path d="M12 14V3M8 7l4-4 4 4M7 10H5v11h14V10h-2"/></svg>';
-  const ua = navigator.userAgent, iosOther = /CriOS|EdgiOS|FxiOS/.test(ua);
+  const ua = navigator.userAgent,
+    iosOther = /CriOS|EdgiOS|FxiOS/.test(ua);
   function guideSteps() {
-    if (ios || ipad) return ['Home Screen', [
-      iosOther ? `Tap ${SHARE} Share in the address bar (or in the ⋯ menu)` : `Tap ${SHARE} Share in the toolbar`,
-      'Scroll down and choose <b>Add to Home Screen</b>',
-      'Turn on <b>Open as Web App</b> if it is there, then tap <b>Add</b>',
-      'Open LyricDock from its new icon: full screen, no browser bars. Sign in once more inside it'], 'Add to Home Screen'];
-    if (macSafari) return ['Dock', [`In the menu bar choose <b>File → Add to Dock</b> (or ${SHARE} Share → Add to Dock)`,
-      'Click <b>Add</b>', 'LyricDock now opens in its own window from the Dock and Launchpad. Sign in once more inside it'], 'Add to Dock'];
+    if (ios || ipad)
+      return [
+        'Home Screen',
+        [
+          iosOther ? `Tap ${SHARE} Share in the address bar (or in the ⋯ menu)` : `Tap ${SHARE} Share in the toolbar`,
+          'Scroll down and choose <b>Add to Home Screen</b>',
+          'Turn on <b>Open as Web App</b> if it is there, then tap <b>Add</b>',
+          'Open LyricDock from its new icon: full screen, no browser bars. Sign in once more inside it',
+        ],
+        'Add to Home Screen',
+      ];
+    if (macSafari)
+      return [
+        'Dock',
+        [
+          `In the menu bar choose <b>File → Add to Dock</b> (or ${SHARE} Share → Add to Dock)`,
+          'Click <b>Add</b>',
+          'LyricDock now opens in its own window from the Dock and Launchpad. Sign in once more inside it',
+        ],
+        'Add to Dock',
+      ];
     if (/Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome|Chromium|Edg|Firefox/.test(ua))
-      return ['Dock', ['Add to Dock needs Safari 17 (macOS Sonoma) or later', 'Or open LyricDock in Chrome or Edge and install it from there'], 'Add to Dock'];
-    if (/Edg\//.test(ua)) return ['app', ['Open the <b>⋯</b> menu', 'Choose <b>Apps → Install this site as an app</b>', 'Click <b>Install</b>'], 'Install'];
-    if (/Firefox/.test(ua)) return ['app', ['Firefox can\'t install web apps on a computer', 'Open LyricDock in Chrome, Edge or Safari to install it'], 'Install'];
-    return ['app', ['Open the <b>⋮</b> menu', 'Choose <b>Cast, save and share → Install page as app</b>', 'Click <b>Install</b>'], 'Install'];
+      return [
+        'Dock',
+        [
+          'Add to Dock needs Safari 17 (macOS Sonoma) or later',
+          'Or open LyricDock in Chrome or Edge and install it from there',
+        ],
+        'Add to Dock',
+      ];
+    if (/Edg\//.test(ua))
+      return [
+        'app',
+        ['Open the <b>⋯</b> menu', 'Choose <b>Apps → Install this site as an app</b>', 'Click <b>Install</b>'],
+        'Install',
+      ];
+    if (/Firefox/.test(ua))
+      return [
+        'app',
+        ["Firefox can't install web apps on a computer", 'Open LyricDock in Chrome, Edge or Safari to install it'],
+        'Install',
+      ];
+    return [
+      'app',
+      ['Open the <b>⋮</b> menu', 'Choose <b>Cast, save and share → Install page as app</b>', 'Click <b>Install</b>'],
+      'Install',
+    ];
   }
   function showGuide() {
     document.getElementById('installGuide')?.remove();
     document.getElementById('installChip')?.remove();
-    const [where, steps] = guideSteps(), el = document.createElement('div');
+    const [where, steps] = guideSteps(),
+      el = document.createElement('div');
     el.id = 'installGuide';
     el.innerHTML = `<div class="ig-card" role="dialog" aria-modal="true" aria-labelledby="igT"><img src="icons/icon-192.png" alt="">
       <h2 id="igT">Add LyricDock to your ${where === 'app' ? 'computer' : where}</h2><ol>${steps.map(s => `<li>${s}</li>`).join('')}</ol>
       <button class="ig-done">Got it</button></div>`;
-    const close = () => { el.classList.remove('on'); setTimeout(() => el.remove(), 320); };
-    el.onclick = e => { if (e.target === el || e.target.closest('.ig-done')) close(); };
-    addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); removeEventListener('keydown', esc); } });
+    const close = () => {
+      el.classList.remove('on');
+      setTimeout(() => el.remove(), 320);
+    };
+    el.onclick = e => {
+      if (e.target === el || e.target.closest('.ig-done')) close();
+    };
+    addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') {
+        close();
+        removeEventListener('keydown', esc);
+      }
+    });
     document.body.append(el);
     requestAnimationFrame(() => el.classList.add('on'));
   }
   window.lyricdockInstall = () => (deferred ? promptInstall() : showGuide(), true);
-  window.lyricdockInstallWord = () => deferred ? 'Install' : guideSteps()[2];
+  window.lyricdockInstallWord = () => (deferred ? 'Install' : guideSteps()[2]);
 
   // ---- Tips that depend on where Spotify plays, each offered once.
   //  - Spotify on THIS computer (the extension's link is direct and under 1.5 ms: same machine, or as good as): it
   //    already shows in the system's media controls, so LyricDock's copy (System media controls) is a duplicate.
   //  - Spotify on a phone or speaker (account mode): this computer's media keys can't reach it, LyricDock's copy can.
   //  - The miniplayer, once a song plays: opening it is a click, which is also what the browser needs to allow it.
-  const once = k => { try { if (localStorage.getItem(k)) return false; localStorage.setItem(k, '1'); return true; } catch (e) { return false; } };
+  const once = k => {
+    try {
+      if (localStorage.getItem(k)) return false;
+      localStorage.setItem(k, '1');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
   const tip = (k, text, label, run) => {
     if (document.getElementById('installChip') || window.lyricdockPanelOpen?.() || !once(k)) return;
     chip(text, label, run, true, `${k}:later`);
   };
   setInterval(() => {
     if (window.LYRICDOCK_MINI || !P.playing || document.hidden) return;
-    const p = P.source === 'bridge' && Rtc.open() ? Rtc.path() : null, on = Web.playingOn();
+    const p = P.source === 'bridge' && Rtc.open() ? Rtc.path() : null,
+      on = Web.playingOn();
     if (S.mediaNotif && p && !p.relayed && p.rtt != null && p.rtt < 0.0015)
-      tip('dock:tipSame', 'Spotify is playing on this computer and already shows in its media controls. Turn off LyricDock\'s copy?', 'Turn off', () => Settings.set('mediaNotif', false));
+      tip(
+        'dock:tipSame',
+        "Spotify is playing on this computer and already shows in its media controls. Turn off LyricDock's copy?",
+        'Turn off',
+        () => Settings.set('mediaNotif', false),
+      );
     else if (!S.mediaNotif && P.source === 'web' && on.type && on.type !== 'Computer' && !window.lyricdockIosHere?.())
-      tip('dock:tipAway', `Spotify is playing on ${on.name || 'another device'}. Control it with this computer's media keys?`, 'Turn on', () => Settings.set('mediaNotif', true));
+      tip(
+        'dock:tipAway',
+        `Spotify is playing on ${on.name || 'another device'}. Control it with this computer's media keys?`,
+        'Turn on',
+        () => Settings.set('mediaNotif', true),
+      );
     // Word timing comes from Spotify on a computer (the extension reads Spicy Lyrics' cache) or a Spicy Lyrics key;
     // following the account alone gets line-synced lyrics (LRCLIB...).
     else if (P.source === 'web' && P.lyrics?.kind === 'line' && !Rtc.open() && Api.lastStatus !== 200)
-      tip('dock:tipWords', 'Word-by-word lyrics come from Spotify on your computer: in Spotify, open LyricDock → Devices → Find devices, then Allow here.', 'How', () => window.Setup?.open('pc'));
+      tip(
+        'dock:tipWords',
+        'Word-by-word lyrics come from Spotify on your computer: in Spotify, open LyricDock → Devices → Find devices, then Allow here.',
+        'How',
+        () => window.Setup?.open('pc'),
+      );
     else if (window.lyricdockMini?.supported && P.shown)
-      tip('dock:tipMini', 'Keep the lyrics on top of your other windows: the miniplayer (or press M)', 'Open', () => window.lyricdockMini());
+      tip('dock:tipMini', 'Keep the lyrics on top of your other windows: the miniplayer (or press M)', 'Open', () =>
+        window.lyricdockMini(),
+      );
   }, 20000);
 
   // ---- Local network access. Chrome / Edge (2026) let a public site reach this PC or the home network - where Spotify
@@ -155,30 +260,49 @@
   async function lnaState() {
     const states = [];
     for (const name of LNA) {
-      try { states.push((await navigator.permissions.query({ name })).state); } catch (e) { /* not this browser */ }
+      try {
+        states.push((await navigator.permissions.query({ name })).state);
+      } catch (e) {
+        /* not this browser */
+      }
     }
     if (!states.length) return 'unsupported'; // Firefox / Safari: nothing to ask
     return states.includes('denied') ? 'denied' : states.includes('prompt') ? 'prompt' : 'granted';
   }
   async function lnaRequest() {
-    const knock = (url, space) => fetch(url, { mode: 'no-cors', cache: 'no-store', targetAddressSpace: space }).catch(() => {});
+    const knock = (url, space) =>
+      fetch(url, { mode: 'no-cors', cache: 'no-store', targetAddressSpace: space }).catch(() => {});
     await Promise.all([knock('http://127.0.0.1:8977/', 'loopback'), knock('http://192.168.1.1/', 'local')]);
     const s = await lnaState();
     ping(s === 'granted' ? 'lna-granted' : 'lna-' + s);
-    window.notice?.(s === 'granted' ? 'Local network allowed - Spotify on your computer can connect' : s === 'denied'
-      ? 'Blocked: allow "Local network" for this site in the address bar\'s site settings' : 'Not decided yet - you can allow it any time in Settings -> Connection', 6000);
+    window.notice?.(
+      s === 'granted'
+        ? 'Local network allowed - Spotify on your computer can connect'
+        : s === 'denied'
+          ? 'Blocked: allow "Local network" for this site in the address bar\'s site settings'
+          : 'Not decided yet - you can allow it any time in Settings -> Connection',
+      6000,
+    );
     window.settingsRender?.();
     return s;
   }
   // ensure(): the browser's own prompt, right away and once per session, if it hasn't been answered yet. Resolves to the state.
   let asked = null;
-  const ensure = async () => await lnaState() === 'prompt' ? (asked ||= lnaRequest()) : lnaState();
+  const ensure = async () => ((await lnaState()) === 'prompt' ? (asked ||= lnaRequest()) : lnaState());
   window.lyricdockLna = { state: lnaState, request: lnaRequest, ensure };
   // Asked as soon as LyricDock starts looking for Spotify on a computer - not for account-only setups. While the setup
   // screen is up it asks instead, when "Use Spotify on your computer" is picked.
   // A screen that follows only a Spotify account and never met Spotify on a computer isn't asked at all.
-  const pcSeen = () => { try { return !!localStorage.getItem('dock:pcSeen'); } catch (e) { return false; } };
-  setTimeout(() => { if (Settings.S.source !== 'web' && !window.Setup?.isOpen() && (!window.Web?.loggedIn() || pcSeen())) ensure(); }, 1000);
+  const pcSeen = () => {
+    try {
+      return !!localStorage.getItem('dock:pcSeen');
+    } catch (e) {
+      return false;
+    }
+  };
+  setTimeout(() => {
+    if (Settings.S.source !== 'web' && !window.Setup?.isOpen() && (!window.Web?.loggedIn() || pcSeen())) ensure();
+  }, 1000);
 
   // ---- full screen, on and off (the quick bar's button, Settings, F). A click is required, so it's offered, not forced.
   //  - Chrome, Edge, Brave, Opera, Firefox, Safari 16.4+ (Mac, iPad): the standard call. Older Safari: webkit-prefixed.
@@ -186,13 +310,26 @@
   //    full screen there, so the button explains Add to Home Screen, which opens without browser bars.
   const fullscreenEl = () => document.fullscreenElement || document.webkitFullscreenElement;
   window.lyricdockFullscreen = () => {
-    const d = document, el = d.documentElement;
+    const d = document,
+      el = d.documentElement;
     if (fullscreenEl()) return Promise.resolve((d.exitFullscreen || d.webkitExitFullscreen)?.call(d)).catch(() => {});
-    const no = () => (ios || ipad) && standalone() ? window.notice?.('This Home Screen app is already as full screen as iOS allows - the status bar stays', 4000)
-      : ios || ipad ? showGuide() // the Home Screen app is how full screen works there
-      : window.notice?.('This browser won\'t go full screen from a page - use its own menu (View → Full screen)', 6000);
+    const no = () =>
+      (ios || ipad) && standalone()
+        ? window.notice?.('This Home Screen app is already as full screen as iOS allows - the status bar stays', 4000)
+        : ios || ipad
+          ? showGuide() // the Home Screen app is how full screen works there
+          : window.notice?.(
+              "This browser won't go full screen from a page - use its own menu (View → Full screen)",
+              6000,
+            );
     if (!(d.fullscreenEnabled || d.webkitFullscreenEnabled)) return no();
-    try { Promise.resolve(el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen()).catch(no); } catch (e) { no(); }
+    try {
+      Promise.resolve(
+        el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen(),
+      ).catch(no);
+    } catch (e) {
+      no();
+    }
   };
 
   // ---- rotate (the quick bar's rotate button): a quarter turn, held there. Browsers only lock the screen's orientation
@@ -202,53 +339,94 @@
     const so = screen.orientation;
     if (!so?.lock || ios || ipad) return false;
     try {
-      const d = document, el = d.documentElement;
-      if (!fullscreenEl() && (d.fullscreenEnabled || d.webkitFullscreenEnabled)) await (el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen());
+      const d = document,
+        el = d.documentElement;
+      if (!fullscreenEl() && (d.fullscreenEnabled || d.webkitFullscreenEnabled))
+        await (el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen());
       await so.lock(o);
       return true;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   };
 
   // ---- mouse / trackpad: moving the pointer shows the controls (they fade after the usual delay). The cursor hides like
   // in a video player: 3 s after it stops, only once the controls are down and nothing is open (settings, lists, setup,
   // sign-in...), and never while it rests on something clickable. It used to be hidden whenever the controls were down,
   // so screens that never raise them (setup, sign-in, the clock, the miniplayer) showed it only over buttons.
-  let moved = 0, stillSince = performance.now(), overClick = false;
-  const CLICK = 'button, a, input, select, textarea, summary, label, [data-list], [data-a], #tlhit, #bar, #heart, #ctl, #qs, #installChip';
-  setInterval(() => document.documentElement.classList.toggle('cursor-idle', !window.LYRICDOCK_MINI && performance.now() - stillSince > 3000 && !overClick
-    && !document.body.classList.contains('ui') && !window.lyricdockPanelOpen?.() && !document.getElementById('signin')), 400);
-  addEventListener('mousemove', e => {
-    stillSince = performance.now(); overClick = !!e.target.closest?.(CLICK);
-    document.documentElement.classList.remove('cursor-idle');
-    const t = performance.now();
-    if (t - moved < 250 || !matchMedia('(pointer: fine)').matches || window.lyricdockPanelOpen?.()) return;
-    moved = t;
-    window.showUi?.(true);
-  }, { passive: true });
+  let moved = 0,
+    stillSince = performance.now(),
+    overClick = false;
+  const CLICK =
+    'button, a, input, select, textarea, summary, label, [data-list], [data-a], #tlhit, #bar, #heart, #ctl, #qs, #installChip';
+  setInterval(
+    () =>
+      document.documentElement.classList.toggle(
+        'cursor-idle',
+        !window.LYRICDOCK_MINI &&
+          performance.now() - stillSince > 3000 &&
+          !overClick &&
+          !document.body.classList.contains('ui') &&
+          !window.lyricdockPanelOpen?.() &&
+          !document.getElementById('signin'),
+      ),
+    400,
+  );
+  addEventListener(
+    'mousemove',
+    e => {
+      stillSince = performance.now();
+      overClick = !!e.target.closest?.(CLICK);
+      document.documentElement.classList.remove('cursor-idle');
+      const t = performance.now();
+      if (t - moved < 250 || !matchMedia('(pointer: fine)').matches || window.lyricdockPanelOpen?.()) return;
+      moved = t;
+      window.showUi?.(true);
+    },
+    { passive: true },
+  );
 
   // ---- keyboard, for computers (the phone's swipes have no mouse equivalent): Space play/pause, arrows skip, F full screen.
   // A mouse click leaves no focus on a button, so Space can't re-press the last one clicked (keyboard focus stays).
-  addEventListener('click', e => { if (e.detail) e.target.closest?.('button')?.blur(); }, true);
-  window.lyricdockPanelOpen = () => window.Setup?.isOpen() || document.body.matches('.settings-open, .lists-open, .qs-open, .news-open, .pair-ask');
+  addEventListener(
+    'click',
+    e => {
+      if (e.detail) e.target.closest?.('button')?.blur();
+    },
+    true,
+  );
+  window.lyricdockPanelOpen = () =>
+    window.Setup?.isOpen() || document.body.matches('.settings-open, .lists-open, .qs-open, .news-open, .pair-ask');
   addEventListener('keydown', e => {
-    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, select, button, [contenteditable]') || window.lyricdockPanelOpen()) return;
+    if (
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
+      e.target.closest?.('input, textarea, select, button, [contenteditable]') ||
+      window.lyricdockPanelOpen()
+    )
+      return;
     // The buttons' own handlers, not a click: a click also pops the controls up, and on a cover layout the cover would
     // shrink for them while the pause shrinks it too (two moves for one key). The pulse / song change is the feedback.
     const k = { ' ': 'pp', ArrowRight: 'next', ArrowLeft: 'prev' }[e.key];
-    if (k) { e.preventDefault(); document.getElementById(k)?.onclick?.(); }
-    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { // Spotify's volume (the slider's own throttled path, app.js)
+    if (k) {
+      e.preventDefault();
+      document.getElementById(k)?.onclick?.();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      // Spotify's volume (the slider's own throttled path, app.js)
       e.preventDefault();
       const v = document.getElementById('vol');
       v.value = Math.max(0, Math.min(100, +v.value + (e.key === 'ArrowUp' ? 5 : -5)));
       v.dispatchEvent(new Event('input'));
       window.notice?.(`Volume ${v.value}%`, 1200);
-    }
-    else if (e.key === 'f' || e.key === 'F') window.lyricdockFullscreen();
+    } else if (e.key === 'f' || e.key === 'F') window.lyricdockFullscreen();
   });
 
   // ---- anonymous usage: opened (with how), and errors (message + file:line only, never user data)
   if (window.LYRICDOCK_MINI) return;
   addEventListener('load', () => setTimeout(() => ping('open'), 3000));
   addEventListener('error', e => ping('error', `${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
-  addEventListener('unhandledrejection', e => ping('error', `promise: ${String(e.reason?.message || e.reason).slice(0, 200)}`));
+  addEventListener('unhandledrejection', e =>
+    ping('error', `promise: ${String(e.reason?.message || e.reason).slice(0, 200)}`),
+  );
 })();

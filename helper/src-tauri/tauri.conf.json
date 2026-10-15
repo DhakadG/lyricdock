@@ -7,8 +7,20 @@
   "app": {
     "withGlobalTauri": true,
     "windows": [
-      { "label": "main", "title": "LyricDock Helper", "url": "index.html", "width": 900, "height": 680, "minWidth": 720, "minHeight": 540,
-        "resizable": true, "visible": false, "center": true, "decorations": true, "shadow": true }
+      {
+        "label": "main",
+        "title": "LyricDock Helper",
+        "url": "index.html",
+        "width": 900,
+        "height": 680,
+        "minWidth": 720,
+        "minHeight": 540,
+        "resizable": true,
+        "visible": false,
+        "center": true,
+        "decorations": true,
+        "shadow": true
+      }
     ],
     "security": { "csp": null }
   },

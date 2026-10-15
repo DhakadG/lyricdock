@@ -11,7 +11,7 @@ if (-not $account) { throw 'ACCOUNT_ID not found in cloud/wrangler.jsonc' }
 $secure = Read-Host 'Paste the Cloudflare API token (it stays hidden)' -AsSecureString
 $token = [Net.NetworkCredential]::new('', $secure).Password
 $r = Invoke-RestMethod -Method Post "https://api.cloudflare.com/client/v4/accounts/$account/calls/turn_keys" `
-  -Headers @{ Authorization = "Bearer $token" } -ContentType 'application/json' -Body '{"name":"lyricdock"}'
+    -Headers @{ Authorization = "Bearer $token" } -ContentType 'application/json' -Body '{"name":"lyricdock"}'
 # Cloudflare answers { uid: the TURN key id, key: its API token, ... }; the token is only ever returned here.
 if (-not $r.result.uid -or -not $r.result.key) { throw "Unexpected answer from Cloudflare (fields: $($r.result.PSObject.Properties.Name -join ', '))" }
 

@@ -6,10 +6,27 @@ import android.media.session.MediaSession;
 class MediaCb extends MediaSession.Callback {
     private final MainActivity app;
 
-    MediaCb(MainActivity app) { this.app = app; }
+    MediaCb(MainActivity app) {
+        this.app = app;
+    }
 
-    @Override public void onPlay() { app.mediaCmd("toggle"); }
-    @Override public void onPause() { app.mediaCmd("toggle"); }
-    @Override public void onSkipToNext() { app.mediaCmd("next"); }
-    @Override public void onSkipToPrevious() { app.mediaCmd("prev"); }
+    @Override
+    public void onPlay() {
+        app.mediaCmd("toggle");
+    }
+
+    @Override
+    public void onPause() {
+        app.mediaCmd("toggle");
+    }
+
+    @Override
+    public void onSkipToNext() {
+        app.mediaCmd("next");
+    }
+
+    @Override
+    public void onSkipToPrevious() {
+        app.mediaCmd("prev");
+    }
 }

@@ -6,16 +6,33 @@ import { verify, session, appUser, isAllowed, COOKIE } from '../auth/sso.js';
 
 // The signing key (gitignored): sessions must verify against the public key baked into auth/sso.js, so a throwaway key won't do.
 const keyFile = process.env.SSO_KEY_FILE || new URL('../secrets/SSO_PRIVATE_JWK.json', import.meta.url);
-const env = { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', ALLOWED_EMAILS: '', SSO_PRIVATE_JWK: readFileSync(keyFile, 'utf8') };
-const get = (path, cookie = '') => worker.fetch(new Request(`https://auth.lyricdock.losthusky.qzz.io${path}`, { headers: { cookie } }), env);
+const env = {
+  GOOGLE_CLIENT_ID: 'cid',
+  GOOGLE_CLIENT_SECRET: 'sec',
+  ALLOWED_EMAILS: '',
+  SSO_PRIVATE_JWK: readFileSync(keyFile, 'utf8'),
+};
+const get = (path, cookie = '') =>
+  worker.fetch(new Request(`https://auth.lyricdock.losthusky.qzz.io${path}`, { headers: { cookie } }), env);
 const setCookies = r => r.headers.getSetCookie();
 
-let googleNonce, googleSays = {};
+let googleNonce,
+  googleSays = {};
 globalThis.fetch = async (url, init) => {
   assert.equal(url, 'https://oauth2.googleapis.com/token');
   const body = new URLSearchParams(init.body);
   assert.ok(body.get('code_verifier'));
-  const p = { iss: 'https://accounts.google.com', aud: 'cid', exp: Date.now() / 1000 + 600, nonce: googleNonce, email: 'Me@Gmail.com', email_verified: true, sub: '42', name: 'Me', ...googleSays };
+  const p = {
+    iss: 'https://accounts.google.com',
+    aud: 'cid',
+    exp: Date.now() / 1000 + 600,
+    nonce: googleNonce,
+    email: 'Me@Gmail.com',
+    email_verified: true,
+    sub: '42',
+    name: 'Me',
+    ...googleSays,
+  };
   return new Response(JSON.stringify({ id_token: `x.${Buffer.from(JSON.stringify(p)).toString('base64url')}.y` }));
 };
 
@@ -44,17 +61,44 @@ assert.ok(isAllowed(me, 'ME@gmail.com, b@c.d') && !isAllowed(me, '') && !isAllow
 
 // open redirect: foreign / look-alike / http targets, and the other losthusky.qzz.io sites (not LyricDock's), fall back
 // to the auth home page
-for (const bad of ['https://evil.com', 'https://losthusky.qzz.io.evil.com/', 'http://app.lyricdock.losthusky.qzz.io/', 'https://a@evil.com', 'javascript:alert(1)', '//evil.com',
-  'https://losthusky.qzz.io/', 'https://ntfy.losthusky.qzz.io/', 'https://xlyricdock.losthusky.qzz.io/'])
-  assert.equal(new URL((await get(`/login?rd=${encodeURIComponent(bad)}`, `${COOKIE}=${jwt}`)).headers.get('location')).href, 'https://auth.lyricdock.losthusky.qzz.io/', bad);
+for (const bad of [
+  'https://evil.com',
+  'https://losthusky.qzz.io.evil.com/',
+  'http://app.lyricdock.losthusky.qzz.io/',
+  'https://a@evil.com',
+  'javascript:alert(1)',
+  '//evil.com',
+  'https://losthusky.qzz.io/',
+  'https://ntfy.losthusky.qzz.io/',
+  'https://xlyricdock.losthusky.qzz.io/',
+])
+  assert.equal(
+    new URL((await get(`/login?rd=${encodeURIComponent(bad)}`, `${COOKIE}=${jwt}`)).headers.get('location')).href,
+    'https://auth.lyricdock.losthusky.qzz.io/',
+    bad,
+  );
 
 // phone app: login?app=<challenge> -> Google -> a page that opens lyricdock://signed-in?code=; the code + verifier buy an
 // app token (Bearer for the API), which renews itself; the code is useless without the verifier.
-const post = (body, headers = {}) => worker.fetch(new Request('https://auth.lyricdock.losthusky.qzz.io/token', { method: 'POST', body: new URLSearchParams(body), headers }), env);
-const verifier = 'v'.repeat(64), challenge = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))).toString('base64url');
+const post = (body, headers = {}) =>
+  worker.fetch(
+    new Request('https://auth.lyricdock.losthusky.qzz.io/token', {
+      method: 'POST',
+      body: new URLSearchParams(body),
+      headers,
+    }),
+    env,
+  );
+const verifier = 'v'.repeat(64),
+  challenge = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))).toString(
+    'base64url',
+  );
 r = await get(`/login?app=${challenge}`);
 googleNonce = new URL(r.headers.get('location')).searchParams.get('nonce');
-r = await get(`/callback?state=${new URL(r.headers.get('location')).searchParams.get('state')}&code=c`, setCookies(r)[0].split(';')[0]);
+r = await get(
+  `/callback?state=${new URL(r.headers.get('location')).searchParams.get('state')}&code=c`,
+  setCookies(r)[0].split(';')[0],
+);
 assert.equal(r.status, 200);
 assert.ok(setCookies(r).some(c => c.startsWith(COOKIE))); // the browser is signed in too: the next app sign-in skips Google
 const code = /lyricdock:\/\/signed-in\?code=([\w.-]+)/.exec(await r.text())[1];
@@ -63,7 +107,10 @@ r = await post({ code, verifier });
 assert.equal(r.status, 200);
 assert.equal(r.headers.get('access-control-allow-origin'), '*'); // the phone's page is file://
 let tok = (await r.json()).token;
-const api = t => appUser(new Request('https://art.lyricdock.losthusky.qzz.io/v1/cover', { headers: { authorization: `Bearer ${t}` } }));
+const api = t =>
+  appUser(
+    new Request('https://art.lyricdock.losthusky.qzz.io/v1/cover', { headers: { authorization: `Bearer ${t}` } }),
+  );
 assert.equal((await api(tok)).email, 'me@gmail.com');
 assert.equal(await api(code), null); // a code is not a token
 assert.equal(await api(jwt), null); // nor is the cookie's session
@@ -73,7 +120,14 @@ assert.equal((await api((await r.json()).token)).email, 'me@gmail.com');
 assert.equal((await post({ token: jwt })).status, 401);
 // already signed in on this browser: one "Continue" tap, never a silent code (an app that grabbed lyricdock:// could
 // otherwise collect codes for its own challenge); the tap must come from our own page; a bad challenge is refused
-const login = (origin) => worker.fetch(new Request(`https://auth.lyricdock.losthusky.qzz.io/login?app=${challenge}`, { method: 'POST', headers: { cookie: `${COOKIE}=${jwt}`, origin } }), env);
+const login = origin =>
+  worker.fetch(
+    new Request(`https://auth.lyricdock.losthusky.qzz.io/login?app=${challenge}`, {
+      method: 'POST',
+      headers: { cookie: `${COOKIE}=${jwt}`, origin },
+    }),
+    env,
+  );
 r = await get(`/login?app=${challenge}`, `${COOKIE}=${jwt}`);
 assert.equal(r.status, 200);
 let body = await r.text();
@@ -83,16 +137,35 @@ assert.doesNotMatch(await (await login('https://evil.com')).text(), /signed-in\?
 assert.doesNotMatch(await (await login('null')).text(), /signed-in\?code=/);
 assert.match(await (await login('https://auth.lyricdock.losthusky.qzz.io')).text(), /lyricdock:\/\/signed-in\?code=/);
 // logout: only our own confirm page can sign people out
-const logout = origin => worker.fetch(new Request('https://auth.lyricdock.losthusky.qzz.io/logout', { method: 'POST', headers: { origin } }), env);
+const logout = origin =>
+  worker.fetch(
+    new Request('https://auth.lyricdock.losthusky.qzz.io/logout', { method: 'POST', headers: { origin } }),
+    env,
+  );
 assert.equal((await logout('https://evil.com')).status, 403);
 r = await logout('https://auth.lyricdock.losthusky.qzz.io');
 assert.equal(r.status, 303);
 assert.ok(setCookies(r).some(c => c.startsWith(`${COOKIE}=;`) && /Max-Age=0/.test(c)));
 // renewal stops a year after the last Google sign-in (claim `at`): a stolen token can't renew itself forever
-const jwk = JSON.parse(env.SSO_PRIVATE_JWK), key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
-const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url'), t0 = Math.floor(Date.now() / 1000);
-const mint = async claims => { const m = `${b64({ alg: 'ES256', typ: 'JWT', kid: jwk.kid })}.${b64(claims)}`; return `${m}.${Buffer.from(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(m))).toString('base64url')}`; };
-const appTok = at => mint({ iss: 'https://auth.lyricdock.losthusky.qzz.io', aud: 'app', sub: '1', email: 'me@gmail.com', name: 'Me', at, iat: t0, exp: t0 + 3600 });
+const jwk = JSON.parse(env.SSO_PRIVATE_JWK),
+  key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url'),
+  t0 = Math.floor(Date.now() / 1000);
+const mint = async claims => {
+  const m = `${b64({ alg: 'ES256', typ: 'JWT', kid: jwk.kid })}.${b64(claims)}`;
+  return `${m}.${Buffer.from(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(m))).toString('base64url')}`;
+};
+const appTok = at =>
+  mint({
+    iss: 'https://auth.lyricdock.losthusky.qzz.io',
+    aud: 'app',
+    sub: '1',
+    email: 'me@gmail.com',
+    name: 'Me',
+    at,
+    iat: t0,
+    exp: t0 + 3600,
+  });
 assert.equal((await post({ token: await appTok(t0 - 400 * 86400) })).status, 401);
 r = await post({ token: await appTok(t0 - 300 * 86400) });
 assert.equal(r.status, 200);
@@ -127,8 +200,13 @@ assert.equal((await get(`/callback?state=${state}&code=c`, st)).status, 400);
 
 // forged tokens: tampered payload, alg none, the state token used as a session
 const [h, p, s] = jwt.split('.');
-const evil = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, 'base64url')), email: 'admin@x.com' })).toString('base64url');
+const evil = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, 'base64url')), email: 'admin@x.com' })).toString(
+  'base64url',
+);
 assert.equal(await verify(`${h}.${evil}.${s}`), null);
-assert.equal(await verify(`${Buffer.from('{"alg":"none","typ":"JWT","kid":"mupbl6zw"}').toString('base64url')}.${p}.`), null);
+assert.equal(
+  await verify(`${Buffer.from('{"alg":"none","typ":"JWT","kid":"mupbl6zw"}').toString('base64url')}.${p}.`),
+  null,
+);
 assert.equal(await verify(st.split('=')[1]), null);
 console.log('sso ok');

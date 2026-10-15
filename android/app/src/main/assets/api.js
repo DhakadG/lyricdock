@@ -3,16 +3,24 @@
 // the app (Dock.fetchLyrics) and answered through dock({type:'api'}). Responses are cached on the phone and
 // dropped after 7 days - the API terms require refetch/discard within 30.
 const Api = (() => {
-  const KEY = 'dock:apicache', TTL = 7 * 864e5, MAX = 60;
+  const KEY = 'dock:apicache',
+    TTL = 7 * 864e5,
+    MAX = 60;
   const waiting = new Map(); // id -> [resolve]
   let cache = {};
-  try { cache = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+  try {
+    cache = JSON.parse(localStorage.getItem(KEY) || '{}');
+  } catch (e) {}
   const now = Date.now();
   for (const [id, v] of Object.entries(cache)) if (!v || now - v.at > TTL) delete cache[id];
   const save = () => {
     const ids = Object.keys(cache).sort((a, b) => cache[b].at - cache[a].at);
     for (const id of ids.slice(MAX)) delete cache[id];
-    try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch (e) { cache = {}; }
+    try {
+      localStorage.setItem(KEY, JSON.stringify(cache));
+    } catch (e) {
+      cache = {};
+    }
   };
 
   const own = () => /^sl_pk_[\w-]+$/.test(Settings.S.apiKey || '');
@@ -29,9 +37,17 @@ const Api = (() => {
     if (waiting.has(id)) return new Promise(r => waiting.get(id).push(r));
     return new Promise(r => {
       waiting.set(id, [r]);
-      if (own() || window.LYRICDOCK_WEB) try { Dock.fetchLyrics(id, Settings.S.apiKey); } catch (e) { done(id, null); }
-      else fetch(SERVER + id, { headers: { Accept: 'application/json', ...(window.Account?.headers() ?? {}) } })
-        .then(async r => onResponse({ id, status: r.status, text: await r.text() }), () => done(id, null));
+      if (own() || window.LYRICDOCK_WEB)
+        try {
+          Dock.fetchLyrics(id, Settings.S.apiKey);
+        } catch (e) {
+          done(id, null);
+        }
+      else
+        fetch(SERVER + id, { headers: { Accept: 'application/json', ...(window.Account?.headers() ?? {}) } }).then(
+          async r => onResponse({ id, status: r.status, text: await r.text() }),
+          () => done(id, null),
+        );
       setTimeout(() => done(id, null), 8000); // no answer in 8s: give up quietly
     });
   }
@@ -47,12 +63,18 @@ const Api = (() => {
   function onResponse(m) {
     let lyr = null;
     if (m.status === 200) {
-      try { lyr = Lyrics.fromSpicy(JSON.parse(m.text)?.Body); } catch (e) {}
-      if (lyr) { cache[m.id] = { at: Date.now(), lyr }; save(); }
+      try {
+        lyr = Lyrics.fromSpicy(JSON.parse(m.text)?.Body);
+      } catch (e) {}
+      if (lyr) {
+        cache[m.id] = { at: Date.now(), lyr };
+        save();
+      }
     }
     Api.lastStatus = m.status;
     if (m.status === 429) notice('Spicy Lyrics API is rate-limiting - using other lyrics sources for now');
-    else if ((m.status === 401 || m.status === 403) && own()) notice('Spicy Lyrics API key was refused - check it in Settings → Advanced');
+    else if ((m.status === 401 || m.status === 403) && own())
+      notice('Spicy Lyrics API key was refused - check it in Settings → Advanced');
     done(m.id, lyr);
   }
 

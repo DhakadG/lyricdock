@@ -14,17 +14,17 @@ Copy-Item "$root\android\app\src\main\assets" $dist -Recurse
 Copy-Item "$root\web\public\*" $dist -Recurse -Force
 
 $head = @(
-  '<title>LyricDock</title>'
-  '<meta name="description" content="Word-synced Spotify lyrics, album art and controls on any screen.">'
-  '<link rel="manifest" href="manifest.webmanifest">'
-  '<link rel="icon" href="icons/icon.svg" type="image/svg+xml">'
-  '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">'
-  '<meta name="theme-color" content="#000000">'
-  '<meta name="mobile-web-app-capable" content="yes">'
-  '<meta name="apple-mobile-web-app-capable" content="yes">'
-  '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
-  '<link rel="stylesheet" href="web.css">'
-  '<script src="shim.js"></script>'
+    '<title>LyricDock</title>'
+    '<meta name="description" content="Word-synced Spotify lyrics, album art and controls on any screen.">'
+    '<link rel="manifest" href="manifest.webmanifest">'
+    '<link rel="icon" href="icons/icon.svg" type="image/svg+xml">'
+    '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">'
+    '<meta name="theme-color" content="#000000">'
+    '<meta name="mobile-web-app-capable" content="yes">'
+    '<meta name="apple-mobile-web-app-capable" content="yes">'
+    '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+    '<link rel="stylesheet" href="web.css">'
+    '<script src="shim.js"></script>'
 ) -join "`n"
 $html = Get-Content "$dist\index.html" -Raw
 if ($html -notmatch '</head>' -or $html -notmatch '</body>') { throw 'index.html: no </head> / </body>' }
@@ -40,14 +40,14 @@ Get-ChildItem $dist -Recurse -File | Where-Object Name -ne 'sw.js' | Sort-Object
 $hash = -join ($sha.ComputeHash($all.ToArray()) | Select-Object -First 4 | ForEach-Object { $_.ToString('x2') })
 (Get-Content "$dist\sw.js" -Raw).Replace('__VERSION__', "$version-$hash") | Set-Content "$dist\sw.js" -NoNewline
 $files = Get-ChildItem $dist -Recurse -File | Where-Object { $_.Name -notin 'sw.js', '_headers' } |
-  ForEach-Object { $_.FullName.Substring($dist.Length + 1).Replace('\', '/') } |
-  ForEach-Object { if ($_ -eq 'index.html') { './' } else { $_ } } | Sort-Object # the page is cached as / (see sw.js)
+    ForEach-Object { $_.FullName.Substring($dist.Length + 1).Replace('\', '/') } |
+    ForEach-Object { if ($_ -eq 'index.html') { './' } else { $_ } } | Sort-Object # the page is cached as / (see sw.js)
 (Get-Content "$dist\sw.js" -Raw).Replace('__FILES__', ($files | ConvertTo-Json -Compress)) | Set-Content "$dist\sw.js" -NoNewline
 
 $mb = [math]::Round((Get-ChildItem $dist -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
 Write-Host "web app v$version built: $($files.Count) files, $mb MB -> $dist"
 
 if ($Deploy) {
-  Push-Location "$root\web"
-  try { npx wrangler deploy; if ($LASTEXITCODE) { throw 'wrangler deploy failed' } } finally { Pop-Location }
+    Push-Location "$root\web"
+    try { npx wrangler deploy; if ($LASTEXITCODE) { throw 'wrangler deploy failed' } } finally { Pop-Location }
 }

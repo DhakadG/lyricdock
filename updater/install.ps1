@@ -195,9 +195,10 @@ Step 5 'Downloading the LyricDock loader...'
 # The loader is the only file Spicetify keeps; it fetches the matching LyricDock build itself (and caches it).
 $tmp = Join-Path $env:TEMP 'lyricdock.js'
 # The tagged loader: jsDelivr, else GitHub's raw copy of the tag, else the release's own attachment.
-try { Get-Url @("https://cdn.jsdelivr.net/gh/$Repo@v$latest/extension/lyricdock.js", "https://raw.githubusercontent.com/$Repo/v$latest/extension/lyricdock.js",
-    "https://github.com/$Repo/releases/download/v$latest/lyricdock.js") $tmp }
-catch { Fail "Couldn't download the LyricDock loader ($($_.Exception.Message)). Check your connection and run this again." }
+try {
+    Get-Url @("https://cdn.jsdelivr.net/gh/$Repo@v$latest/extension/lyricdock.js", "https://raw.githubusercontent.com/$Repo/v$latest/extension/lyricdock.js",
+        "https://github.com/$Repo/releases/download/v$latest/lyricdock.js") $tmp 
+} catch { Fail "Couldn't download the LyricDock loader ($($_.Exception.Message)). Check your connection and run this again." }
 if (-not (Select-String -Path $tmp -Pattern 'lyricdockLoader' -Quiet)) { Fail 'The download looks wrong (not the LyricDock loader). Try again in a minute.' }
 Copy-Item $tmp (Join-Path $ext 'lyricdock.js') -Force
 Remove-Item $tmp -ErrorAction SilentlyContinue

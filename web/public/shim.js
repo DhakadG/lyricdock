@@ -12,13 +12,18 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
   const toPage = m => window.dock?.(m); // app.js: native -> page messages
 
   // Screen Wake Lock. Browsers drop it whenever the tab is hidden, so it's taken again on return.
-  let lock = null, wantAwake = false;
+  let lock = null,
+    wantAwake = false;
   async function holdAwake() {
     if (!wantAwake || lock || document.visibilityState !== 'visible' || !navigator.wakeLock) return;
     try {
       lock = await navigator.wakeLock.request('screen');
-      lock.addEventListener('release', () => { lock = null; });
-    } catch (e) { /* denied (battery saver, no gesture yet): tried again on the next visibility change */ }
+      lock.addEventListener('release', () => {
+        lock = null;
+      });
+    } catch (e) {
+      /* denied (battery saver, no gesture yet): tried again on the next visibility change */
+    }
   }
   document.addEventListener('visibilitychange', holdAwake);
 
@@ -26,15 +31,36 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
   // starting paused Spotify playing on this same iPad, and Spotify in the background then refused to play again (403
   // "Restriction violated", seen 2026-10-15). Spotify is in Control Center there anyway, so the loop never plays there.
   // lyricdockIosHere (Spotify playing on this iPhone / iPad, unknown counts as here) still decides install.js's tips.
-  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  window.lyricdockIosHere = () => ios && !/^(Computer|Speaker|TV|AVR|STB|AudioDongle|GameConsole|CastVideo|CastAudio|Automobile)$/i.test(window.playingOnType?.() || '');
-  let silence = null, mediaOn = false;
+  const ios =
+    /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  window.lyricdockIosHere = () =>
+    ios &&
+    !/^(Computer|Speaker|TV|AVR|STB|AudioDongle|GameConsole|CastVideo|CastAudio|Automobile)$/i.test(
+      window.playingOnType?.() || '',
+    );
+  let silence = null,
+    mediaOn = false;
   function quiet() {
     if (silence) return silence;
-    const rate = 8000, n = rate * 10, b = new Uint8Array(44 + n * 2), v = new DataView(b.buffer);
-    const str = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
-    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+    const rate = 8000,
+      n = rate * 10,
+      b = new Uint8Array(44 + n * 2),
+      v = new DataView(b.buffer);
+    const str = (o, s) => {
+      for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i);
+    };
+    str(0, 'RIFF');
+    v.setUint32(4, 36 + n * 2, true);
+    str(8, 'WAVEfmt ');
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true);
+    v.setUint32(28, rate * 2, true);
+    v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true);
+    str(36, 'data');
+    v.setUint32(40, n * 2, true);
     // 16-bit noise at about -67 dBFS: nothing you can hear, but not digital silence either. Browsers count a page whose
     // audio is all zeros as silent, and only a page playing sound may open the miniplayer by itself (mini.js).
     for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round((Math.random() * 2 - 1) * 24), true);
@@ -45,18 +71,35 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
 
   // Battery: async in the browser, read synchronously by the app every second -> keep a "pct,charging" copy.
   let battery = '';
-  navigator.getBattery?.().then(b => {
-    const read = () => { battery = `${Math.round(b.level * 100)},${b.charging ? 1 : 0}`; };
-    read();
-    b.addEventListener('levelchange', read);
-    b.addEventListener('chargingchange', read);
-  }).catch(() => {});
+  navigator
+    .getBattery?.()
+    .then(b => {
+      const read = () => {
+        battery = `${Math.round(b.level * 100)},${b.charging ? 1 : 0}`;
+      };
+      read();
+      b.addEventListener('levelchange', read);
+      b.addEventListener('chargingchange', read);
+    })
+    .catch(() => {});
 
   // What Spotify's "Find devices" list shows for this screen.
   function model() {
     const ua = navigator.userAgent;
-    const os = /iPad/.test(ua) || (ios && !/iPhone|iPod/.test(ua)) ? 'iPad' : ios ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows'
-      : /Mac OS X/.test(ua) ? 'Mac' : /Linux|CrOS/.test(ua) ? 'Linux' : 'Web';
+    const os =
+      /iPad/.test(ua) || (ios && !/iPhone|iPod/.test(ua))
+        ? 'iPad'
+        : ios
+          ? 'iPhone'
+          : /Android/.test(ua)
+            ? 'Android'
+            : /Windows/.test(ua)
+              ? 'Windows'
+              : /Mac OS X/.test(ua)
+                ? 'Mac'
+                : /Linux|CrOS/.test(ua)
+                  ? 'Linux'
+                  : 'Web';
     return `${os} browser`;
   }
 
@@ -64,13 +107,18 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
   async function checkUpdate(install) {
     const reg = await navigator.serviceWorker?.getRegistration();
     if (!reg) return toPage({ type: 'update', state: 'current' });
-    try { await reg.update(); } catch (e) { return toPage({ type: 'update', state: 'error', version: 'offline' }); }
+    try {
+      await reg.update();
+    } catch (e) {
+      return toPage({ type: 'update', state: 'error', version: 'offline' });
+    }
     const next = reg.installing || reg.waiting;
     if (!next) return toPage({ type: 'update', state: 'current' });
     toPage({ type: 'update', state: install ? 'installing' : 'available' }); // the new version's number isn't known here
     if (!install) return;
     // update() resolves while the new worker is still installing: it can only take over once it's waiting.
-    if (next.state === 'installing') await new Promise(res => next.addEventListener('statechange', () => next.state !== 'installing' && res()));
+    if (next.state === 'installing')
+      await new Promise(res => next.addEventListener('statechange', () => next.state !== 'installing' && res()));
     if (next.state === 'installed') window.lyricdockApplyUpdate?.();
     else toPage({ type: 'update', state: 'error', version: 'install failed' });
   }
@@ -82,10 +130,15 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
     if (!/^[A-Za-z0-9]{22}$/.test(id || '')) return;
     const own = /^sl_pk_[\w-]{8,200}$/.test(key || '');
     try {
-      const r = own ? await fetch(`https://api.spicylyrics.org/v1/lyrics/${id}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } })
+      const r = own
+        ? await fetch(`https://api.spicylyrics.org/v1/lyrics/${id}`, {
+            headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+          })
         : await fetch(`/lyrics/${id}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       toPage({ type: 'api', id, status: r.status, text: await r.text() });
-    } catch (e) { toPage({ type: 'api', id, status: 0, text: '' }); }
+    } catch (e) {
+      toPage({ type: 'api', id, status: 0, text: '' });
+    }
   }
 
   window.Dock = {
@@ -93,16 +146,23 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
     version: () => VERSION,
     lastCrash: () => '',
     setChannel() {},
-    checkUpdate: install => { checkUpdate(install); },
-    fetchLyrics: (id, key) => { fetchLyrics(id, key); },
+    checkUpdate: install => {
+      checkUpdate(install);
+    },
+    fetchLyrics: (id, key) => {
+      fetchLyrics(id, key);
+    },
     model,
     ip: () => '',
-    insets() { // the browser's own safe areas (notch, home bar), read through CSS env() - same shape as the phone's
+    insets() {
+      // the browser's own safe areas (notch, home bar), read through CSS env() - same shape as the phone's
       const probe = document.createElement('div');
-      probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;'
-        + 'padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+      probe.style.cssText =
+        'position:fixed;visibility:hidden;pointer-events:none;' +
+        'padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
       document.body.append(probe);
-      const s = getComputedStyle(probe), px = v => parseFloat(v) || 0;
+      const s = getComputedStyle(probe),
+        px = v => parseFloat(v) || 0;
       const out = { l: px(s.paddingLeft), t: px(s.paddingTop), r: px(s.paddingRight), b: px(s.paddingBottom) };
       probe.remove();
       return JSON.stringify(out);
@@ -123,7 +183,10 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
     keepAwake(on) {
       wantAwake = !!on;
       if (wantAwake) holdAwake();
-      else { lock?.release(); lock = null; }
+      else {
+        lock?.release();
+        lock = null;
+      }
     },
     vibrate: ms => navigator.vibrate?.(ms),
     battery: () => battery,
@@ -134,22 +197,50 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
     media(title, artist, art, playing) {
       const ms = navigator.mediaSession;
       if (!ms || window.LYRICDOCK_MINI) return;
-      if (!title) { mediaOn = false; silence?.pause(); ms.metadata = null; ms.playbackState = 'none'; return; }
+      if (!title) {
+        mediaOn = false;
+        silence?.pause();
+        ms.metadata = null;
+        ms.playbackState = 'none';
+        return;
+      }
       if (!mediaOn) {
         mediaOn = true;
-        for (const [a, c] of [['play', 'toggle'], ['pause', 'toggle'], ['nexttrack', 'next'], ['previoustrack', 'prev']]) try { ms.setActionHandler(a, () => window.mediaCmd?.(c)); } catch (e) {}
-        try { ms.setActionHandler('seekto', d => typeof seek === 'function' && seek(Math.round(d.seekTime * 1000))); } catch (e) {}
+        for (const [a, c] of [
+          ['play', 'toggle'],
+          ['pause', 'toggle'],
+          ['nexttrack', 'next'],
+          ['previoustrack', 'prev'],
+        ])
+          try {
+            ms.setActionHandler(a, () => window.mediaCmd?.(c));
+          } catch (e) {}
+        try {
+          ms.setActionHandler('seekto', d => typeof seek === 'function' && seek(Math.round(d.seekTime * 1000)));
+        } catch (e) {}
       }
       ms.metadata = new MediaMetadata({ title, artist, artwork: art ? [{ src: art, sizes: '640x640' }] : [] });
       ms.playbackState = playing ? 'playing' : 'paused';
-      try { if (P.dur) ms.setPositionState({ duration: P.dur / 1000, position: Math.max(0, Math.min(pos(), P.dur)) / 1000, playbackRate: 1 }); } catch (e) {}
+      try {
+        if (P.dur)
+          ms.setPositionState({
+            duration: P.dur / 1000,
+            position: Math.max(0, Math.min(pos(), P.dur)) / 1000,
+            playbackRate: 1,
+          });
+      } catch (e) {}
       // Never on iPhone / iPad: which device Spotify plays on is only known from a fresh beat, and a Home Screen app that
       // missed one (just opened, Spotify switched to this iPad) played the loop and stopped Spotify here again (2026-10-15).
       if (ios) return;
       const a = quiet();
       if (!playing) return a.pause();
       // Autoplay rules: sound needs one click on the page first.
-      a.play().catch(() => addEventListener('pointerdown', () => mediaOn && P.playing && a.play().catch(() => {}), { once: true, capture: true }));
+      a.play().catch(() =>
+        addEventListener('pointerdown', () => mediaOn && P.playing && a.play().catch(() => {}), {
+          once: true,
+          capture: true,
+        }),
+      );
     },
     setVolKeys() {},
     wake() {}, // a page can't switch the screen on
@@ -159,7 +250,11 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
   // iPhone / iPad Home Screen apps draw under the status bar (black-translucent), and Safari settles
   // env(safe-area-inset-*) a little after the first layout and after a rotation: the app's one read on load (and on
   // resize) could get 0 and leave the list panel's tabs under the clock. Read again once things have settled.
-  const reInset = () => { try { window.setInsets?.(JSON.parse(window.Dock.insets())); } catch (e) {} };
+  const reInset = () => {
+    try {
+      window.setInsets?.(JSON.parse(window.Dock.insets()));
+    } catch (e) {}
+  };
   const settle = () => [120, 500, 1200].forEach(t => setTimeout(reInset, t));
   addEventListener('load', settle);
   addEventListener('orientationchange', settle);

@@ -6,24 +6,48 @@
 const Gesture = (() => {
   let g = null;
   const opt = { capture: true, passive: true };
-  addEventListener('touchstart', e => {
-    const t = e.touches[0];
-    if (e.touches.length === 1) g = { x: t.clientX, y: t.clientY, t: performance.now(), end: 0, owner: null, moved: false, multi: false };
-    else if (g) g.multi = true;
-  }, opt);
-  addEventListener('touchmove', e => {
-    const t = e.touches[0];
-    if (g && t && Math.hypot(t.clientX - g.x, t.clientY - g.y) > 10) g.moved = true;
-  }, opt);
-  addEventListener('touchend', e => { if (g && !e.touches.length) g.end = performance.now(); }, opt);
+  addEventListener(
+    'touchstart',
+    e => {
+      const t = e.touches[0];
+      if (e.touches.length === 1)
+        g = { x: t.clientX, y: t.clientY, t: performance.now(), end: 0, owner: null, moved: false, multi: false };
+      else if (g) g.multi = true;
+    },
+    opt,
+  );
+  addEventListener(
+    'touchmove',
+    e => {
+      const t = e.touches[0];
+      if (g && t && Math.hypot(t.clientX - g.x, t.clientY - g.y) > 10) g.moved = true;
+    },
+    opt,
+  );
+  addEventListener(
+    'touchend',
+    e => {
+      if (g && !e.touches.length) g.end = performance.now();
+    },
+    opt,
+  );
   // A mouse or trackpad (an iPad with a Magic Keyboard too) starts fresh: the last finger touch must not decide its clicks.
-  addEventListener('pointerdown', e => { if (e.pointerType && e.pointerType !== 'touch') g = null; }, opt);
+  addEventListener(
+    'pointerdown',
+    e => {
+      if (e.pointerType && e.pointerType !== 'touch') g = null;
+    },
+    opt,
+  );
   return {
     // true = this handler owns the touch now (or already did); false = someone else has it
     claim: name => !g || (g.owner ?? (g.owner = name)) === name,
     owner: () => g?.owner ?? null,
     // What the finger did so far: dx/dy from where it went down.
-    delta: e => { const t = e.touches?.[0] ?? e.changedTouches?.[0] ?? e; return g ? { dx: t.clientX - g.x, dy: t.clientY - g.y } : { dx: 0, dy: 0 }; },
+    delta: e => {
+      const t = e.touches?.[0] ?? e.changedTouches?.[0] ?? e;
+      return g ? { dx: t.clientX - g.x, dy: t.clientY - g.y } : { dx: 0, dy: 0 };
+    },
     // The last touch was a plain tap (mouse clicks in the browser preview count too).
     tap: () => !g || (!g.owner && !g.moved && !g.multi && (g.end || performance.now()) - g.t < 450),
     // A finger was down just now (the click being handled came from a touch, not a mouse or trackpad).
@@ -35,9 +59,13 @@ const Gesture = (() => {
 // word / line highlighting and scrolling every frame.
 const Lyrics = (() => {
   const $ = id => document.getElementById(id);
-  const BOX = $('lyrics'), LIST = $('lines');
-  let lines = [];      // { el, t, e, state, cool?, lk?, dots?, syl?: [{ el, t, e, sp, g? }], bg?: [...] }
-  let synced = false, anchor = -2, onSeek = null, data;
+  const BOX = $('lyrics'),
+    LIST = $('lines');
+  let lines = []; // { el, t, e, state, cool?, lk?, dots?, syl?: [{ el, t, e, sp, g? }], bg?: [...] }
+  let synced = false,
+    anchor = -2,
+    onSeek = null,
+    data;
   // A just-sung line keeps animating this long, so the glow and lift of its last words spring back instead of being
   // cut off the moment the line ends (Spicy keeps stepping a sung line until the next one is done).
   const COOL = 1200;
@@ -48,15 +76,19 @@ const Lyrics = (() => {
     if (r === 'off') return 'orig';
     return r === 'smart' && Roman.hasDeva(text) ? 'orig' : 'roman'; // Hindi (even partly) stays as is
   };
-  const pick = (s = '', r, m, cap = true) => (window.cleanWords ?? (t => t))(
-    m === 'orig' ? (s || r || '') : (r ?? (Roman.isIndic(s) ? Roman.translit(s, cap) : s)));
+  const pick = (s = '', r, m, cap = true) =>
+    (window.cleanWords ?? (t => t))(
+      m === 'orig' ? s || r || '' : (r ?? (Roman.isIndic(s) ? Roman.translit(s, cap) : s)),
+    );
 
   // Spicy's letter mode: any syllable held at least Settings -> Long note length glows and lifts letter by letter,
   // each letter owning an equal slice of its time (Spicy: >= 1000 ms, no length cap). Split by grapheme, so a
   // Devanagari consonant keeps its matra; RTL scripts stay whole (Spicy excludes them too: joined letters break).
-  const seg = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
-  const graphemes = t => seg ? Array.from(seg.segment(t), s => s.segment) : /\p{M}/u.test(t) ? null : Array.from(t);
-  const letterable = (text, x) => Settings.S.letters && x.e - x.t >= Settings.S.lettersMin && /\S/.test(text) && !RTL.test(text);
+  const seg =
+    typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  const graphemes = t => (seg ? Array.from(seg.segment(t), s => s.segment) : /\p{M}/u.test(t) ? null : Array.from(t));
+  const letterable = (text, x) =>
+    Settings.S.letters && x.e - x.t >= Settings.S.lettersMin && /\S/.test(text) && !RTL.test(text);
 
   function syllables(container, syls, m) {
     const out = [];
@@ -66,19 +98,28 @@ const Lyrics = (() => {
       // IsPartOfWord joins a syllable to the next one: keep the word together, no space.
       let parent = container;
       if (x.p || (syls[i - 1]?.p && group)) {
-        if (!group) { group = document.createElement('span'); group.className = 'wg'; container.append(group); }
+        if (!group) {
+          group = document.createElement('span');
+          group.className = 'wg';
+          container.append(group);
+        }
         parent = group;
       }
       const ch = letterable(text, x) && graphemes(text.trim()); // edge spaces are layout, not letters with a time slice
       if (ch && ch.length > 1) {
         const g = document.createElement('span');
         // The letters share [start, end - 250 ms] (Spicy): the last one has landed before the word is over.
-        const end = x.e - 250 > x.t + 300 ? x.e - 250 : x.e, step = (end - x.t) / ch.length;
+        const end = x.e - 250 > x.t + 300 ? x.e - 250 : x.e,
+          step = (end - x.t) / ch.length;
         const grp = { ls: [], t: x.t, e: end, at: NaN, act: -1, pct: 0 };
         g.className = 'wg lw';
         ch.forEach((c, k) => {
           const el = document.createElement('span');
-          el.className = 'sy lt' + (/^\s+$/.test(c) ? ' sp' : '') + (k === 0 && syls[i - 1]?.p ? ' pn' : '') + (k === ch.length - 1 && x.p ? ' pw' : '');
+          el.className =
+            'sy lt' +
+            (/^\s+$/.test(c) ? ' sp' : '') +
+            (k === 0 && syls[i - 1]?.p ? ' pn' : '') +
+            (k === ch.length - 1 && x.p ? ' pw' : '');
           el.textContent = c;
           el.dataset.t = c; // the glow copy (style.css .sy::after)
           g.append(el);
@@ -102,11 +143,17 @@ const Lyrics = (() => {
   }
 
   const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/; // escapes, not literals: an NFC pass once split U+FB1D and the range swallowed Devanagari
-  const div = (cls, text) => { const d = document.createElement('div'); d.className = cls; if (text) d.textContent = text; return d; };
+  const div = (cls, text) => {
+    const d = document.createElement('div');
+    d.className = cls;
+    if (text) d.textContent = text;
+    return d;
+  };
 
   // Interlude: three dots, each owning a third of the gap (Spicy's musical-line / dotGroup).
   function dots(t, e) {
-    const el = div('ln dots'), group = div('dotGroup');
+    const el = div('ln dots'),
+      group = div('dotGroup');
     const third = (e - t) / 3;
     const dd = [0, 1, 2].map(i => ({ el: div('dt'), t: t + third * i, e: t + third * (i + 1) }));
     group.append(...dd.map(d => d.el));
@@ -124,41 +171,93 @@ const Lyrics = (() => {
     const cd = x.cd;
     if (cd.textContent === v || x.cdOut) return;
     if (!v) {
-      x.cdOut = cd.animate([{ opacity: .8, transform: 'none', filter: 'blur(0)' }, { opacity: 0, transform: 'translateY(-.5em)', filter: 'blur(.15em)' }],
-        { duration: 500, easing: SOFT });
-      x.cdOut.onfinish = x.cdOut.oncancel = () => { cd.textContent = ''; x.cdOut = null; };
+      x.cdOut = cd.animate(
+        [
+          { opacity: 0.8, transform: 'none', filter: 'blur(0)' },
+          { opacity: 0, transform: 'translateY(-.5em)', filter: 'blur(.15em)' },
+        ],
+        { duration: 500, easing: SOFT },
+      );
+      x.cdOut.onfinish = x.cdOut.oncancel = () => {
+        cd.textContent = '';
+        x.cdOut = null;
+      };
       return;
     }
     cd.textContent = v;
-    cd.animate([{ opacity: 0, transform: 'translateY(.35em)', filter: 'blur(.1em)' }, { opacity: .8, transform: 'none', filter: 'blur(0)' }], { duration: 420, easing: SOFT });
+    cd.animate(
+      [
+        { opacity: 0, transform: 'translateY(.35em)', filter: 'blur(.1em)' },
+        { opacity: 0.8, transform: 'none', filter: 'blur(0)' },
+      ],
+      { duration: 420, easing: SOFT },
+    );
   }
 
   // ---- normalization shared by the desktop cache (via the bridge) and the Spicy Lyrics API (api.js).
-  const PROVIDERS = [['spicy_lyrics', 'Spicy Lyrics'], ['apple_music', 'Apple Music'], ['spotify', 'Spotify'],
-    ['spl', 'Spicy Lyrics'], ['aml', 'Apple Music'], ['spt', 'Spotify'], ['ldb', 'Local DB']];
-  const provider = src => typeof src === 'string'
-    ? PROVIDERS.find(([k]) => src.toLowerCase().includes(k))?.[1] ?? 'Unknown source' : 'Unknown source';
+  const PROVIDERS = [
+    ['spicy_lyrics', 'Spicy Lyrics'],
+    ['apple_music', 'Apple Music'],
+    ['spotify', 'Spotify'],
+    ['spl', 'Spicy Lyrics'],
+    ['aml', 'Apple Music'],
+    ['spt', 'Spotify'],
+    ['ldb', 'Local DB'],
+  ];
+  const provider = src =>
+    typeof src === 'string'
+      ? (PROVIDERS.find(([k]) => src.toLowerCase().includes(k))?.[1] ?? 'Unknown source')
+      : 'Unknown source';
   // Community syncs credit their uploader and maker (required by the API terms); other sources have none.
-  const contributors = a => [['Synced by', a?.Maker], ['Uploaded by', a?.Uploader]]
-    .filter(([, p]) => p?.username).map(([role, p]) => ({ role, name: p.username, url: p.url }));
+  const contributors = a =>
+    [
+      ['Synced by', a?.Maker],
+      ['Uploaded by', a?.Uploader],
+    ]
+      .filter(([, p]) => p?.username)
+      .map(([role, p]) => ({ role, name: p.username, url: p.url }));
 
   function fromSpicy(L) {
-    const syl = s => ({ s: s.Text, r: s.TransliteratedText, t: s.StartTime * 1000, e: s.EndTime * 1000, p: !!s.IsPartOfWord });
+    const syl = s => ({
+      s: s.Text,
+      r: s.TransliteratedText,
+      t: s.StartTime * 1000,
+      e: s.EndTime * 1000,
+      p: !!s.IsPartOfWord,
+    });
     const vocal = (L?.Content ?? []).filter(v => v.Type === 'Vocal');
     let kind, lines;
     if (L?.Type === 'Syllable') {
       kind = 'word';
-      lines = vocal.map(v => ({ t: v.Lead.StartTime * 1000, e: v.Lead.EndTime * 1000, opp: !!v.OppositeAligned,
-        w: v.Lead.Syllables.map(syl), bg: (v.Background ?? []).flatMap(b => b.Syllables.map(syl)) }));
+      lines = vocal.map(v => ({
+        t: v.Lead.StartTime * 1000,
+        e: v.Lead.EndTime * 1000,
+        opp: !!v.OppositeAligned,
+        w: v.Lead.Syllables.map(syl),
+        bg: (v.Background ?? []).flatMap(b => b.Syllables.map(syl)),
+      }));
     } else if (L?.Type === 'Line') {
       kind = 'line';
-      lines = vocal.map(v => ({ t: v.StartTime * 1000, e: v.EndTime * 1000, opp: !!v.OppositeAligned, s: v.Text, r: v.TransliteratedText }));
+      lines = vocal.map(v => ({
+        t: v.StartTime * 1000,
+        e: v.EndTime * 1000,
+        opp: !!v.OppositeAligned,
+        s: v.Text,
+        r: v.TransliteratedText,
+      }));
     } else if (L?.Type === 'Static') {
       kind = 'static';
       lines = (L.Lines ?? []).map(l => ({ s: l.Text, r: l.TransliteratedText }));
     } else return null;
-    return lines.length ? { kind, lines, writers: L.SongWriters ?? [], source: provider(L.source),
-      contributors: contributors(L.UploadAttribution) } : null;
+    return lines.length
+      ? {
+          kind,
+          lines,
+          writers: L.SongWriters ?? [],
+          source: provider(L.source),
+          contributors: contributors(L.UploadAttribution),
+        }
+      : null;
   }
   // Which lyrics win: Settings -> Lyrics -> Lyrics sources, a list of source x sync type, most wanted first (Better
   // Lyrics' provider list). Disabled entries ('-' prefix) score 0 = never shown. A source the list doesn't name (Spicy's
@@ -166,8 +265,12 @@ const Lyrics = (() => {
   const SOURCES = ['Apple Music', 'Spicy Lyrics', 'Spotify', 'LRCLIB'];
   function rank(l) {
     if (!l?.lines?.length || !['word', 'line', 'static'].includes(l.kind)) return 0;
-    const o = Settings.S.srcOrder ?? [], score = i => o.length - i;
-    if (SOURCES.includes(l.source)) { const i = o.indexOf(`${l.source}:${l.kind}`); return i < 0 ? 0 : score(i); }
+    const o = Settings.S.srcOrder ?? [],
+      score = i => o.length - i;
+    if (SOURCES.includes(l.source)) {
+      const i = o.indexOf(`${l.source}:${l.kind}`);
+      return i < 0 ? 0 : score(i);
+    }
     const i = o.findIndex(k => k.endsWith(':' + l.kind) && k[0] !== '-');
     return i < 0 ? 0.5 : score(i) - 0.5;
   }
@@ -178,15 +281,25 @@ const Lyrics = (() => {
   // its velocity when the target changes mid-flight, so quick line changes read as one glide, and it moves in sub-pixels.
   const FEEL = { smooth: [1.05, 1], spring: [1.5, 0.62], snappy: [2.4, 1] }; // [frequency Hz, damping ratio] (Settings -> Lyrics scroll)
   const sc = { sp: new Anim.Spring(0, 1, 1), on: false };
-  let curY = 0, free = false, backT = 0, drag = null, fling = 0;
-  const writeY = y => { LIST.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`; };
+  let curY = 0,
+    free = false,
+    backT = 0,
+    drag = null,
+    fling = 0;
+  const writeY = y => {
+    LIST.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`;
+  };
   function scrollStep(dt) {
     if (flow.size) flowStep(dt);
     if (!sc.on || free) return;
     const [f, d] = FEEL[Settings.S.scroll] ?? FEEL.smooth;
-    sc.sp.f = f * Settings.S.animSpeed; sc.sp.d = d;
+    sc.sp.f = f * Settings.S.animSpeed;
+    sc.sp.d = d;
     curY = sc.sp.step(dt);
-    if (Math.abs(curY - sc.sp.g) < 0.05 && Math.abs(sc.sp.v) < 0.3) { curY = sc.sp.g; sc.on = false; }
+    if (Math.abs(curY - sc.sp.g) < 0.05 && Math.abs(sc.sp.v) < 0.3) {
+      curY = sc.sp.g;
+      sc.on = false;
+    }
     writeY(curY);
   }
 
@@ -194,7 +307,10 @@ const Lyrics = (() => {
     data = lyr;
     lines = [];
     anchor = -2;
-    sc.on = false; sc.sp.set(0, true); curY = 0; still();
+    sc.on = false;
+    sc.sp.set(0, true);
+    curY = 0;
+    still();
     BOX.classList.remove('static', 'placeholder');
     document.body.classList.toggle('nolyrics', !!lyr && (lyr.kind === 'none' || !lyr.lines?.length));
     window.fitArt?.();
@@ -203,7 +319,13 @@ const Lyrics = (() => {
     if (!lyr) {
       synced = false;
       BOX.classList.add('placeholder');
-      LIST.replaceChildren(...[.9, .7, .8].map(w => { const s = div('ln skel'); s.style.width = w * 100 + '%'; return s; }));
+      LIST.replaceChildren(
+        ...[0.9, 0.7, 0.8].map(w => {
+          const s = div('ln skel');
+          s.style.width = w * 100 + '%';
+          return s;
+        }),
+      );
       return;
     }
     if (lyr.kind === 'none' || !lyr.lines?.length) {
@@ -214,7 +336,8 @@ const Lyrics = (() => {
     }
     synced = lyr.kind !== 'static';
     const frag = [];
-    const S = Settings.S, gap = S.dotsGap * 1000;
+    const S = Settings.S,
+      gap = S.dotsGap * 1000;
     if (synced && S.dots && lyr.lines[0].t > Math.min(3000, gap)) frag.push(dots(0, lyr.lines[0].t));
     lyr.lines.forEach((ln, i) => {
       const el = div('ln' + (ln.opp ? ' opp' : ''));
@@ -230,13 +353,21 @@ const Lyrics = (() => {
         }
       } else {
         el.textContent = pick(ln.s, ln.r, mode(ln.s || '')) || '♪';
-        if (synced) { entry.lk = true; el.classList.add('lk'); }
+        if (synced) {
+          entry.lk = true;
+          el.classList.add('lk');
+        }
       }
       // A tap seeks a little before the line: Spotify fades the audio in after a seek, so landing exactly on the first
       // syllable swallows it (Spicy: 300 ms).
-      if (synced) el.onclick = () => Settings.S.tapSeek && Gesture.tap() && onSeek?.(Math.max(0, ln.t - (Settings.S.seekComp ? 300 : 0)));
+      if (synced)
+        el.onclick = () =>
+          Settings.S.tapSeek && Gesture.tap() && onSeek?.(Math.max(0, ln.t - (Settings.S.seekComp ? 300 : 0)));
       if (Roman.isIndic(el.textContent)) el.classList.add('indic'); // taller line box for matras
-      if (RTL.test(el.textContent)) { el.dir = 'rtl'; el.classList.add('rtl'); } // Urdu / Arabic / Hebrew kept in script
+      if (RTL.test(el.textContent)) {
+        el.dir = 'rtl';
+        el.classList.add('rtl');
+      } // Urdu / Arabic / Hebrew kept in script
       lines.push(entry);
       frag.push(el);
       const next = lyr.lines[i + 1];
@@ -248,7 +379,8 @@ const Lyrics = (() => {
       if (Settings.S.credits && lyr.writers?.length) c.append(div('writers', `Written by: ${lyr.writers.join(', ')}`));
       if (lyr.source) c.append(div('provider', `Provided by: ${lyr.source}`));
       for (const p of lyr.contributors ?? []) {
-        const row = div('provider'), a = document.createElement('a');
+        const row = div('provider'),
+          a = document.createElement('a');
         a.textContent = p.name;
         if (/^https:\/\//.test(p.url || '')) a.href = p.url;
         a.onclick = e => e.preventDefault(); // kiosk: no browser to open, the link is for credit
@@ -267,7 +399,10 @@ const Lyrics = (() => {
   function settle(x, sung) {
     x.cool = 0;
     x.el.classList.remove('cool');
-    if (x.syl) { Anim.rest(x.syl, sung); if (x.bg) Anim.rest(x.bg, sung); }
+    if (x.syl) {
+      Anim.rest(x.syl, sung);
+      if (x.bg) Anim.rest(x.bg, sung);
+    }
     if (x.lk) Anim.restLine(x);
     if (x.dots) Anim.restDots(x);
   }
@@ -280,7 +415,8 @@ const Lyrics = (() => {
     if (!synced) return;
     const jumped = lastP !== null && Math.abs(p - lastP - dt * 1000) > 1500;
     lastP = p;
-    const S = Settings.S, opts = { lift: S.lift, glow: S.glow, liftK: S.liftAmount, glowK: S.glowStrength };
+    const S = Settings.S,
+      opts = { lift: S.lift, glow: S.glow, liftK: S.liftAmount, glowK: S.glowStrength };
     let a = -1;
     for (let i = 0; i < lines.length; i++) {
       const x = lines[i];
@@ -293,9 +429,15 @@ const Lyrics = (() => {
         x.el.classList.toggle('sung', state === 'sung');
         if (x.cd && was === 'on') countdown(x, ''); // singing starts: the last number leaves (it used to stay there)
         if (was === 'on') {
-          if (state === 'sung' && (x.syl || x.lk)) { x.cool = p + COOL; x.el.classList.add('cool'); } // let the glow settle
+          if (state === 'sung' && (x.syl || x.lk)) {
+            x.cool = p + COOL;
+            x.el.classList.add('cool');
+          } // let the glow settle
           else settle(x, false);
-        } else if (state === 'on' && x.syl) { Anim.rest(x.syl, false); if (x.bg) Anim.rest(x.bg, false); } // a seek landed here: start at rest
+        } else if (state === 'on' && x.syl) {
+          Anim.rest(x.syl, false);
+          if (x.bg) Anim.rest(x.bg, false);
+        } // a seek landed here: start at rest
       }
       if (x.cool && (state !== 'sung' || p >= x.cool)) settle(x, state === 'sung');
       if (state !== 'on' && !x.cool) continue;
@@ -306,7 +448,10 @@ const Lyrics = (() => {
         Anim.line(x, p, dt, opts);
       } else if (x.dots) {
         Anim.dotGroup(x.grp, p, dt);
-        if (x.cd) { const r = Math.ceil((x.e - p) / 1000); countdown(x, S.countdown && r <= 3 && r > 0 ? String(r) : ''); }
+        if (x.cd) {
+          const r = Math.ceil((x.e - p) / 1000);
+          countdown(x, S.countdown && r <= 3 && r > 0 ? String(r) : '');
+        }
         for (const d of x.dd) Anim.dot(d, p, dt);
       }
     }
@@ -316,47 +461,106 @@ const Lyrics = (() => {
 
   // ---- free scroll (Spicy Lyrics): drag the lyrics up/down to read ahead or back, with a flick; all lines show
   // clearly while free, and the view glides back to the sung line S.scrollBack seconds after the finger lifts.
-  const clampY = y => { const h = BOX.clientHeight, total = LIST.offsetHeight; return Math.min(h * 0.5, Math.max(h * 0.5 - total, y)); };
-  const setY = y => { curY = clampY(y); sc.on = false; writeY(curY); };
+  const clampY = y => {
+    const h = BOX.clientHeight,
+      total = LIST.offsetHeight;
+    return Math.min(h * 0.5, Math.max(h * 0.5 - total, y));
+  };
+  const setY = y => {
+    curY = clampY(y);
+    sc.on = false;
+    writeY(curY);
+  };
   function release() {
     clearTimeout(backT);
-    backT = setTimeout(() => { free = false; BOX.classList.remove('free'); if (synced) scrollTo(anchor, false); }, Settings.S.scrollBack * 1000);
+    backT = setTimeout(() => {
+      free = false;
+      BOX.classList.remove('free');
+      if (synced) scrollTo(anchor, false);
+    }, Settings.S.scrollBack * 1000);
   }
-  BOX.addEventListener('touchstart', e => {
-    if (!synced || e.touches.length !== 1) return;
-    cancelAnimationFrame(fling);
-    drag = { x: e.touches[0].clientX, y: e.touches[0].clientY, y0: curY, on: false, t: performance.now(), v: 0, ly: e.touches[0].clientY };
-  }, { passive: true });
-  BOX.addEventListener('touchmove', e => {
-    if (drag && e.touches.length > 1) { if (drag.on) release(); drag = null; } // a multi-finger gesture: not a scroll
-    if (!drag) return;
-    const t = e.touches[0], dx = t.clientX - drag.x, dy = t.clientY - drag.y;
-    if (!drag.on) {
-      if (Math.abs(dx) > Math.abs(dy) || Math.abs(dy) < 10) return; // horizontal = swipe to skip (features.js)
-      if (!Gesture.claim('lyrics')) { drag = null; return; } // a skip swipe or the cover got it first
-      drag.on = true; free = true; clearTimeout(backT); BOX.classList.add('free');
-    }
-    const now = performance.now();
-    drag.v = (t.clientY - drag.ly) / Math.max(1, now - drag.t); drag.t = now; drag.ly = t.clientY;
-    setY(drag.y0 + dy);
-  }, { passive: true });
-  BOX.addEventListener('touchend', () => {
-    if (!drag) return;
-    const d = drag; drag = null;
-    if (!d.on) return;
-    let v = d.v, last = performance.now(); // px per ms; decays the same at 60 or 120 Hz
-    const step = t => { const dt = Math.min(50, t - last); last = t; if (Math.abs(v) < 0.025) return release(); setY(curY + v * dt); v *= Math.pow(0.94, dt / 16.7); fling = requestAnimationFrame(step); };
-    fling = requestAnimationFrame(step);
-  }, { passive: true });
+  BOX.addEventListener(
+    'touchstart',
+    e => {
+      if (!synced || e.touches.length !== 1) return;
+      cancelAnimationFrame(fling);
+      drag = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        y0: curY,
+        on: false,
+        t: performance.now(),
+        v: 0,
+        ly: e.touches[0].clientY,
+      };
+    },
+    { passive: true },
+  );
+  BOX.addEventListener(
+    'touchmove',
+    e => {
+      if (drag && e.touches.length > 1) {
+        if (drag.on) release();
+        drag = null;
+      } // a multi-finger gesture: not a scroll
+      if (!drag) return;
+      const t = e.touches[0],
+        dx = t.clientX - drag.x,
+        dy = t.clientY - drag.y;
+      if (!drag.on) {
+        if (Math.abs(dx) > Math.abs(dy) || Math.abs(dy) < 10) return; // horizontal = swipe to skip (features.js)
+        if (!Gesture.claim('lyrics')) {
+          drag = null;
+          return;
+        } // a skip swipe or the cover got it first
+        drag.on = true;
+        free = true;
+        clearTimeout(backT);
+        BOX.classList.add('free');
+      }
+      const now = performance.now();
+      drag.v = (t.clientY - drag.ly) / Math.max(1, now - drag.t);
+      drag.t = now;
+      drag.ly = t.clientY;
+      setY(drag.y0 + dy);
+    },
+    { passive: true },
+  );
+  BOX.addEventListener(
+    'touchend',
+    () => {
+      if (!drag) return;
+      const d = drag;
+      drag = null;
+      if (!d.on) return;
+      let v = d.v,
+        last = performance.now(); // px per ms; decays the same at 60 or 120 Hz
+      const step = t => {
+        const dt = Math.min(50, t - last);
+        last = t;
+        if (Math.abs(v) < 0.025) return release();
+        setY(curY + v * dt);
+        v *= Math.pow(0.94, dt / 16.7);
+        fling = requestAnimationFrame(step);
+      };
+      fling = requestAnimationFrame(step);
+    },
+    { passive: true },
+  );
   // Mouse wheel / trackpad (web app on a computer): the same free scroll, gliding back the same way.
-  BOX.addEventListener('wheel', e => {
-    if (!synced || e.ctrlKey) return; // ctrl+wheel stays the browser's zoom
-    e.preventDefault();
-    cancelAnimationFrame(fling);
-    free = true; BOX.classList.add('free');
-    setY(curY - e.deltaY * (e.deltaMode === 1 ? 32 : 1)); // deltaMode 1 = lines (Firefox)
-    release();
-  }, { passive: false });
+  BOX.addEventListener(
+    'wheel',
+    e => {
+      if (!synced || e.ctrlKey) return; // ctrl+wheel stays the browser's zoom
+      e.preventDefault();
+      cancelAnimationFrame(fling);
+      free = true;
+      BOX.classList.add('free');
+      setY(curY - e.deltaY * (e.deltaMode === 1 ? 32 : 1)); // deltaMode 1 = lines (Firefox)
+      release();
+    },
+    { passive: false },
+  );
   const isFree = () => free;
 
   function scrollTo(a, instant) {
@@ -365,14 +569,24 @@ const Lyrics = (() => {
     const i = Math.max(a, 0);
     lines.forEach((x, k) => {
       const d = Math.min(3, Math.abs(k - i));
-      if (x.d !== d) { x.d = d; x.el.dataset.d = d; }
+      if (x.d !== d) {
+        x.d = d;
+        x.el.dataset.d = d;
+      }
       x.el.classList.toggle('far', Math.abs(k - i) > Settings.S.renderDistance); // off screen: skip painting it (long songs)
     });
     const el = lines[i]?.el;
     if (!el) return;
     const frac = document.body.classList.contains('layout-cinema') ? 0.5 : Settings.S.anchor;
     const y = BOX.clientHeight * frac - el.offsetTop - el.offsetHeight / 2;
-    if (instant) { still(); sc.sp.set(y, true); sc.on = false; curY = y; writeY(y); return; }
+    if (instant) {
+      still();
+      sc.sp.set(y, true);
+      sc.on = false;
+      curY = y;
+      writeY(y);
+      return;
+    }
     if (Settings.S.scroll === 'cascade' && CASCADE) return cascade(i, y);
     if (Settings.S.scroll === 'fluid' && FLUID) return fluid(i, y);
     if (!sc.on) sc.sp.set(curY, true); // start from wherever the list really is, at rest
@@ -385,17 +599,36 @@ const Lyrics = (() => {
   // ahead 750 ms + ln(d + 2) x 80 ms + (d + 1) x 20 ms, so the far lines trail and the scroll reads as a ripple.
   // Additive animations: a new scroll mid-flight stacks on the running ones, so nothing jumps. Needs composite 'add'
   // on transform (Chrome 112+); older WebViews keep the spring.
-  const CASCADE = (() => { try { document.createElement('div').animate([{ transform: 'none' }], { composite: 'add' }).cancel(); return CSS.supports('translate', '0 1px'); } catch (e) { return false; } })();
+  const CASCADE = (() => {
+    try {
+      document
+        .createElement('div')
+        .animate([{ transform: 'none' }], { composite: 'add' })
+        .cancel();
+      return CSS.supports('translate', '0 1px');
+    } catch (e) {
+      return false;
+    }
+  })();
   const EASE = 'cubic-bezier(.86, 0, .2, 1)';
   function cascade(i, y) {
     const off = curY - y; // where each line was, relative to where it now sits
-    sc.on = false; sc.sp.set(y, true); curY = y; writeY(y);
+    sc.on = false;
+    sc.sp.set(y, true);
+    curY = y;
+    writeY(y);
     if (Math.abs(off) < 1) return;
-    const k = Settings.S.animSpeed, n = Math.min(Settings.S.renderDistance, 10);
+    const k = Settings.S.animSpeed,
+      n = Math.min(Settings.S.renderDistance, 10);
     for (let j = Math.max(0, i - n); j <= Math.min(lines.length - 1, i + n); j++) {
-      const r = j - i, d = Math.abs(r), ahead = off > 0 ? r > 0 : r < 0; // off > 0: the list moved up, line i + 1 is ahead
+      const r = j - i,
+        d = Math.abs(r),
+        ahead = off > 0 ? r > 0 : r < 0; // off > 0: the list moved up, line i + 1 is ahead
       const ms = (ahead || !r ? 750 + Math.log(d + 2) * 80 + (d + 1) * 20 : 750 + Math.min(d, 6) * 20) / k;
-      lines[j].el.animate([{ translate: `0 ${off.toFixed(1)}px`, easing: EASE }, { translate: '0 0' }], { duration: ms, composite: 'add' });
+      lines[j].el.animate([{ translate: `0 ${off.toFixed(1)}px`, easing: EASE }, { translate: '0 0' }], {
+        duration: ms,
+        composite: 'add',
+      });
     }
   }
 
@@ -407,19 +640,29 @@ const Lyrics = (() => {
   // lines are still moving adds to their offsets and keeps their speed (no new wait for a line already on its way), so a
   // fast passage flows as one wave. Uses the CSS translate property (Chrome 104+), which stacks on the transforms the word
   // animations write; older WebViews get the plain spring.
-  const FLUID = CSS.supports('translate', '0 1px'), flow = new Map(); // line entry -> { sp: offset spring (goal 0), wait: s, base: Hz }
-  const flowDraw = (x, y) => { x.el.style.translate = `0 ${y.toFixed(2)}px`; };
+  const FLUID = CSS.supports('translate', '0 1px'),
+    flow = new Map(); // line entry -> { sp: offset spring (goal 0), wait: s, base: Hz }
+  const flowDraw = (x, y) => {
+    x.el.style.translate = `0 ${y.toFixed(2)}px`;
+  };
   function fluid(i, y) {
     const off = curY - y;
-    sc.on = false; sc.sp.set(y, true); curY = y; writeY(y);
+    sc.on = false;
+    sc.sp.set(y, true);
+    curY = y;
+    writeY(y);
     if (Math.abs(off) < 1) return;
     const n = Math.min(Settings.S.renderDistance, 10);
     for (let j = Math.max(0, i - n); j <= Math.min(lines.length - 1, i + n); j++) {
-      const x = lines[j], r = j - i, d = Math.abs(r), ahead = off > 0 ? r > 0 : r < 0;
+      const x = lines[j],
+        r = j - i,
+        d = Math.abs(r),
+        ahead = off > 0 ? r > 0 : r < 0;
       let f = flow.get(x);
       const moving = !!f && f.wait <= 0;
-      if (!f) flow.set(x, f = { sp: new Anim.Spring(0, 1, 0.9), wait: 0 });
-      f.sp.p += off; f.sp.g = 0;
+      if (!f) flow.set(x, (f = { sp: new Anim.Spring(0, 1, 0.9), wait: 0 }));
+      f.sp.p += off;
+      f.sp.g = 0;
       f.base = ahead ? 1.55 - Math.min(d, 6) * 0.05 : 1.55; // Hz (~0.65 s); lines further ahead slightly softer
       if (!moving) f.wait = ahead ? Math.min(d, 6) * 0.035 : 0;
       flowDraw(x, f.sp.p); // this frame already: the list moved, the line holds where it was
@@ -427,24 +670,38 @@ const Lyrics = (() => {
   }
   function flowStep(dt) {
     for (const [x, f] of flow) {
-      if (f.wait > 0) { f.wait -= dt; flowDraw(x, f.sp.p); continue; }
+      if (f.wait > 0) {
+        f.wait -= dt;
+        flowDraw(x, f.sp.p);
+        continue;
+      }
       f.sp.f = f.base * Settings.S.animSpeed;
       const y = f.sp.step(dt);
-      if (Math.abs(y) < 0.05 && Math.abs(f.sp.v) < 0.3) { x.el.style.translate = ''; flow.delete(x); continue; }
+      if (Math.abs(y) < 0.05 && Math.abs(f.sp.v) < 0.3) {
+        x.el.style.translate = '';
+        flow.delete(x);
+        continue;
+      }
       flowDraw(x, y);
     }
   }
-  function still() { for (const x of flow.keys()) x.el.style.translate = ''; flow.clear(); } // a jump / new song: no ripple left over
+  function still() {
+    for (const x of flow.keys()) x.el.style.translate = '';
+    flow.clear();
+  } // a jump / new song: no ripple left over
 
   // How busy the vocals are around p, 0..1 (null without synced lyrics): drives 'Move with the music' now that
   // Spotify's audio analysis is gone. Singing = lively, faster words = livelier, instrumental gaps = calm.
   function energy(p) {
     if (!synced) return null;
-    let on = false, starts = 0;
+    let on = false,
+      starts = 0;
     for (const x of lines) {
       if (x.dots) continue;
       if (p >= x.t && p < x.e) on = true;
-      if (x.syl) { for (const w of x.syl) if (!(w.g && w.k) && w.t <= p && w.t > p - 2000) starts++; } // one start per letter group
+      if (x.syl) {
+        for (const w of x.syl) if (!(w.g && w.k) && w.t <= p && w.t > p - 2000) starts++;
+      } // one start per letter group
       else if (x.t <= p && x.t > p - 2000) starts += 4; // line-synced: a line start counts as a few words
     }
     return on ? Math.min(1, 0.45 + starts / 12) : 0.12;
@@ -457,7 +714,14 @@ const Lyrics = (() => {
     for (let k = 0; k < lines.length && lines[k].t <= p; k++) i = k;
     const text = x => (x && !x.dots ? x.el.textContent.replace(/\s+/g, ' ').trim().slice(0, 120) : '');
     const on = i >= 0 && p < lines[i].e + 1500; // a little after the line ends, then the gap shows as empty
-    return { i, text: on ? text(lines[i]) : '', t: lines[i]?.t, e: lines[i]?.e, prev: text(lines[i - 1]), next: [text(lines[i + 1]), text(lines[i + 2])].filter(Boolean) };
+    return {
+      i,
+      text: on ? text(lines[i]) : '',
+      t: lines[i]?.t,
+      e: lines[i]?.e,
+      prev: text(lines[i - 1]),
+      next: [text(lines[i + 1]), text(lines[i + 2])].filter(Boolean),
+    };
   }
 
   return {
@@ -472,6 +736,8 @@ const Lyrics = (() => {
     rebuild: () => build(data),
     refresh: () => synced && scrollTo(anchor, true),
     isFree,
-    onSeek: f => { onSeek = f; },
+    onSeek: f => {
+      onSeek = f;
+    },
   };
 })();

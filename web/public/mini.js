@@ -14,17 +14,45 @@
   const mini = window.LYRICDOCK_MINI;
   if (mini) {
     const ch = new BroadcastChannel(`lyricdock-mini-${mini}`);
-    window.miniHost = d => { try { ch.postMessage(d); } catch (e) {} };
+    window.miniHost = d => {
+      try {
+        ch.postMessage(d);
+      } catch (e) {}
+    };
     // No controls pill in here: a click (one of the buttons below, or on the lyrics) must not dim the lyrics behind it.
     window.showUi = () => {};
-    ch.onmessage = e => { if (e.data?.src) route(e.data.src, e.data.m); };
+    ch.onmessage = e => {
+      if (e.data?.src) route(e.data.src, e.data.m);
+    };
     miniHost({ hello: 1 });
     setInterval(() => miniHost({ beat: 1 }), 1000);
-    const keep = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    const keep = (k, v) => {
+      try {
+        if (v === undefined) return localStorage.getItem(k);
+        localStorage.setItem(k, v);
+      } catch (e) {}
+    };
     // The look comes from the screen's settings (settings.js), made readable for a small window over any cover (white
     // lines, Spicy Lyrics' 0.5 for the others, a darker background); the screen's furniture stays off in here.
-    const off = { layout: 'lyrics', clock: 'off', qsEnabled: false, nextChip: false, progress: 'off', times: false, timeStyle: 'off', battery: false, showBlocks: false, sourceBadge: false,
-      lineColor: 'white', duetColors: false, lineOpacity: 0.5, blurLines: false, outline: true, bgDim: Math.max(S.bgDim, 0.45), size: +(keep('dock:miniSize') || S.size) };
+    const off = {
+      layout: 'lyrics',
+      clock: 'off',
+      qsEnabled: false,
+      nextChip: false,
+      progress: 'off',
+      times: false,
+      timeStyle: 'off',
+      battery: false,
+      showBlocks: false,
+      sourceBadge: false,
+      lineColor: 'white',
+      duetColors: false,
+      lineOpacity: 0.5,
+      blurLines: false,
+      outline: true,
+      bgDim: Math.max(S.bgDim, 0.45),
+      size: +(keep('dock:miniSize') || S.size),
+    };
     for (const [k, v] of Object.entries(off)) if (S[k] !== v) Settings.set(k, v, false);
     const svg = id => $(id).querySelector('svg').outerHTML;
     const icon = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
@@ -82,39 +110,93 @@ body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid
     document.body.append(ui);
     document.body.classList.add('mini');
     document.body.classList.toggle('nohead', keep('dock:miniHead') === 'off');
-    const q = id => document.getElementById(id), pr = q('mPr'), vol = $('vol'), last = {};
+    const q = id => document.getElementById(id),
+      pr = q('mPr'),
+      vol = $('vol'),
+      last = {};
     // Volume goes through the app's own slider (throttled, app.js); a mute remembers where it was.
-    const setVol = v => { vol.value = Math.max(0, Math.min(100, Math.round(v))); vol.dispatchEvent(new Event('input')); q('mVol').title = `Volume ${vol.value}%`; };
+    const setVol = v => {
+      vol.value = Math.max(0, Math.min(100, Math.round(v)));
+      vol.dispatchEvent(new Event('input'));
+      q('mVol').title = `Volume ${vol.value}%`;
+    };
     let unmute = 50;
     const extra = {
-      smaller: () => { Settings.set('size', Math.max(0.6, +(S.size - 0.1).toFixed(2)), false); keep('dock:miniSize', S.size); },
-      bigger: () => { Settings.set('size', Math.min(1.6, +(S.size + 0.1).toFixed(2)), false); keep('dock:miniSize', S.size); },
-      mute: () => { if (+vol.value > 0) { unmute = +vol.value; setVol(0); } else setVol(unmute); },
-      head: () => { keep('dock:miniHead', document.body.classList.toggle('nohead') ? 'off' : 'on'); fit(); },
+      smaller: () => {
+        Settings.set('size', Math.max(0.6, +(S.size - 0.1).toFixed(2)), false);
+        keep('dock:miniSize', S.size);
+      },
+      bigger: () => {
+        Settings.set('size', Math.min(1.6, +(S.size + 0.1).toFixed(2)), false);
+        keep('dock:miniSize', S.size);
+      },
+      mute: () => {
+        if (+vol.value > 0) {
+          unmute = +vol.value;
+          setVol(0);
+        } else setVol(unmute);
+      },
+      head: () => {
+        keep('dock:miniHead', document.body.classList.toggle('nohead') ? 'off' : 'on');
+        fit();
+      },
     };
     ui.onclick = e => {
       const b = e.target.closest('[data-k], [data-x]');
       if (!b) return;
       e.stopPropagation();
-      if (b.dataset.k) $(b.dataset.k).click(); // the app's own buttons
+      if (b.dataset.k)
+        $(b.dataset.k).click(); // the app's own buttons
       else extra[b.dataset.x]();
     };
-    q('mVol').addEventListener('wheel', e => { e.preventDefault(); setVol(+vol.value + (e.deltaY < 0 ? 5 : -5)); }, { passive: false });
+    q('mVol').addEventListener(
+      'wheel',
+      e => {
+        e.preventDefault();
+        setVol(+vol.value + (e.deltaY < 0 ? 5 : -5));
+      },
+      { passive: false },
+    );
     let drag = false;
-    pr.onpointerdown = () => { drag = true; };
-    pr.onchange = () => { drag = false; seek(+pr.value); };
+    pr.onpointerdown = () => {
+      drag = true;
+    };
+    pr.onchange = () => {
+      drag = false;
+      seek(+pr.value);
+    };
     // The bottom bar: up while the pointer moves in the window or rests on the bar, while dragging, and while paused.
-    let barT = 0, overBar = false;
-    const wake = () => { document.body.classList.add('bar'); clearTimeout(barT); barT = setTimeout(() => { if (!overBar && !drag && P.playing) document.body.classList.remove('bar'); }, 2500); };
+    let barT = 0,
+      overBar = false;
+    const wake = () => {
+      document.body.classList.add('bar');
+      clearTimeout(barT);
+      barT = setTimeout(() => {
+        if (!overBar && !drag && P.playing) document.body.classList.remove('bar');
+      }, 2500);
+    };
     for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) addEventListener(ev, wake, { passive: true });
-    q('mb').onpointerenter = () => { overBar = true; wake(); };
-    q('mb').onpointerleave = () => { overBar = false; wake(); };
-    document.documentElement.addEventListener('pointerleave', () => { overBar = false; clearTimeout(barT); barT = setTimeout(() => P.playing && !drag && document.body.classList.remove('bar'), 600); });
+    q('mb').onpointerenter = () => {
+      overBar = true;
+      wake();
+    };
+    q('mb').onpointerleave = () => {
+      overBar = false;
+      wake();
+    };
+    document.documentElement.addEventListener('pointerleave', () => {
+      overBar = false;
+      clearTimeout(barT);
+      barT = setTimeout(() => P.playing && !drag && document.body.classList.remove('bar'), 600);
+    });
     const B = document.body.classList;
     const fit = () => {
       const short = innerHeight < 160;
       // Big cover: asked for, or Auto in a window that is clearly landscape with room for a real cover.
-      const wide = S.miniLayout === 'wide' ? innerHeight >= 150 : S.miniLayout !== 'bar' && innerWidth >= 460 && innerWidth >= innerHeight * 1.5 && innerHeight >= 200;
+      const wide =
+        S.miniLayout === 'wide'
+          ? innerHeight >= 150
+          : S.miniLayout !== 'bar' && innerWidth >= 460 && innerWidth >= innerHeight * 1.5 && innerHeight >= 200;
       B.toggle('wide', wide);
       B.toggle('noprog', !S.miniProgress);
       B.toggle('short', short && !wide);
@@ -124,9 +206,15 @@ body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid
       if (wide) {
         const g = Math.round(Math.min(24, innerHeight * 0.07));
         document.body.style.setProperty('--g', `${g}px`);
-        document.body.style.setProperty('--aw', `${Math.round(Math.min(innerHeight - g * 2 - (S.miniProgress ? 34 : 0), innerWidth * 0.4))}px`);
+        document.body.style.setProperty(
+          '--aw',
+          `${Math.round(Math.min(innerHeight - g * 2 - (S.miniProgress ? 34 : 0), innerWidth * 0.4))}px`,
+        );
       }
-      document.body.style.setProperty('--mh', `${!wide && (short || B.contains('nohead')) ? 12 : q('mh').offsetHeight + (wide ? 6 : 0)}px`);
+      document.body.style.setProperty(
+        '--mh',
+        `${!wide && (short || B.contains('nohead')) ? 12 : q('mh').offsetHeight + (wide ? 6 : 0)}px`,
+      );
     };
     // Song changes, Better Lyrics' floating window style (Settings -> miniplayer title / cover change).
     function swapText(el, text) {
@@ -134,37 +222,80 @@ body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid
       window.marquee?.(el); // scrolls when it doesn't fit (Settings -> Scroll long titles)
       if (!text || S.miniTitle === 'none') return;
       const box = el.firstElementChild || el;
-      if (S.miniTitle === 'fade') return box.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
-      box.replaceChildren(...text.split(/(\s+)/).filter(Boolean).map((w, i) => {
-        if (/^\s+$/.test(w)) return w;
-        const s = document.createElement('span');
-        s.className = 'w';
-        s.textContent = w;
-        s.animate([{ opacity: 0, transform: 'translateY(.55em) scale(.96)' }, { opacity: 1, transform: 'none' }],
-          { duration: 560, delay: Math.min(i, 16) * 22, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
-        return s;
-      }));
+      if (S.miniTitle === 'fade')
+        return box.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+      box.replaceChildren(
+        ...text
+          .split(/(\s+)/)
+          .filter(Boolean)
+          .map((w, i) => {
+            if (/^\s+$/.test(w)) return w;
+            const s = document.createElement('span');
+            s.className = 'w';
+            s.textContent = w;
+            s.animate(
+              [
+                { opacity: 0, transform: 'translateY(.55em) scale(.96)' },
+                { opacity: 1, transform: 'none' },
+              ],
+              { duration: 560, delay: Math.min(i, 16) * 22, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' },
+            );
+            return s;
+          }),
+      );
     }
     let artJob = 0;
     function swapArt(url) {
-      const a = q('mArt'), job = ++artJob, had = a.getAttribute('src');
+      const a = q('mArt'),
+        job = ++artJob,
+        had = a.getAttribute('src');
       if (!url) return a.removeAttribute('src');
-      if (!had || S.miniArt === 'none' || !a.offsetWidth) { a.src = url; return; }
+      if (!had || S.miniArt === 'none' || !a.offsetWidth) {
+        a.src = url;
+        return;
+      }
       const im = new Image();
       im.src = url;
-      im.decode().catch(() => {}).then(() => {
-        if (job !== artJob) return;
-        const r = a.getBoundingClientRect(), ghost = a.cloneNode();
-        ghost.removeAttribute('id');
-        ghost.className = 'mGhost';
-        Object.assign(ghost.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: getComputedStyle(a).borderRadius });
-        document.body.append(ghost);
-        a.src = url; // the new cover is under the old one already: no empty frame
-        const shuffle = S.miniArt === 'shuffle';
-        ghost.animate(shuffle ? [{ transform: 'none', opacity: 1 }, { transform: 'translate(-38%, 6%) rotate(-11deg) scale(.82)', opacity: 0 }] : [{ opacity: 1 }, { opacity: 0 }],
-          { duration: shuffle ? 460 : 380, easing: shuffle ? 'cubic-bezier(.5,0,.75,0)' : 'ease-in-out', fill: 'forwards' }).onfinish = () => ghost.remove();
-        if (shuffle) a.animate([{ transform: 'translate(14%, 3%) rotate(6deg) scale(.88)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], { duration: 620, easing: 'cubic-bezier(.2,.9,.25,1.15)' });
-      });
+      im.decode()
+        .catch(() => {})
+        .then(() => {
+          if (job !== artJob) return;
+          const r = a.getBoundingClientRect(),
+            ghost = a.cloneNode();
+          ghost.removeAttribute('id');
+          ghost.className = 'mGhost';
+          Object.assign(ghost.style, {
+            left: `${r.left}px`,
+            top: `${r.top}px`,
+            width: `${r.width}px`,
+            height: `${r.height}px`,
+            borderRadius: getComputedStyle(a).borderRadius,
+          });
+          document.body.append(ghost);
+          a.src = url; // the new cover is under the old one already: no empty frame
+          const shuffle = S.miniArt === 'shuffle';
+          ghost.animate(
+            shuffle
+              ? [
+                  { transform: 'none', opacity: 1 },
+                  { transform: 'translate(-38%, 6%) rotate(-11deg) scale(.82)', opacity: 0 },
+                ]
+              : [{ opacity: 1 }, { opacity: 0 }],
+            {
+              duration: shuffle ? 460 : 380,
+              easing: shuffle ? 'cubic-bezier(.5,0,.75,0)' : 'ease-in-out',
+              fill: 'forwards',
+            },
+          ).onfinish = () => ghost.remove();
+          if (shuffle)
+            a.animate(
+              [
+                { transform: 'translate(14%, 3%) rotate(6deg) scale(.88)', opacity: 0.4 },
+                { transform: 'none', opacity: 1 },
+              ],
+              { duration: 620, easing: 'cubic-bezier(.2,.9,.25,1.15)' },
+            );
+        });
     }
     addEventListener('resize', fit);
     fit();
@@ -172,28 +303,40 @@ body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid
     (function frame() {
       // Big cover: "Artist • Album · Year" under the title, like Better Lyrics' window.
       const al = B.contains('wide') ? $('album').textContent : '';
-      const t = $('title').textContent, a = [$('artist').textContent, al].filter(Boolean).join(' • '), real = pos();
-      if (t !== last.t) { swapText(q('mT'), last.t = t); requestAnimationFrame(fit); }
-      if (a !== last.a) swapText(q('mA'), last.a = a);
-      if (P.art !== last.art) swapArt(last.art = P.art);
+      const t = $('title').textContent,
+        a = [$('artist').textContent, al].filter(Boolean).join(' • '),
+        real = pos();
+      if (t !== last.t) {
+        swapText(q('mT'), (last.t = t));
+        requestAnimationFrame(fit);
+      }
+      if (a !== last.a) swapText(q('mA'), (last.a = a));
+      if (P.art !== last.art) swapArt((last.art = P.art));
       // The animated cover (features.js motionTick, #mv) moves onto the big cover and back (Better Lyrics mirrors its
       // page's cover video the same way): the same <video>, so nothing is downloaded or decoded twice.
-      const mv = $('mv'), home = B.contains('wide') ? q('mMv') : $('art');
+      const mv = $('mv'),
+        home = B.contains('wide') ? q('mMv') : $('art');
       if (mv && mv.parentElement !== home) home.prepend(mv);
       if (P.playing !== last.pl) {
         last.pl = P.playing;
         ui.querySelectorAll('[data-k="pp"] path').forEach(p => p.setAttribute('d', P.playing ? PAUSE : PLAY));
         B.toggle('paused', !P.playing);
-        if (!P.playing) B.add('bar'); else wake();
+        if (!P.playing) B.add('bar');
+        else wake();
       }
       for (const k of ['heart', 'shuf', 'rep']) {
-        const b = ui.querySelector(`[data-k="${k}"]`), c = $(k).classList;
-        b.classList.toggle('on', c.contains('on')); b.classList.toggle('one', c.contains('one'));
+        const b = ui.querySelector(`[data-k="${k}"]`),
+          c = $(k).classList;
+        b.classList.toggle('on', c.contains('on'));
+        b.classList.toggle('one', c.contains('one'));
       }
       q('mVol').hidden = !$('ctl').classList.contains('has-vol'); // Spotify reports no volume for some devices
       q('mVol').classList.toggle('muted', +vol.value === 0);
       q('mHead').classList.toggle('on', !document.body.classList.contains('nohead'));
-      if (P.dur !== last.dur) { pr.max = last.dur = P.dur || 1; q('mDur').textContent = clock(P.dur); }
+      if (P.dur !== last.dur) {
+        pr.max = last.dur = P.dur || 1;
+        q('mDur').textContent = clock(P.dur);
+      }
       if (!drag) pr.value = real;
       q('mCur').textContent = clock(drag ? +pr.value : real);
       requestAnimationFrame(frame);
@@ -204,42 +347,67 @@ body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid
   const dpip = 'documentPictureInPicture' in window;
   const vpip = !dpip && !!document.pictureInPictureEnabled && 'captureStream' in HTMLCanvasElement.prototype;
   const state = () => {
-    const p = pos() + S.offset, L = Lyrics.lineAt(p);
+    const p = pos() + S.offset,
+      L = Lyrics.lineAt(p);
     return { p, L, title: $('title').textContent, artist: $('artist').textContent, art: P.art, playing: P.playing };
   };
-  const sweep = s => s.L?.text ? Math.max(0, Math.min(1, (s.p - s.L.t) / Math.max(1, s.L.e - s.L.t))) : 0;
+  const sweep = s => (s.L?.text ? Math.max(0, Math.min(1, (s.p - s.L.t) / Math.max(1, s.L.e - s.L.t))) : 0);
   const press = k => $(k)?.click();
 
   // ---- Document Picture-in-Picture: the app itself in an iframe, on a channel of its own
-  let win = null, opening = false;
+  let win = null,
+    opening = false;
   async function openDoc() {
     if (win) return win.focus();
     if (opening) return; // a second press while the first window is still opening
     opening = true;
-    try { win = await documentPictureInPicture.requestWindow({ width: 480, height: 270 }); } finally { opening = false; }
-    const w = win, id = crypto.randomUUID().slice(0, 8), ch = new BroadcastChannel(`lyricdock-mini-${id}`);
+    try {
+      win = await documentPictureInPicture.requestWindow({ width: 480, height: 270 });
+    } finally {
+      opening = false;
+    }
+    const w = win,
+      id = crypto.randomUUID().slice(0, 8),
+      ch = new BroadcastChannel(`lyricdock-mini-${id}`);
     ch.onmessage = e => {
       const d = e.data || {};
-      if (d.hello) { // (re)loaded: catch it up with the song, what's next and where playback is
-        for (const src of ['bridge', 'web']) for (const m of [SRC[src].track, SRC[src].preload, SRC[src].pos]) if (m) ch.postMessage({ src, m });
-      } else if (d.beat) Web.poke(); // the window is visible, this tab usually isn't: keep Spotify's polling on time
+      if (d.hello) {
+        // (re)loaded: catch it up with the song, what's next and where playback is
+        for (const src of ['bridge', 'web'])
+          for (const m of [SRC[src].track, SRC[src].preload, SRC[src].pos]) if (m) ch.postMessage({ src, m });
+      } else if (d.beat)
+        Web.poke(); // the window is visible, this tab usually isn't: keep Spotify's polling on time
       else if (d.ctl) control(...d.ctl);
       else if (d.send && !['alive', 'settings', 'schema', 'pair'].includes(d.send.type)) send(d.send); // its own heartbeat and look stay home
     };
     const skip = new Set(['hello', 'set', 'load', 'auth', 'update', 'wake']); // this screen's settings, sign-in and updates
-    window.miniFeed = (src, m) => { if (!skip.has(m?.type)) try { ch.postMessage({ src, m }); } catch (e) {} };
+    window.miniFeed = (src, m) => {
+      if (!skip.has(m?.type))
+        try {
+          ch.postMessage({ src, m });
+        } catch (e) {}
+    };
     const d = w.document;
     d.title = 'LyricDock';
-    d.head.innerHTML = '<meta name="color-scheme" content="dark"><style>html,body{margin:0;height:100%;overflow:hidden;background:#000}iframe{display:block;border:0;width:100%;height:100%}</style>';
+    d.head.innerHTML =
+      '<meta name="color-scheme" content="dark"><style>html,body{margin:0;height:100%;overflow:hidden;background:#000}iframe{display:block;border:0;width:100%;height:100%}</style>';
     const f = d.createElement('iframe');
     f.src = `${location.origin}/?mini=${id}`;
     f.allow = 'autoplay';
     d.body.append(f);
-    w.addEventListener('pagehide', () => { if (win !== w) return; win = null; window.miniFeed = null; ch.close(); });
+    w.addEventListener('pagehide', () => {
+      if (win !== w) return;
+      win = null;
+      window.miniFeed = null;
+      ch.close();
+    });
   }
   // Chrome opens it by itself when the tab is left, but only for a page it counts as playing media (System media
   // controls on, shim.js) and once the user allows "Automatic picture-in-picture" for the site.
-  if (dpip) try { navigator.mediaSession.setActionHandler('enterpictureinpicture', () => openDoc().catch(() => {})); } catch (e) {}
+  if (dpip)
+    try {
+      navigator.mediaSession.setActionHandler('enterpictureinpicture', () => openDoc().catch(() => {}));
+    } catch (e) {}
 
   // ---- Safari: a canvas, streamed into a muted video, shown picture-in-picture. Prepared up front, because Safari
   // only allows picture-in-picture straight from a tap, with a video that already has a frame.
@@ -248,47 +416,97 @@ body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid
     const out = [];
     for (const w of text.split(' ')) {
       const l = out.length ? `${out[out.length - 1]} ${w}` : w;
-      if (out.length && ctx.measureText(l).width <= max) out[out.length - 1] = l; else out.push(w);
+      if (out.length && ctx.measureText(l).width <= max) out[out.length - 1] = l;
+      else out.push(w);
     }
     return out.slice(0, lines);
   }
   function paint() {
-    const s = state(), W = cv.width, H = cv.height;
-    if (s.art !== imgUrl) { imgUrl = s.art; img = null; if (s.art) { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => { img = i; }; i.src = s.art; } }
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    const s = state(),
+      W = cv.width,
+      H = cv.height;
+    if (s.art !== imgUrl) {
+      imgUrl = s.art;
+      img = null;
+      if (s.art) {
+        const i = new Image();
+        i.crossOrigin = 'anonymous';
+        i.onload = () => {
+          img = i;
+        };
+        i.src = s.art;
+      }
+    }
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
     if (img) {
       // Blur without ctx.filter (Safari's canvas ignores it): shrink the cover to a few pixels, stretch it back, darken.
       small ||= Object.assign(document.createElement('canvas'), { width: 16, height: 9 });
       small.getContext('2d').drawImage(img, 0, 0, 16, 9);
-      ctx.imageSmoothingEnabled = true; ctx.drawImage(small, -60, -60, W + 120, H + 120);
-      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(small, -60, -60, W + 120, H + 120);
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      ctx.fillRect(0, 0, W, H);
       ctx.drawImage(img, 28, 28, 88, 88);
     }
-    ctx.fillStyle = '#fff'; ctx.font = '600 30px system-ui, -apple-system, sans-serif'; ctx.fillText(s.title.slice(0, 40), 136, 64);
-    ctx.globalAlpha = .65; ctx.font = '26px system-ui, -apple-system, sans-serif'; ctx.fillText(s.artist.slice(0, 44), 136, 102); ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fff';
+    ctx.font = '600 30px system-ui, -apple-system, sans-serif';
+    ctx.fillText(s.title.slice(0, 40), 136, 64);
+    ctx.globalAlpha = 0.65;
+    ctx.font = '26px system-ui, -apple-system, sans-serif';
+    ctx.fillText(s.artist.slice(0, 44), 136, 102);
+    ctx.globalAlpha = 1;
     ctx.font = '700 46px system-ui, -apple-system, sans-serif';
-    const lines = wrap(s.L?.text || '♪', W - 56, 3), k = sweep(s), total = lines.join(' ').length || 1;
+    const lines = wrap(s.L?.text || '♪', W - 56, 3),
+      k = sweep(s),
+      total = lines.join(' ').length || 1;
     let done = k * total;
     lines.forEach((l, n) => {
-      const y = 196 + n * 54, x = 28, w = ctx.measureText(l).width, f = Math.max(0, Math.min(1, done / (l.length || 1)));
+      const y = 196 + n * 54,
+        x = 28,
+        w = ctx.measureText(l).width,
+        f = Math.max(0, Math.min(1, done / (l.length || 1)));
       done -= l.length + 1;
-      ctx.fillStyle = 'rgba(255,255,255,.38)'; ctx.fillText(l, x, y);
-      ctx.save(); ctx.beginPath(); ctx.rect(x, y - 50, w * f, 64); ctx.clip(); ctx.fillStyle = '#fff'; ctx.fillText(l, x, y); ctx.restore();
+      ctx.fillStyle = 'rgba(255,255,255,.38)';
+      ctx.fillText(l, x, y);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y - 50, w * f, 64);
+      ctx.clip();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(l, x, y);
+      ctx.restore();
     });
   }
   function prepVideo() {
     cv = Object.assign(document.createElement('canvas'), { width: 640, height: 360 });
     ctx = cv.getContext('2d');
     paint();
-    vid = Object.assign(document.createElement('video'), { muted: true, playsInline: true, srcObject: cv.captureStream(30) });
+    vid = Object.assign(document.createElement('video'), {
+      muted: true,
+      playsInline: true,
+      srcObject: cv.captureStream(30),
+    });
     vid.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;bottom:0;right:0';
     document.body.append(vid);
     vid.play().catch(() => {});
-    vid.addEventListener('enterpictureinpicture', () => { clearInterval(timer); timer = setInterval(paint, 100); });
+    vid.addEventListener('enterpictureinpicture', () => {
+      clearInterval(timer);
+      timer = setInterval(paint, 100);
+    });
     vid.addEventListener('leavepictureinpicture', () => clearInterval(timer));
     // The system's buttons on the picture-in-picture window.
     const ms = navigator.mediaSession;
-    if (ms) for (const [a, k] of [['play', 'pp'], ['pause', 'pp'], ['nexttrack', 'next'], ['previoustrack', 'prev']]) try { ms.setActionHandler(a, () => press(k)); } catch (e) {}
+    if (ms)
+      for (const [a, k] of [
+        ['play', 'pp'],
+        ['pause', 'pp'],
+        ['nexttrack', 'next'],
+        ['previoustrack', 'prev'],
+      ])
+        try {
+          ms.setActionHandler(a, () => press(k));
+        } catch (e) {}
   }
   function openVideo() {
     if (document.pictureInPictureElement) return document.exitPictureInPicture();
@@ -301,7 +519,16 @@ body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid
   if (vpip) addEventListener('load', prepVideo);
   window.lyricdockMini = Object.assign(open, { supported: dpip || vpip });
   // M opens it (a key press counts as the click the browser wants), unless typing somewhere.
-  if (dpip || vpip) addEventListener('keydown', e => {
-    if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest?.('input, textarea, select, [contenteditable]') && !window.lyricdockPanelOpen?.()) open();
-  });
+  if (dpip || vpip)
+    addEventListener('keydown', e => {
+      if (
+        (e.key === 'm' || e.key === 'M') &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.target.closest?.('input, textarea, select, [contenteditable]') &&
+        !window.lyricdockPanelOpen?.()
+      )
+        open();
+    });
 })();

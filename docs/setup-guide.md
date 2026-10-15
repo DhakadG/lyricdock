@@ -3,12 +3,12 @@
 This guide is for you (the owner), step by step. It gets the four values LyricDock still needs. Claude does
 everything after that: loading the values into Cloudflare, switching sign-in on, testing, merging and pushing.
 
-| Part | What you get | Time |
-|---|---|---|
-| 1 | LyricDock's "Sign in with Google" client (2 values, one downloaded file) | 10-15 min |
-| 2 | The TURN relay key, for connecting from another network (2 values) | 3 min |
-| 3 | Handing over to Claude | 1 min |
-| 4 | Optional: letting Claude use a browser for you | 2-5 min |
+| Part | What you get                                                             | Time      |
+| ---- | ------------------------------------------------------------------------ | --------- |
+| 1    | LyricDock's "Sign in with Google" client (2 values, one downloaded file) | 10-15 min |
+| 2    | The TURN relay key, for connecting from another network (2 values)       | 3 min     |
+| 3    | Handing over to Claude                                                   | 1 min     |
+| 4    | Optional: letting Claude use a browser for you                           | 2-5 min   |
 
 Two rules for the whole guide:
 
@@ -70,16 +70,16 @@ You land on the Overview page with the left menu.
 Left menu → **Branding**, or open
 https://console.cloud.google.com/auth/branding?project=youtubedata-lyricsdockapp&authuser=ghanisht.kumawat@gmail.com
 
-| Field | Value |
-|---|---|
-| App name | `LyricDock` (already filled) |
-| User support email | `ghanisht.kumawat@gmail.com` |
-| App logo | upload `docs\brand\lyricdock-logo-120.png` (120×120 PNG, 9 KB, made from the app icon) |
-| Application home page | `https://lyricdock.losthusky.qzz.io/` (describes the app and links to the two pages below) |
-| Application privacy policy link | `https://lyricdock.losthusky.qzz.io/privacy` |
-| Application terms of service link | `https://lyricdock.losthusky.qzz.io/terms` |
-| Authorized domains | click **+ Add domain** → `losthusky.qzz.io` |
-| Developer contact information | `ghanisht.kumawat@gmail.com` |
+| Field                             | Value                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| App name                          | `LyricDock` (already filled)                                                               |
+| User support email                | `ghanisht.kumawat@gmail.com`                                                               |
+| App logo                          | upload `docs\brand\lyricdock-logo-120.png` (120×120 PNG, 9 KB, made from the app icon)     |
+| Application home page             | `https://lyricdock.losthusky.qzz.io/` (describes the app and links to the two pages below) |
+| Application privacy policy link   | `https://lyricdock.losthusky.qzz.io/privacy`                                               |
+| Application terms of service link | `https://lyricdock.losthusky.qzz.io/terms`                                                 |
+| Authorized domains                | click **+ Add domain** → `losthusky.qzz.io`                                                |
+| Developer contact information     | `ghanisht.kumawat@gmail.com`                                                               |
 
 Click **Save** at the bottom.
 
@@ -152,13 +152,13 @@ Claude reads the Client ID and secret out of that file. You don't need to copy t
 
 ### If something goes wrong in Part 1
 
-| You see | Fix |
-|---|---|
-| "You don't have permission" or "project not found" | Wrong Google account: switch to ghanisht.kumawat@gmail.com (1.1) |
-| The project isn't in the picker | Switch the picker's organisation dropdown to ghanisht-kumawat-org, or use the **All** tab |
-| "Authorized domain ... not verified" when saving Branding | Wrong account. Search Console ownership belongs to ghanisht.kumawat@gmail.com |
-| No **Publish app** button | It's already "In production"; nothing to do |
-| No **Create client** button, only "Create OAuth client" or "+ Create credentials" | Same thing in an older layout: choose **OAuth client ID** → Web application |
+| You see                                                                           | Fix                                                                                       |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| "You don't have permission" or "project not found"                                | Wrong Google account: switch to ghanisht.kumawat@gmail.com (1.1)                          |
+| The project isn't in the picker                                                   | Switch the picker's organisation dropdown to ghanisht-kumawat-org, or use the **All** tab |
+| "Authorized domain ... not verified" when saving Branding                         | Wrong account. Search Console ownership belongs to ghanisht.kumawat@gmail.com             |
+| No **Publish app** button                                                         | It's already "In production"; nothing to do                                               |
+| No **Create client** button, only "Create OAuth client" or "+ Create credentials" | Same thing in an older layout: choose **OAuth client ID** → Web application               |
 
 ---
 

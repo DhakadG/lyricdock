@@ -13,8 +13,10 @@ import org.java_websocket.server.WebSocketServer;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 
-// Development link only (debuggable builds, MainActivity): the Spicetify bridge reaches it through `adb forward`,
-// which arrives on the phone's loopback - so it listens on 127.0.0.1 only. Never on the Wi-Fi: it carries the
+// Development link only (debuggable builds, MainActivity): the Spicetify bridge reaches it through
+// `adb forward`,
+// which arrives on the phone's loopback - so it listens on 127.0.0.1 only. Never on the Wi-Fi: it
+// carries the
 // pairing code and settings, and has no other authentication.
 // Top-level on purpose: the Gradle-free build (javac + d8) crashes on inner/anonymous classes.
 // Note: WebSocketServer's own run() is the server loop - never override it.
@@ -30,18 +32,35 @@ class DockServer extends WebSocketServer {
         setConnectionLostTimeout(2);
     }
 
-    // Spotify's page (adb forward) or a native client without an Origin; a web page opened on the phone itself is refused.
+    // Spotify's page (adb forward) or a native client without an Origin; a web page opened on the
+    // phone itself is refused.
     @Override
-    public ServerHandshakeBuilder onWebsocketHandshakeReceivedAsServer(WebSocket c, Draft d, ClientHandshake h) throws InvalidDataException {
+    public ServerHandshakeBuilder onWebsocketHandshakeReceivedAsServer(
+            WebSocket c, Draft d, ClientHandshake h) throws InvalidDataException {
         String o = h.getFieldValue("Origin");
         if (o != null && !o.isEmpty() && !o.matches("https://[a-z0-9.-]+\\.spotify\\.com"))
             throw new InvalidDataException(CloseFrame.POLICY_VALIDATION, "origin not allowed");
         return super.onWebsocketHandshakeReceivedAsServer(c, d, h);
     }
 
-    @Override public void onMessage(WebSocket c, String msg) { app.deliver(msg); }
-    @Override public void onOpen(WebSocket c, ClientHandshake h) {}
-    @Override public void onClose(WebSocket c, int code, String reason, boolean remote) {}
-    @Override public void onError(WebSocket c, Exception e) { Log.w("LyricDock", e); }
-    @Override public void onStart() { Log.i("LyricDock", "listening on 127.0.0.1:" + PORT); }
+    @Override
+    public void onMessage(WebSocket c, String msg) {
+        app.deliver(msg);
+    }
+
+    @Override
+    public void onOpen(WebSocket c, ClientHandshake h) {}
+
+    @Override
+    public void onClose(WebSocket c, int code, String reason, boolean remote) {}
+
+    @Override
+    public void onError(WebSocket c, Exception e) {
+        Log.w("LyricDock", e);
+    }
+
+    @Override
+    public void onStart() {
+        Log.i("LyricDock", "listening on 127.0.0.1:" + PORT);
+    }
 }

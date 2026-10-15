@@ -61,8 +61,7 @@ while ($true) {
                 continue
             }
         }
-    }
-    elseif ($wifi) {
+    } elseif ($wifi) {
         if (-not $wifiUp -and (Now) -gt $nextConnect) {
             $nextConnect = (Now) + 2000
             Q connect $wifi | Out-Null
@@ -80,7 +79,6 @@ while ($true) {
             if (-not ($fwd -match "^$([regex]::Escape($wifi))\s+tcp:$port\s")) { Q -s $wifi forward "tcp:$port" "tcp:$port" | Out-Null }
             if ($mode -ne 'wifi') { $mode = 'wifi'; $wifiFails = 0; $warned = $false; Log "Wi-Fi link up ($wifi)" }
         }
-    }
-    elseif ($mode -ne 'waiting') { $mode = 'waiting'; Log 'waiting for the phone on USB (first time: plug it in once)' }
+    } elseif ($mode -ne 'waiting') { $mode = 'waiting'; Log 'waiting for the phone on USB (first time: plug it in once)' }
     Start-Sleep -Milliseconds 700
 }

@@ -10,18 +10,31 @@ export const AUTH = 'https://auth.lyricdock.losthusky.qzz.io';
 export const COOKIE = '__Secure-ld_sso';
 // Rotating the key: add the new one here, deploy every app, then switch auth's SSO_PRIVATE_JWK.
 const KEYS = {
-  mupbl6zw: { kty: 'EC', crv: 'P-256', x: 'N3QT-RrKM0k9I-D28CR-gSTNBtfh8OsYrdQlsTbQ5J8', y: '_L91gMUJR2anKrfACItzn6XIDYURac5cROMlGfWN8m4' },
+  mupbl6zw: {
+    kty: 'EC',
+    crv: 'P-256',
+    x: 'N3QT-RrKM0k9I-D28CR-gSTNBtfh8OsYrdQlsTbQ5J8',
+    y: '_L91gMUJR2anKrfACItzn6XIDYURac5cROMlGfWN8m4',
+  },
 };
 
 const imported = new Map();
 const key = kid => {
   if (!Object.hasOwn(KEYS, kid)) return null;
-  if (!imported.has(kid)) imported.set(kid, crypto.subtle.importKey('jwk', KEYS[kid], { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']));
+  if (!imported.has(kid))
+    imported.set(
+      kid,
+      crypto.subtle.importKey('jwk', KEYS[kid], { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']),
+    );
   return imported.get(kid);
 };
 
 export const b64u = {
-  enc: b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+  enc: b =>
+    btoa(String.fromCharCode(...new Uint8Array(b)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, ''),
   dec: s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
 };
 
@@ -43,11 +56,17 @@ export async function verify(token, aud = 'session') {
     if (head.alg !== 'ES256' || head.typ !== 'JWT') return null;
     const k = await key(head.kid);
     if (!k) return null;
-    const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, await k, b64u.dec(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
+    const ok = await crypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      await k,
+      b64u.dec(parts[2]),
+      new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
+    );
     if (!ok) return null;
     const c = JSON.parse(new TextDecoder().decode(b64u.dec(parts[1])));
     const now = Date.now() / 1000;
-    if (c.iss !== AUTH || c.aud !== aud || !(c.exp > now) || !(c.iat <= now + 60) || typeof c.email !== 'string') return null;
+    if (c.iss !== AUTH || c.aud !== aud || !(c.exp > now) || !(c.iat <= now + 60) || typeof c.email !== 'string')
+      return null;
     return c;
   } catch {
     return null;
@@ -59,24 +78,35 @@ export const session = req => verify(cookie(req, COOKIE));
 // The apps' API calls: "Authorization: Bearer <app token>" (auth's /token; the phone has no cookie), else the cookie.
 export async function appUser(req) {
   const m = /^Bearer ([\w-]+\.[\w-]+\.[\w-]+)$/.exec(req.headers.get('authorization') || '');
-  return (m && await verify(m[1], 'app')) || session(req);
+  return (m && (await verify(m[1], 'app'))) || session(req);
 }
 
 // Send the browser to sign in and bring it back to the page it asked for.
 export function signIn(req) {
   const u = new URL(req.url);
   const accept = req.headers.get('accept') || '';
-  if (req.method !== 'GET' || !accept.includes('text/html')) return new Response('Sign in required', { status: 401, headers: { 'cache-control': 'no-store' } });
-  return new Response(null, { status: 302, headers: { location: `${AUTH}/login?rd=${encodeURIComponent(u.href)}`, 'cache-control': 'no-store' } });
+  if (req.method !== 'GET' || !accept.includes('text/html'))
+    return new Response('Sign in required', { status: 401, headers: { 'cache-control': 'no-store' } });
+  return new Response(null, {
+    status: 302,
+    headers: { location: `${AUTH}/login?rd=${encodeURIComponent(u.href)}`, 'cache-control': 'no-store' },
+  });
 }
 
 // Constant-time string compare, for secrets and tokens (every LyricDock Worker, and ntfy's owner token).
 export function same(a, b) {
-  a = String(a); b = String(b);
+  a = String(a);
+  b = String(b);
   let d = a.length ^ b.length;
   for (let i = 0; i < Math.max(a.length, b.length); i++) d |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
   return d === 0;
 }
 
 // Comma/space-separated allowlist ("" = nobody). For admin-only pages: isAllowed(me, env.ADMIN_EMAILS).
-export const isAllowed = (me, list) => !!me && String(list || '').toLowerCase().split(/[\s,]+/).filter(Boolean).includes(me.email.toLowerCase());
+export const isAllowed = (me, list) =>
+  !!me &&
+  String(list || '')
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .includes(me.email.toLowerCase());

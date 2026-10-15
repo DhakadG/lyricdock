@@ -10,5 +10,5 @@
   "routes": [{ "pattern": "auth.lyricdock.losthusky.qzz.io", "custom_domain": true }],
   // Who may sign in at all ("" = any Google account with a verified email). Admin pages add their own list.
   "vars": { "ALLOWED_EMAILS": "" },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
 }

@@ -2,49 +2,203 @@
 
 /* "Install as an app" chip: bottom centre, small, dismissable; above everything but the settings sheet. */
 #installChip {
-  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 3vmin); z-index: 9000;
-  display: flex; align-items: center; gap: 10px; max-width: min(92vw, 520px); padding: 8px 8px 8px 10px;
-  border-radius: 16px; background: rgba(28, 28, 32, .92); color: #fff; font: 500 14px/1.3 system-ui, sans-serif;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .5); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  transform: translate(-50%, 140%); transition: transform .45s cubic-bezier(.2, .9, .3, 1.1);
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 3vmin);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 520px);
+  padding: 8px 8px 8px 10px;
+  border-radius: 16px;
+  background: rgba(28, 28, 32, 0.92);
+  color: #fff;
+  font:
+    500 14px/1.3 system-ui,
+    sans-serif;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transform: translate(-50%, 140%);
+  transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.1);
 }
-#installChip.on { transform: translate(-50%, 0); }
-#installChip img { width: 34px; height: 34px; border-radius: 9px; flex: none; }
-#installChip span { flex: 1; }
-#installChip button { flex: none; border: 0; border-radius: 10px; font: inherit; cursor: pointer; }
-#installChip .go { padding: 8px 14px; background: rgb(var(--acc, 30, 215, 96)); color: #000; font-weight: 650; }
-#installChip .later { width: 32px; height: 32px; background: rgba(255, 255, 255, .08); color: #fff; }
+#installChip.on {
+  transform: translate(-50%, 0);
+}
+#installChip img {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  flex: none;
+}
+#installChip span {
+  flex: 1;
+}
+#installChip button {
+  flex: none;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  cursor: pointer;
+}
+#installChip .go {
+  padding: 8px 14px;
+  background: rgb(var(--acc, 30, 215, 96));
+  color: #000;
+  font-weight: 650;
+}
+#installChip .later {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
 
 /* Add to Home Screen / Dock / install: the steps for this browser, on a card that rises in over a dimmed screen. */
-#installGuide { position: fixed; inset: 0; z-index: 9500; display: grid; place-items: center; padding: 16px;
-  background: rgba(0, 0, 0, .45); opacity: 0; transition: opacity .3s ease; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-#installGuide.on { opacity: 1; }
-#installGuide .ig-card { width: min(420px, 100%); max-height: 100%; overflow: auto; padding: 26px 24px 20px; border-radius: 26px; text-align: center;
-  background: rgba(30, 30, 34, .94); color: #fff; font: 400 15px/1.4 system-ui, -apple-system, sans-serif;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1), 0 24px 60px rgba(0, 0, 0, .55);
-  transform: translateY(24px) scale(.96); transition: transform .45s cubic-bezier(.2, .9, .3, 1.05); }
-#installGuide.on .ig-card { transform: none; }
-#installGuide img { width: 64px; height: 64px; border-radius: 15px; box-shadow: 0 6px 18px rgba(0, 0, 0, .4); }
-#installGuide h2 { margin: 14px 0 16px; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
-#installGuide ol { margin: 0; padding: 0; list-style: none; counter-reset: ig; text-align: left; }
-#installGuide li { counter-increment: ig; position: relative; padding: 10px 0 10px 40px; color: rgba(255, 255, 255, .82); }
-#installGuide li + li { box-shadow: inset 0 1px rgba(255, 255, 255, .07); }
-#installGuide li::before { content: counter(ig); position: absolute; left: 0; top: 9px; width: 26px; height: 26px; border-radius: 50%;
-  display: grid; place-items: center; background: rgba(255, 255, 255, .1); color: #fff; font-size: 13px; font-weight: 700; }
-#installGuide li b { color: #fff; font-weight: 600; }
-#installGuide svg { width: 1.25em; height: 1.25em; vertical-align: -.25em; fill: none; stroke: rgb(var(--acc, 10, 132, 255)); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-#installGuide .ig-done { margin-top: 18px; width: 100%; padding: 13px; border: 0; border-radius: 14px; font: 600 16px system-ui, -apple-system, sans-serif;
-  background: #fff; color: #000; cursor: pointer; }
+#installGuide {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+#installGuide.on {
+  opacity: 1;
+}
+#installGuide .ig-card {
+  width: min(420px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: 26px 24px 20px;
+  border-radius: 26px;
+  text-align: center;
+  background: rgba(30, 30, 34, 0.94);
+  color: #fff;
+  font:
+    400 15px/1.4 system-ui,
+    -apple-system,
+    sans-serif;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 24px 60px rgba(0, 0, 0, 0.55);
+  transform: translateY(24px) scale(0.96);
+  transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.05);
+}
+#installGuide.on .ig-card {
+  transform: none;
+}
+#installGuide img {
+  width: 64px;
+  height: 64px;
+  border-radius: 15px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+#installGuide h2 {
+  margin: 14px 0 16px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+#installGuide ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: ig;
+  text-align: left;
+}
+#installGuide li {
+  counter-increment: ig;
+  position: relative;
+  padding: 10px 0 10px 40px;
+  color: rgba(255, 255, 255, 0.82);
+}
+#installGuide li + li {
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.07);
+}
+#installGuide li::before {
+  content: counter(ig);
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+#installGuide li b {
+  color: #fff;
+  font-weight: 600;
+}
+#installGuide svg {
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.25em;
+  fill: none;
+  stroke: rgb(var(--acc, 10, 132, 255));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#installGuide .ig-done {
+  margin-top: 18px;
+  width: 100%;
+  padding: 13px;
+  border: 0;
+  border-radius: 14px;
+  font:
+    600 16px system-ui,
+    -apple-system,
+    sans-serif;
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+}
 
 /* Mouse and trackpad: things that can be clicked say so, and react to hover (touch screens skip this). */
-button, a, summary, label, input[type=range], [data-list], [data-a], #tlhit, #bar, #heart { cursor: pointer; }
+button,
+a,
+summary,
+label,
+input[type='range'],
+[data-list],
+[data-a],
+#tlhit,
+#bar,
+#heart {
+  cursor: pointer;
+}
 @media (hover: hover) and (pointer: fine) {
-  #ctl button:hover, #gear:hover, #lists button:hover { filter: brightness(1.25); }
+  #ctl button:hover,
+  #gear:hover,
+  #lists button:hover {
+    filter: brightness(1.25);
+  }
   /* The cursor goes once it has been still a while on the plain screen, like a video player (install.js decides when).
      All of it, buttons included: a cursor that only shows over buttons reads as a glitch. */
-  html.cursor-idle, html.cursor-idle * { cursor: none !important; }
+  html.cursor-idle,
+  html.cursor-idle * {
+    cursor: none !important;
+  }
 }
 /* Keyboard: a visible ring on whatever has focus (style.css turns outlines off for the phone). */
-button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, summary:focus-visible {
-  outline: 2px solid rgb(var(--acc, 255, 255, 255)) !important; outline-offset: 2px;
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid rgb(var(--acc, 255, 255, 255)) !important;
+  outline-offset: 2px;
 }

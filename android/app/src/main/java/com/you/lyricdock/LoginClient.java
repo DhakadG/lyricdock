@@ -12,10 +12,13 @@ import android.widget.FrameLayout;
 
 import org.json.JSONObject;
 
-// Spotify login (Authorization Code + PKCE) shown in a second WebView over the dock. Spotify redirects to
-// http://127.0.0.1:8976/callback?code=...; that navigation is intercepted here (nothing listens on the port)
+// Spotify login (Authorization Code + PKCE) shown in a second WebView over the dock. Spotify
+// redirects to
+// http://127.0.0.1:8976/callback?code=...; that navigation is intercepted here (nothing listens on
+// the port)
 // and handed to the page as {"type":"auth","url":...}. Close button = cancelled ({"url":""}).
-// Also the Runnable that opens/closes the overlay on the UI thread. Top-level: the Gradle-free build can't
+// Also the Runnable that opens/closes the overlay on the UI thread. Top-level: the Gradle-free
+// build can't
 // dex inner/anonymous classes.
 class LoginClient extends WebViewClient implements Runnable, View.OnClickListener {
     static final String REDIRECT = "http://127.0.0.1:8976/callback";
@@ -25,10 +28,18 @@ class LoginClient extends WebViewClient implements Runnable, View.OnClickListene
     private FrameLayout overlay;
     private boolean done;
 
-    LoginClient(MainActivity app, String url) { this.app = app; this.url = url; }
+    LoginClient(MainActivity app, String url) {
+        this.app = app;
+        this.url = url;
+    }
 
-    @Override public void run() {
-        if (overlay != null) { ((ViewGroup) overlay.getParent()).removeView(overlay); overlay = null; return; }
+    @Override
+    public void run() {
+        if (overlay != null) {
+            ((ViewGroup) overlay.getParent()).removeView(overlay);
+            overlay = null;
+            return;
+        }
         if (done) return;
         overlay = new FrameLayout(app);
         overlay.setBackgroundColor(Color.BLACK);
@@ -45,19 +56,26 @@ class LoginClient extends WebViewClient implements Runnable, View.OnClickListene
         w.loadUrl(url);
     }
 
-    @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+    @Override
+    public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
         String u = r.getUrl().toString();
         if (!u.startsWith(REDIRECT)) return false;
         finish(u);
         return true;
     }
 
-    @Override public void onClick(View v) { finish(""); }
+    @Override
+    public void onClick(View v) {
+        finish("");
+    }
 
     private void finish(String result) {
         if (done) return;
         done = true;
-        try { app.deliver(new JSONObject().put("type", "auth").put("url", result).toString()); } catch (Exception ignored) {}
+        try {
+            app.deliver(new JSONObject().put("type", "auth").put("url", result).toString());
+        } catch (Exception ignored) {
+        }
         app.runOnUiThread(this); // removes the overlay
     }
 }

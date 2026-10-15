@@ -1,45 +1,70 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LyricDock</title>
-<style>
-:root { --bg: #0b0b0e; --text: #ececf1; --dim: #8d8d98; --acc: #1ed760; --card: #15151a; --line: #25252c; }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, sans-serif; }
-main { max-width: 760px; margin: auto; padding: 56px 16px; }
-h1 { font-size: 44px; margin: 0 0 8px; letter-spacing: -.02em; } h1 span { color: var(--acc); }
-h2 { margin-top: 44px; font-size: 20px; }
-p { color: var(--dim); } a { color: var(--acc); }
-code, pre { font-family: ui-monospace, monospace; font-size: 13px; }
-pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-x: auto; color: var(--text); }
-table { width: 100%; border-collapse: collapse; font-size: 14px; } td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; } td:first-child { white-space: nowrap; }
-</style>
-</head>
-<body>
-<main>
-  <h1>Lyric<span>Dock</span></h1>
-  <p>A phone on your desk, or any browser, that becomes a Spotify lyrics dock: word-synced lyrics, the album art and
-  playback controls for whatever you play.</p>
-  <p><a href="https://app.lyricdock.losthusky.qzz.io/">Open the web app</a> · <a href="https://github.com/DhakadG/lyricdock">Source on GitHub</a></p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LyricDock</title>
+    <style>
+      :root { --bg: #0b0b0e; --text: #ececf1; --dim: #8d8d98; --acc: #1ed760; --card: #15151a; --line: #25252c; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, sans-serif; }
+      main { max-width: 760px; margin: auto; padding: 56px 16px; }
+      h1 { font-size: 44px; margin: 0 0 8px; letter-spacing: -.02em; } h1 span { color: var(--acc); }
+      h2 { margin-top: 44px; font-size: 20px; }
+      p { color: var(--dim); } a { color: var(--acc); }
+      code, pre { font-family: ui-monospace, monospace; font-size: 13px; }
+      pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-x: auto; color: var(--text); }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; } td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; } td:first-child { white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Lyric<span>Dock</span></h1>
+      <p>
+        A phone on your desk, or any browser, that becomes a Spotify lyrics dock: word-synced lyrics, the album art and
+        playback controls for whatever you play.
+      </p>
+      <p>
+        <a href="https://app.lyricdock.losthusky.qzz.io/">Open the web app</a> ·
+        <a href="https://github.com/DhakadG/lyricdock">Source on GitHub</a>
+      </p>
 
-  <h2>Signing in</h2>
-  <p>The apps use Sign in with Google only to let you in. LyricDock receives your name, email address and profile
-  picture, keeps them only on your device (a sign-in cookie in your browser, a sign-in token in the app), and never
-  stores or shares them. Your Spotify sign-in stays
-  on your device. Details: <a href="/privacy">privacy policy</a> and <a href="/terms">terms of service</a>.</p>
+      <h2>Signing in</h2>
+      <p>
+        The apps use Sign in with Google only to let you in. LyricDock receives your name, email address and profile
+        picture, keeps them only on your device (a sign-in cookie in your browser, a sign-in token in the app), and
+        never stores or shares them. Your Spotify sign-in stays on your device. Details:
+        <a href="/privacy">privacy policy</a> and <a href="/terms">terms of service</a>.
+      </p>
 
-  <h2>Cover API</h2>
-  <p>Base URL <code>https://art.lyricdock.losthusky.qzz.io</code>. Album details and Apple Music&rsquo;s animated covers, looked up once and indexed. For the LyricDock apps: every call
-  needs a LyricDock sign-in (<code>Authorization: Bearer</code> app token).</p>
-  <table>
-    <tr><td><code>GET /v1/cover</code></td><td><code>artist</code>, <code>album</code>, <code>px</code> (size needed), <code>hevc=1</code>, <code>shape=square|tall</code>, <code>q=max</code> → still image + the best-fitting animated cover video</td></tr>
-    <tr><td><code>GET /v1/health</code></td><td>is it up</td></tr>
-  </table>
-  <pre>curl -H "Authorization: Bearer $TOKEN" "https://art.lyricdock.losthusky.qzz.io/v1/cover?artist=Gorillaz&amp;album=Plastic%20Beach&amp;px=1080&amp;d=$DEVICE"</pre>
-  <p style="margin-top:44px;font-size:13px">Personal, non-commercial project. Artwork and metadata belong to their owners and come from Apple's public catalogue.
-  · <a href="/privacy">Privacy policy</a> · <a href="/terms">Terms of service</a> · <a href="mailto:ghanisht.kumawat@gmail.com">Contact</a></p>
-</main>
-</body>
+      <h2>Cover API</h2>
+      <p>
+        Base URL <code>https://art.lyricdock.losthusky.qzz.io</code>. Album details and Apple Music&rsquo;s animated
+        covers, looked up once and indexed. For the LyricDock apps: every call needs a LyricDock sign-in (<code
+          >Authorization: Bearer</code
+        >
+        app token).
+      </p>
+      <table>
+        <tr>
+          <td><code>GET /v1/cover</code></td>
+          <td>
+            <code>artist</code>, <code>album</code>, <code>px</code> (size needed), <code>hevc=1</code>,
+            <code>shape=square|tall</code>, <code>q=max</code> → still image + the best-fitting animated cover video
+          </td>
+        </tr>
+        <tr>
+          <td><code>GET /v1/health</code></td>
+          <td>is it up</td>
+        </tr>
+      </table>
+      <pre>
+curl -H "Authorization: Bearer $TOKEN" "https://art.lyricdock.losthusky.qzz.io/v1/cover?artist=Gorillaz&amp;album=Plastic%20Beach&amp;px=1080&amp;d=$DEVICE"</pre>
+      <p style="margin-top:44px;font-size:13px">
+        Personal, non-commercial project. Artwork and metadata belong to their owners and come from Apple's public
+        catalogue. · <a href="/privacy">Privacy policy</a> · <a href="/terms">Terms of service</a> ·
+        <a href="mailto:ghanisht.kumawat@gmail.com">Contact</a>
+      </p>
+    </main>
+  </body>
 </html>

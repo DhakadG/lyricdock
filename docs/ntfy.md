@@ -11,24 +11,24 @@ display hit it ("limit reached: daily message quota reached"), so pairing codes 
 
 ## Files
 
-| File | What |
-|---|---|
-| `ntfy/wrangler.jsonc` | Worker `ntfy`, custom domain, the container (image `binwiederhier/ntfy:v2.28.0`, `lite` instance, one instance) |
-| `ntfy/src/index.js` | `Container` class (entrypoint `ntfy serve` + its settings as flags) + the Worker that forwards every request to the one server |
-| `ntfy/package.json` | `@cloudflare/containers` |
+| File                  | What                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `ntfy/wrangler.jsonc` | Worker `ntfy`, custom domain, the container (image `binwiederhier/ntfy:v2.28.0`, `lite` instance, one instance)                |
+| `ntfy/src/index.js`   | `Container` class (entrypoint `ntfy serve` + its settings as flags) + the Worker that forwards every request to the one server |
+| `ntfy/package.json`   | `@cloudflare/containers`                                                                                                       |
 
 Settings: flags to `ntfy serve` (the `entrypoint` in `src/index.js`). Not the Container's `envVars`: `NTFY_*` env
 vars set there never took effect (checked 2026-10-15: a freshly started server still had the default limits).
 
-| Flag | Value | Meaning |
-|---|---|---|
-| `--base-url` | `https://ntfy.losthusky.qzz.io` | |
-| `--behind-proxy` | | rate limits per real visitor (the Worker passes `X-Forwarded-For`) |
-| `--cache-duration` | `12h` | in memory: clients reconnecting with `?since=` get what they missed |
-| `--enable-signup` / `--enable-login` | `false` | open, anonymous topics (pick unguessable topic names) |
-| `--visitor-request-limit-burst` | `300` | requests a visitor IP may make at once (ntfy default 60) |
-| `--visitor-request-limit-replenish` | `200ms` | then one more per 200 ms = 5/s (default 5 s). Also sets the daily message cap: one day / 200 ms = 432,000 (default 17,280) |
-| `--visitor-subscription-limit` | `150` | open subscriptions per visitor IP (default 30) |
+| Flag                                 | Value                           | Meaning                                                                                                                    |
+| ------------------------------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `--base-url`                         | `https://ntfy.losthusky.qzz.io` |                                                                                                                            |
+| `--behind-proxy`                     |                                 | rate limits per real visitor (the Worker passes `X-Forwarded-For`)                                                         |
+| `--cache-duration`                   | `12h`                           | in memory: clients reconnecting with `?since=` get what they missed                                                        |
+| `--enable-signup` / `--enable-login` | `false`                         | open, anonymous topics (pick unguessable topic names)                                                                      |
+| `--visitor-request-limit-burst`      | `300`                           | requests a visitor IP may make at once (ntfy default 60)                                                                   |
+| `--visitor-request-limit-replenish`  | `200ms`                         | then one more per 200 ms = 5/s (default 5 s). Also sets the daily message cap: one day / 200 ms = 432,000 (default 17,280) |
+| `--visitor-subscription-limit`       | `150`                           | open subscriptions per visitor IP (default 30)                                                                             |
 
 ### Rate limits (HTTP 429)
 
@@ -72,12 +72,12 @@ In the ntfy phone app: Settings → Default server → `https://ntfy.losthusky.q
 
 ## Operate
 
-| Task | Command (in `ntfy/`) |
-|---|---|
-| Deploy / update the image tag | `npm i && npx wrangler deploy` |
-| Apply changed settings | deploy, then restart the server (a deploy doesn't): `curl -X POST -H "Authorization: Bearer $env:LYRICDOCK_PUBLISH_TOKEN" https://ntfy.losthusky.qzz.io/v1/restart`. Check: `/v1/stats` (owner token) `messages` starts again from 0 |
-| Logs | `npx wrangler tail` |
-| Health | `curl https://ntfy.losthusky.qzz.io/v1/health` → `{"healthy":true}` |
+| Task                          | Command (in `ntfy/`)                                                                                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Deploy / update the image tag | `npm i && npx wrangler deploy`                                                                                                                                                                                                       |
+| Apply changed settings        | deploy, then restart the server (a deploy doesn't): `curl -X POST -H "Authorization: Bearer $env:LYRICDOCK_PUBLISH_TOKEN" https://ntfy.losthusky.qzz.io/v1/restart`. Check: `/v1/stats` (owner token) `messages` starts again from 0 |
+| Logs                          | `npx wrangler tail`                                                                                                                                                                                                                  |
+| Health                        | `curl https://ntfy.losthusky.qzz.io/v1/health` → `{"healthy":true}`                                                                                                                                                                  |
 
 - **Cost:** the server sleeps after 2 h without requests (`sleepAfter`). Docks keep a subscription open, so in
   practice it runs all the time. On the `lite` instance that is roughly a couple of dollars a month at Containers

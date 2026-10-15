@@ -13,8 +13,22 @@
 // The phone always listens on LyricDock's ntfy AND the chosen relay, so a mismatch between the two ends can't strand it.
 // Not ntfy.sh: topic names are hashes of the pairing code, and a third party that logs them could brute-force the code.
 const Rtc = (() => {
-  if (window.LYRICDOCK_MINI) return { code: '', send() {}, watchAccount() {}, onAsk() {}, onMessage() {}, open: () => false, path: () => null, log: () => [],
-    desk: () => null, discoverable: () => ({}), lastLink: () => null, refreshPath() {}, status: () => 'miniplayer' };
+  if (window.LYRICDOCK_MINI)
+    return {
+      code: '',
+      send() {},
+      watchAccount() {},
+      onAsk() {},
+      onMessage() {},
+      open: () => false,
+      path: () => null,
+      log: () => [],
+      desk: () => null,
+      discoverable: () => ({}),
+      lastLink: () => null,
+      refreshPath() {},
+      status: () => 'miniplayer',
+    };
   const CHUNK = 16000;
   // Settings is a top-level const (not a window property): read it by name.
   const SS = () => (typeof Settings !== 'undefined' ? Settings.S : {});
@@ -44,30 +58,68 @@ const Rtc = (() => {
   // neither connects: browsers hide local addresses and many routers won't loop traffic back in.
   let turn = [];
   // A 401 means the sign-in expired while the installed app kept running from its cache: sign in again, back to here.
-  const fetchTurn = () => location.protocol === 'https:' && fetch('/turn', { credentials: 'same-origin' }).then(r => {
-    if (r.status === 401 && window.LYRICDOCK_WEB) location.assign(`https://auth.lyricdock.losthusky.qzz.io/login?rd=${encodeURIComponent(location.href)}`);
-    return r.ok ? r.json() : null;
-  })
-    .then(j => { if (Array.isArray(j?.iceServers)) turn = j.iceServers; }).catch(() => {});
+  const fetchTurn = () =>
+    location.protocol === 'https:' &&
+    fetch('/turn', { credentials: 'same-origin' })
+      .then(r => {
+        if (r.status === 401 && window.LYRICDOCK_WEB)
+          location.assign(`https://auth.lyricdock.losthusky.qzz.io/login?rd=${encodeURIComponent(location.href)}`);
+        return r.ok ? r.json() : null;
+      })
+      .then(j => {
+        if (Array.isArray(j?.iceServers)) turn = j.iceServers;
+      })
+      .catch(() => {});
   fetchTurn();
   setInterval(fetchTurn, 4 * 3600e3); // credentials live 24 h
-  const ice = () => ({ iceServers: [STUN, ...turn, ...String(SS().ice || '').split(',').map(x => x.trim()).filter(Boolean).map(e => {
-    const [urls, username, credential] = e.split('|');
-    return /^(stun|turns?):/.test(urls) ? { urls, ...(username ? { username, credential } : {}) } : null;
-  }).filter(Boolean)] });
+  const ice = () => ({
+    iceServers: [
+      STUN,
+      ...turn,
+      ...String(SS().ice || '')
+        .split(',')
+        .map(x => x.trim())
+        .filter(Boolean)
+        .map(e => {
+          const [urls, username, credential] = e.split('|');
+          return /^(stun|turns?):/.test(urls) ? { urls, ...(username ? { username, credential } : {}) } : null;
+        })
+        .filter(Boolean),
+    ],
+  });
   // Connection log (Settings -> Connection), newest first.
   const events = [];
-  const note = t => { events.unshift(`${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${t}`); events.length = Math.min(events.length, 20); };
+  const note = t => {
+    events.unshift(`${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${t}`);
+    events.length = Math.min(events.length, 20);
+  };
   const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
-  const stored = (k, make) => { let v = localStorage.getItem(k); if (!v) { v = make(); try { localStorage.setItem(k, v); } catch (e) {} } return v; };
+  const stored = (k, make) => {
+    let v = localStorage.getItem(k);
+    if (!v) {
+      v = make();
+      try {
+        localStorage.setItem(k, v);
+      } catch (e) {}
+    }
+    return v;
+  };
   let code = localStorage.getItem('dock:pair');
   if (!/^[A-Z2-9]{10}$/.test(code || '')) {
     code = Array.from(crypto.getRandomValues(new Uint8Array(10)), b => ALPHA[b % ALPHA.length]).join('');
-    try { localStorage.setItem('dock:pair', code); } catch (e) {}
+    try {
+      localStorage.setItem('dock:pair', code);
+    } catch (e) {}
   }
   const myId = stored('dock:id', () => Math.random().toString(36).slice(2, 10));
   const pretty = `${code.slice(0, 4)}-${code.slice(4, 7)}-${code.slice(7)}`;
-  let pc = null, dc = null, onMsg = () => {}, status = 'waiting', topic, key, desk = null;
+  let pc = null,
+    dc = null,
+    onMsg = () => {},
+    status = 'waiting',
+    topic,
+    key,
+    desk = null;
 
   // ---- crypto: topic + key from the code
   const enc = new TextEncoder();
@@ -77,20 +129,28 @@ const Rtc = (() => {
   const sha = async s => new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)));
   async function init() {
     topic = 'ld' + hex((await sha('lyricdock-topic:' + code)).slice(0, 12));
-    key = await crypto.subtle.importKey('raw', await sha('lyricdock-key:' + code), 'AES-GCM', false, ['encrypt', 'decrypt']);
+    key = await crypto.subtle.importKey('raw', await sha('lyricdock-key:' + code), 'AES-GCM', false, [
+      'encrypt',
+      'decrypt',
+    ]);
   }
   async function seal(obj) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(obj))));
+    const ct = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(obj))),
+    );
     return b64(iv) + '.' + b64(ct);
   }
   async function open(s) {
     try {
       const [iv, ct] = s.split('.').map(unb64);
       return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)));
-    } catch (e) { return null; } // not ours / tampered: ignore
+    } catch (e) {
+      return null;
+    } // not ours / tampered: ignore
   }
-  const post = (r, t, body) => fetch(`${r}/${t}`, { method: 'POST', body, headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
+  const post = (r, t, body) =>
+    fetch(`${r}/${t}`, { method: 'POST', body, headers: { Cache: 'no', Firebase: 'no' } }).catch(() => {});
 
   // ---- subscriptions: one WebSocket per (relay, topic), re-opened when dropped, closed when no longer wanted.
   // A refused handshake (the relay's per-IP limit answers 429, or it is down) backs off 3 s, 6 s, ... 2 min with
@@ -104,14 +164,28 @@ const Rtc = (() => {
     subs.set(k, ws);
     ws.again = () => subscribe(r, t, onMessage);
     let up = false;
-    ws.onopen = () => { up = true; fails.delete(k); };
-    ws.onmessage = e => { let ev; try { ev = JSON.parse(e.data); } catch (x) { return; } if (ev.event === 'message') onMessage(ev.message, r, t); };
+    ws.onopen = () => {
+      up = true;
+      fails.delete(k);
+    };
+    ws.onmessage = e => {
+      let ev;
+      try {
+        ev = JSON.parse(e.data);
+      } catch (x) {
+        return;
+      }
+      if (ev.event === 'message') onMessage(ev.message, r, t);
+    };
     ws.onclose = () => {
       if (subs.get(k) !== ws) return;
       subs.delete(k);
       const n = up ? 0 : (fails.get(k) || 0) + 1;
       fails.set(k, n);
-      setTimeout(() => want.has(k) && subscribe(r, t, onMessage), Math.min(120e3, 3000 * 2 ** n) * (0.5 + Math.random() / 2));
+      setTimeout(
+        () => want.has(k) && subscribe(r, t, onMessage),
+        Math.min(120e3, 3000 * 2 ** n) * (0.5 + Math.random() / 2),
+      );
     };
   }
   // A phone that dozed comes back with sockets that look open but are dead (no close event), so it stopped answering
@@ -120,17 +194,41 @@ const Rtc = (() => {
   // WebSocket ping the page never sees, so silence alone can't tell a dead socket from a quiet topic.
   function reopenAll() {
     // A snapshot: again() adds to subs, and a Map's iterator would visit those new entries too (a loop that never ends).
-    for (const [k, ws] of [...subs]) { subs.delete(k); ws.onclose = null; try { ws.close(); } catch (e) {} if (want.has(k)) ws.again(); }
+    for (const [k, ws] of [...subs]) {
+      subs.delete(k);
+      ws.onclose = null;
+      try {
+        ws.close();
+      } catch (e) {}
+      if (want.has(k)) ws.again();
+    }
   }
   let tick = Date.now();
-  setInterval(() => { if (Date.now() - tick > 90e3) reopenAll(); tick = Date.now(); }, 15e3); // 90 s: hidden browser tabs tick once a minute
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reopenAll(); });
+  setInterval(() => {
+    if (Date.now() - tick > 90e3) reopenAll();
+    tick = Date.now();
+  }, 15e3); // 90 s: hidden browser tabs tick once a minute
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') reopenAll();
+  });
   const want = new Set();
-  function sync(list) { // list: [[relay, topic, handler]]
+  function sync(list) {
+    // list: [[relay, topic, handler]]
     const keys = new Set(list.map(([r, t]) => `${r} ${t}`));
     // Over want, not subs: a topic waiting out its backoff isn't in subs but must stop being wanted too.
-    for (const k of want) if (!keys.has(k)) { want.delete(k); const ws = subs.get(k); subs.delete(k); try { ws?.close(); } catch (e) {} }
-    for (const [r, t, h] of list) { want.add(`${r} ${t}`); subscribe(r, t, h); }
+    for (const k of want)
+      if (!keys.has(k)) {
+        want.delete(k);
+        const ws = subs.get(k);
+        subs.delete(k);
+        try {
+          ws?.close();
+        } catch (e) {}
+      }
+    for (const [r, t, h] of list) {
+      want.add(`${r} ${t}`);
+      subscribe(r, t, h);
+    }
   }
 
   // ---- offers from a paired Spotify
@@ -138,31 +236,38 @@ const Rtc = (() => {
     const m = await open(raw);
     if (m?.t === 'offer' && m.sdp) answer(m, r);
   }
-  const gathered = p => new Promise(res => {
-    if (p.iceGatheringState === 'complete') return res();
-    p.onicegatheringstatechange = () => p.iceGatheringState === 'complete' && res();
-    setTimeout(res, 3000);
-  });
+  const gathered = p =>
+    new Promise(res => {
+      if (p.iceGatheringState === 'complete') return res();
+      p.onicegatheringstatechange = () => p.iceGatheringState === 'complete' && res();
+      setTimeout(res, 3000);
+    });
   // Settings -> Connection path: offer only the Wi-Fi address, or only the other ones (the USB-tethering cable).
   function onlyPath(d) {
     const mode = SS().linkPath || 'auto';
     let wifi = '';
-    try { wifi = Dock.ip(); } catch (e) {}
+    try {
+      wifi = Dock.ip();
+    } catch (e) {}
     if (mode === 'auto' || !wifi) return d;
     const keep = line => {
       if (!line.startsWith('a=candidate')) return true;
-      const ip = line.split(' ')[4], isWifi = ip === wifi;
+      const ip = line.split(' ')[4],
+        isWifi = ip === wifi;
       return mode === 'wifi' ? isWifi : !isWifi && !ip.includes(':');
     };
     return { type: d.type, sdp: d.sdp.split('\r\n').filter(keep).join('\r\n') };
   }
   async function answer(m, r) {
-    try { pc?.close(); } catch (e) {}
+    try {
+      pc?.close();
+    } catch (e) {}
     pc = new RTCPeerConnection(ice());
     pc.ondatachannel = e => wire(e.channel);
     pc.onconnectionstatechange = () => {
       const s = pc?.connectionState || 'closed';
-      if (s !== status && ['connected', 'failed', 'disconnected'].includes(s)) note({ connected: 'Connected', failed: 'Connection failed', disconnected: 'Connection lost' }[s]);
+      if (s !== status && ['connected', 'failed', 'disconnected'].includes(s))
+        note({ connected: 'Connected', failed: 'Connection failed', disconnected: 'Connection lost' }[s]);
       status = s;
     };
     await pc.setRemoteDescription(m.sdp);
@@ -178,76 +283,143 @@ const Rtc = (() => {
     dc = ch;
     ch.onmessage = e => {
       let m;
-      try { m = JSON.parse(e.data); } catch (x) { return; }
+      try {
+        m = JSON.parse(e.data);
+      } catch (x) {
+        return;
+      }
       if (m._c) {
         const p = parts.get(m._c) ?? [];
         p[m.i] = m.d;
         parts.set(m._c, p);
         if (p.filter(x => x !== undefined).length < m.n) return;
         parts.delete(m._c);
-        try { m = JSON.parse(p.join('')); } catch (x) { return; }
+        try {
+          m = JSON.parse(p.join(''));
+        } catch (x) {
+          return;
+        }
       }
       if (m.type === 'hello' && typeof m.desk === 'string') desk = m.desk.slice(0, 60);
-      if (m.type === 'hello') try { // the desktop's helper (or none any more)
-        if (/^\d+\.\d+\.\d+\.\d+$/.test(m.helper || '')) localStorage.setItem('dock:helper', m.helper); else if (m.helper === null) localStorage.removeItem('dock:helper');
-      } catch (x) {}
+      if (m.type === 'hello')
+        try {
+          // the desktop's helper (or none any more)
+          if (/^\d+\.\d+\.\d+\.\d+$/.test(m.helper || '')) localStorage.setItem('dock:helper', m.helper);
+          else if (m.helper === null) localStorage.removeItem('dock:helper');
+        } catch (x) {}
       onMsg(m);
     };
-    ch.onclose = () => { lastLink = Date.now(); if (dc === ch) dc = null; };
+    ch.onclose = () => {
+      lastLink = Date.now();
+      if (dc === ch) dc = null;
+    };
   }
   function send(str) {
     if (dc?.readyState !== 'open') return;
     if (str.length <= CHUNK) return dc.send(str);
-    const id = Math.random().toString(36).slice(2), n = Math.ceil(str.length / CHUNK);
+    const id = Math.random().toString(36).slice(2),
+      n = Math.ceil(str.length / CHUNK);
     for (let i = 0; i < n; i++) dc.send(JSON.stringify({ _c: id, i, n, d: str.slice(i * CHUNK, (i + 1) * CHUNK) }));
   }
 
   // ---- being found: lobby topics for this network (public IP via STUN) and the Spotify account
   const EC = { name: 'ECDH', namedCurve: 'P-256' };
-  let uid = null, netIp = null, netAt = 0, asking = false, onAsk = async () => false;
+  let uid = null,
+    netIp = null,
+    netAt = 0,
+    asking = false,
+    onAsk = async () => false;
   const seen = new Map(); // 'desk commitment' -> { kp, name }
   async function publicIp() {
     if (netIp && Date.now() - netAt < 10 * 60000) return netIp;
-    const p = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.l.google.com:19302' }] });
+    const p = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.l.google.com:19302' }],
+    });
     try {
       p.createDataChannel('x');
       const ip = new Promise(res => {
-        p.onicecandidate = e => { const c = e.candidate?.candidate || ''; const m = / (\d+\.\d+\.\d+\.\d+) \d+ typ srflx/.exec(c); if (m) res(m[1]); if (!e.candidate) res(null); };
+        p.onicecandidate = e => {
+          const c = e.candidate?.candidate || '';
+          const m = / (\d+\.\d+\.\d+\.\d+) \d+ typ srflx/.exec(c);
+          if (m) res(m[1]);
+          if (!e.candidate) res(null);
+        };
         setTimeout(() => res(null), 5000);
       });
       await p.setLocalDescription(await p.createOffer());
       const got = await ip;
-      if (got) { netIp = got; netAt = Date.now(); }
-    } catch (e) {} finally { try { p.close(); } catch (e) {} }
+      if (got) {
+        netIp = got;
+        netAt = Date.now();
+      }
+    } catch (e) {
+    } finally {
+      try {
+        p.close();
+      } catch (e) {}
+    }
     return netIp;
   }
-  const lobbyTopic = async (kind, v) => (kind === 'net' ? 'ldn' : 'lda') + hex(await sha(`lyricdock-${kind === 'net' ? 'net' : 'account'}:${v}`)).slice(0, 24);
+  const lobbyTopic = async (kind, v) =>
+    (kind === 'net' ? 'ldn' : 'lda') +
+    hex(await sha(`lyricdock-${kind === 'net' ? 'net' : 'account'}:${v}`)).slice(0, 24);
   let lobbies = [];
   async function refreshLobbies() {
-    const ip = await publicIp(), out = [];
+    const ip = await publicIp(),
+      out = [];
     if (ip) out.push(await lobbyTopic('net', ip));
     if (uid) out.push(await lobbyTopic('acct', uid));
     lobbies = out;
     sync([...relays().map(r => [r, topic, onOffer]), ...relays().flatMap(r => out.map(t => [r, t, onLobby]))]);
   }
-  const deviceName = () => { try { return Dock.model() || 'Android phone'; } catch (e) { return 'LyricDock phone'; } };
+  const deviceName = () => {
+    try {
+      return Dock.model() || 'Android phone';
+    } catch (e) {
+      return 'LyricDock phone';
+    }
+  };
   // The commitment: a hash of the key's coordinates (same in dock-bridge.js).
   const commitOf = async pub => hex(await sha(`${pub?.x}.${pub?.y}`));
   async function onLobby(raw, r, t) {
-    let m; try { m = JSON.parse(raw); } catch (e) { return; }
+    let m;
+    try {
+      m = JSON.parse(raw);
+    } catch (e) {
+      return;
+    }
     if (typeof m?.desk !== 'string' || m.desk.length > 40) return;
     if (m.t === 'scan' && /^[0-9a-f]{64}$/.test(m.commit || '')) {
       // A Spotify is looking: say who we are (a fresh key per Spotify, so digits differ every time).
       // Keyed by desk + commitment: someone else's scan with this desk id can't replace the real one.
       const k = `${m.desk} ${m.commit}`;
       let s = seen.get(k);
-      if (!s) { s = { kp: await crypto.subtle.generateKey(EC, false, ['deriveBits']) }; seen.set(k, s); if (seen.size > 20) seen.delete(seen.keys().next().value); }
+      if (!s) {
+        s = { kp: await crypto.subtle.generateKey(EC, false, ['deriveBits']) };
+        seen.set(k, s);
+        if (seen.size > 20) seen.delete(seen.keys().next().value);
+      }
       s.name = String(m.name || 'Spotify').slice(0, 60);
-      post(r, t, JSON.stringify({ t: 'here', desk: m.desk, id: myId, name: deviceName(), pub: await crypto.subtle.exportKey('jwk', s.kp.publicKey), linked: dc?.readyState === 'open' }));
+      post(
+        r,
+        t,
+        JSON.stringify({
+          t: 'here',
+          desk: m.desk,
+          id: myId,
+          name: deviceName(),
+          pub: await crypto.subtle.exportKey('jwk', s.kp.publicKey),
+          linked: dc?.readyState === 'open',
+        }),
+      );
     } else if (m.t === 'connect' && m.to === myId && m.pub && !asking) {
       const s = seen.get(`${m.desk} ${await commitOf(m.pub)}`); // only the key this Spotify committed to before seeing ours
       if (!s) return;
-      const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: await crypto.subtle.importKey('jwk', m.pub, EC, false, []) }, s.kp.privateKey, 256);
+      const bits = await crypto.subtle.deriveBits(
+        { name: 'ECDH', public: await crypto.subtle.importKey('jwk', m.pub, EC, false, []) },
+        s.kp.privateKey,
+        256,
+      );
       const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));
       const digits = String(((h[0] << 16) | (h[1] << 8) | h[2]) % 1000000).padStart(6, '0');
       asking = true;
@@ -256,7 +428,9 @@ const Rtc = (() => {
       if (!ok) return post(r, t, JSON.stringify({ t: 'deny', desk: m.desk, from: myId }));
       const aes = await crypto.subtle.importKey('raw', h, 'AES-GCM', false, ['encrypt']);
       const iv = crypto.getRandomValues(new Uint8Array(12));
-      const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes, enc.encode(JSON.stringify({ code }))));
+      const ct = new Uint8Array(
+        await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes, enc.encode(JSON.stringify({ code }))),
+      );
       post(r, t, JSON.stringify({ t: 'accept', desk: m.desk, from: myId, box: b64(iv) + '.' + b64(ct) }));
       note(`Paired with ${s.name}`);
     }
@@ -265,36 +439,76 @@ const Rtc = (() => {
   // Which network the live connection uses: the selected ICE pair's local + remote address.
   let path = null;
   async function refreshPath() {
-    if (!pc || dc?.readyState !== 'open') { path = null; return; }
+    if (!pc || dc?.readyState !== 'open') {
+      path = null;
+      return;
+    }
     try {
-      const st = await pc.getStats(), all = [...st.values()];
+      const st = await pc.getStats(),
+        all = [...st.values()];
       const tr = all.find(x => x.type === 'transport' && x.selectedCandidatePairId);
-      const pair = tr ? st.get(tr.selectedCandidatePairId) : all.find(x => x.type === 'candidate-pair' && x.nominated && x.state === 'succeeded');
-      const l = pair && st.get(pair.localCandidateId), rm = pair && st.get(pair.remoteCandidateId);
-      path = l ? { local: l.address || l.ip, remote: rm?.address || rm?.ip, rtt: pair.currentRoundTripTime, relayed: l.candidateType === 'relay' } : null;
-    } catch (e) { path = null; }
+      const pair = tr
+        ? st.get(tr.selectedCandidatePairId)
+        : all.find(x => x.type === 'candidate-pair' && x.nominated && x.state === 'succeeded');
+      const l = pair && st.get(pair.localCandidateId),
+        rm = pair && st.get(pair.remoteCandidateId);
+      path = l
+        ? {
+            local: l.address || l.ip,
+            remote: rm?.address || rm?.ip,
+            rtt: pair.currentRoundTripTime,
+            relayed: l.candidateType === 'relay',
+          }
+        : null;
+    } catch (e) {
+      path = null;
+    }
   }
   setInterval(refreshPath, 5000);
 
   let lastRelays = '';
   init().then(refreshLobbies);
   // Relay changed, public IP may have changed, account signed in: keep the subscriptions right.
-  setInterval(() => { if (relays().join() !== lastRelays) { lastRelays = relays().join(); note('Signalling server changed'); refreshLobbies(); } }, 3000);
+  setInterval(() => {
+    if (relays().join() !== lastRelays) {
+      lastRelays = relays().join();
+      note('Signalling server changed');
+      refreshLobbies();
+    }
+  }, 3000);
   setInterval(refreshLobbies, 5 * 60000);
   lastRelays = relays().join();
   return {
     code: pretty,
     send,
-    watchAccount: u => { if (u && u !== uid) { uid = u; refreshLobbies(); } },
-    onAsk: f => { onAsk = f; },
-    onMessage: f => { onMsg = f; },
+    watchAccount: u => {
+      if (u && u !== uid) {
+        uid = u;
+        refreshLobbies();
+      }
+    },
+    onAsk: f => {
+      onAsk = f;
+    },
+    onMessage: f => {
+      onMsg = f;
+    },
     open: () => dc?.readyState === 'open',
     path: () => path,
     log: () => events,
     desk: () => desk,
-    discoverable: () => ({ network: lobbies.some(t => t.startsWith('ldn')), account: lobbies.some(t => t.startsWith('lda')), ip: netIp }),
+    discoverable: () => ({
+      network: lobbies.some(t => t.startsWith('ldn')),
+      account: lobbies.some(t => t.startsWith('lda')),
+      ip: netIp,
+    }),
     lastLink: () => lastLink,
     refreshPath,
-    status: () => dc?.readyState === 'open' ? 'connected' : ['failed', 'closed', 'disconnected'].includes(status) ? 'standby' : status,
+    status: () =>
+      dc?.readyState === 'open'
+        ? 'connected'
+        : ['failed', 'closed', 'disconnected'].includes(status)
+          ? 'standby'
+          : status,
   };
 })();

@@ -14,49 +14,106 @@
 //  - A tap on the cover shows / hides the controls; a double tap likes the song (with the heart burst); a swipe up
 //    plays / pauses.
 (() => {
-  const $ = id => document.getElementById(id), body = document.body, S = Settings.S;
-  const COVER = ['split', 'clocksplit'], CARD = ['player', 'cinema', 'nowbar'];
+  const $ = id => document.getElementById(id),
+    body = document.body,
+    S = Settings.S;
+  const COVER = ['split', 'clocksplit'],
+    CARD = ['player', 'cinema', 'nowbar'];
   const coverMode = () => COVER.includes(S.layout);
-  const zone = () => coverMode() ? $('artbox') : CARD.includes(S.layout) ? (S.layout === 'player' ? $('meta') : $('left')) : null;
-  const artEl = $('art'), box = $('artbox');
-  const url = u => u ? `url("${u}")` : 'none';
+  const zone = () =>
+    coverMode() ? $('artbox') : CARD.includes(S.layout) ? (S.layout === 'player' ? $('meta') : $('left')) : null;
+  const artEl = $('art'),
+    box = $('artbox');
+  const url = u => (u ? `url("${u}")` : 'none');
   const log = (...a) => window.__swlog?.push(a.join(' ')); // dev trace: set window.__swlog = [] over CDP
-  const buzz = () => { try { Dock.vibrate(30); } catch (e) {} }; // under ~30 ms the M01's motor isn't felt
+  const buzz = () => {
+    try {
+      Dock.vibrate(30);
+    } catch (e) {}
+  }; // under ~30 ms the M01's motor isn't felt
 
-  const peeks = [0, 1, 2].map(() => { const d = document.createElement('div'); d.className = 'art-peek'; box.append(d); return d; });
+  const peeks = [0, 1, 2].map(() => {
+    const d = document.createElement('div');
+    d.className = 'art-peek';
+    box.append(d);
+    return d;
+  });
   const cue = document.createElement('div');
   cue.id = 'swipeCue';
-  cue.innerHTML = '<div class="sc-tab"><svg viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg><span class="sc-word"></span><b class="sc-n"></b></div><div class="sc-name"></div>';
+  cue.innerHTML =
+    '<div class="sc-tab"><svg viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg><span class="sc-word"></span><b class="sc-n"></b></div><div class="sc-name"></div>';
   body.append(cue);
-  const cueTab = cue.firstChild, cueWord = cue.querySelector('.sc-word'), cueN = cue.querySelector('.sc-n'), cueName = cue.querySelector('.sc-name');
+  const cueTab = cue.firstChild,
+    cueWord = cue.querySelector('.sc-word'),
+    cueN = cue.querySelector('.sc-n'),
+    cueName = cue.querySelector('.sc-name');
 
-  let g = null;      // the gesture in progress
-  let run = null;    // the settle animation in progress: { raf, finish }
-  let tapT = 0, lastTapAt = 0;
+  let g = null; // the gesture in progress
+  let run = null; // the settle animation in progress: { raf, finish }
+  let tapT = 0,
+    lastTapAt = 0;
 
-  const scaleOf = el => { const t = getComputedStyle(el).transform; return t && t !== 'none' ? Math.hypot(...new DOMMatrix(t).toFloat32Array().slice(0, 2)) : 1; };
+  const scaleOf = el => {
+    const t = getComputedStyle(el).transform;
+    return t && t !== 'none' ? Math.hypot(...new DOMMatrix(t).toFloat32Array().slice(0, 2)) : 1;
+  };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   function begin(t, z) {
-    const cov = coverMode(), w = cov ? artEl.offsetWidth : z.offsetWidth;
+    const cov = coverMode(),
+      w = cov ? artEl.offsetWidth : z.offsetWidth;
     const step = cov ? w * 1.08 : Math.max(110, Math.min(w * 0.55, innerWidth * 0.3));
     const m = cov ? getComputedStyle(artEl).transform : 'none';
-    g = { x0: t.clientX, y0: t.clientY, t0: performance.now(), on: false, x: 0, v: 0, lx: t.clientX, ly: t.clientY, lt: performance.now(), z, cov, w, step,
-      next: [], prev: [], base: m && m !== 'none' ? m + ' ' : '', s0: cov ? scaleOf(artEl) : 1, side: 0, k: 0 };
+    g = {
+      x0: t.clientX,
+      y0: t.clientY,
+      t0: performance.now(),
+      on: false,
+      x: 0,
+      v: 0,
+      lx: t.clientX,
+      ly: t.clientY,
+      lt: performance.now(),
+      z,
+      cov,
+      w,
+      step,
+      next: [],
+      prev: [],
+      base: m && m !== 'none' ? m + ' ' : '',
+      s0: cov ? scaleOf(artEl) : 1,
+      side: 0,
+      k: 0,
+    };
   }
   // how far each side can reach: the songs we know (1 unknown one is allowed: it lands empty and Spotify fills it in)
   const depth = side => Math.min(3, Math.max(1, (side > 0 ? g.next : g.prev).length));
   const target = (side, k) => (side > 0 ? g.next : g.prev)[k - 1] || null;
   // rubber band past the last song on that side
-  const band = x => { const lim = depth(x < 0 ? 1 : -1) * g.step, a = Math.abs(x); return a <= lim ? x : Math.sign(x) * (lim + (a - lim) * 0.22); };
+  const band = x => {
+    const lim = depth(x < 0 ? 1 : -1) * g.step,
+      a = Math.abs(x);
+    return a <= lim ? x : Math.sign(x) * (lim + (a - lim) * 0.22);
+  };
   // the card that would play if the finger let go now: nothing before 32 % of a card, then the nearest one
-  const aim = x => { const a = Math.abs(x) / g.step, side = x < 0 ? 1 : -1; return a < 0.32 ? 0 : side * clamp(Math.round(a), 1, depth(side)); };
+  const aim = x => {
+    const a = Math.abs(x) / g.step,
+      side = x < 0 ? 1 : -1;
+    return a < 0.32 ? 0 : side * clamp(Math.round(a), 1, depth(side));
+  };
 
   function fillPeeks(side) {
     if (!g.cov || g.side === side) return;
     g.side = side;
     const list = side > 0 ? g.next : g.prev;
-    peeks.forEach((p, i) => { const a = list[i]?.art || ''; if (p.dataset.u !== a) { p.dataset.u = a; p.style.backgroundImage = url(a); } p.classList.toggle('blank', !a); });
+    peeks.forEach((p, i) => {
+      const a = list[i]?.art || '';
+      if (p.dataset.u !== a) {
+        p.dataset.u = a;
+        p.style.backgroundImage = url(a);
+      }
+      p.classList.toggle('blank', !a);
+    });
   }
 
   // Draw the strip at offset x (px, negative = towards next). fade (0..1): how far a committed swipe has settled - every
@@ -71,24 +128,37 @@
       const reveal = smooth(clamp(Math.abs(x) / (g.step * 0.3), 0, 1));
       const card = (el, X, lit, shown) => {
         const p = Math.min(2, Math.abs(X) / g.step);
-        const sc = 1 - Math.min(1, p) * 0.1, op = Math.max(0, 1 - p * 0.55 - Math.max(0, p - 1) * 0.6) * (lit ? 1 : 0.92 * (1 - fade)) * shown;
-        el.style.transform = `${g.base}translateX(${X / g.s0}px) rotate(${X / g.w * 2.5}deg) scale(${sc})`;
+        const sc = 1 - Math.min(1, p) * 0.1,
+          op = Math.max(0, 1 - p * 0.55 - Math.max(0, p - 1) * 0.6) * (lit ? 1 : 0.92 * (1 - fade)) * shown;
+        el.style.transform = `${g.base}translateX(${X / g.s0}px) rotate(${(X / g.w) * 2.5}deg) scale(${sc})`;
         el.style.opacity = op.toFixed(3);
       };
       card(artEl, x, k === 0, 1);
-      peeks.forEach((p, i) => { const n = i + 1; if (n > depth(side)) { p.style.opacity = '0'; return; } const lit = Math.abs(k) === n && Math.sign(k) === side; card(p, side * n * g.step + x, lit, lit && fade ? 1 : reveal); });
+      peeks.forEach((p, i) => {
+        const n = i + 1;
+        if (n > depth(side)) {
+          p.style.opacity = '0';
+          return;
+        }
+        const lit = Math.abs(k) === n && Math.sign(k) === side;
+        card(p, side * n * g.step + x, lit, lit && fade ? 1 : reveal);
+      });
     } else {
       g.z.style.transform = `translateX(${x * 0.35}px)`;
-      g.z.style.opacity = (1 - Math.min(0.45, Math.abs(x) / g.step * 0.3)).toFixed(3);
+      g.z.style.opacity = (1 - Math.min(0.45, (Math.abs(x) / g.step) * 0.3)).toFixed(3);
     }
     showCue(x, k);
   }
 
   // The tab keeps its side class while it hides: dropping it moved the tab across the screen mid-fade. live = the finger
   // drives it (no transform transition); without it, it springs back out to the edge by itself (CSS).
-  const hideCue = () => { cue.classList.remove('on', 'live'); cue.style.setProperty('--p', '0'); };
+  const hideCue = () => {
+    cue.classList.remove('on', 'live');
+    cue.style.setProperty('--p', '0');
+  };
   function showCue(x, k) {
-    const side = x < 0 ? 1 : -1, p = clamp(Math.abs(x) / (g.step * 0.32), 0, 1);
+    const side = x < 0 ? 1 : -1,
+      p = clamp(Math.abs(x) / (g.step * 0.32), 0, 1);
     if (Math.abs(x) < 4) return hideCue();
     if (run) return; // settling: the tab is already on its way out
     const r = g.z.getBoundingClientRect();
@@ -99,12 +169,22 @@
     cueN.textContent = Math.abs(k) > 1 ? `+${Math.abs(k)}` : '';
     const t = k ? target(side, Math.abs(k)) : null;
     cueName.textContent = t?.title || '';
-    if (k !== g.k) { if (Math.abs(k) > Math.abs(g.k)) buzz(); g.k = k; }
+    if (k !== g.k) {
+      if (Math.abs(k) > Math.abs(g.k)) buzz();
+      g.k = k;
+    }
   }
 
   function reset() {
-    for (const el of [artEl, ...peeks]) { el.style.transform = ''; el.style.opacity = ''; }
-    if (g?.z && !g.cov) { g.z.style.transform = ''; g.z.style.opacity = ''; g.z.style.transition = ''; }
+    for (const el of [artEl, ...peeks]) {
+      el.style.transform = '';
+      el.style.opacity = '';
+    }
+    if (g?.z && !g.cov) {
+      g.z.style.transform = '';
+      g.z.style.opacity = '';
+      g.z.style.transition = '';
+    }
     hideCue();
     requestAnimationFrame(() => requestAnimationFrame(() => body.classList.remove('art-dragging')));
   }
@@ -113,17 +193,36 @@
   // them at (the title is hidden while the controls are up, the lyrics dimmed behind a centred pill), never past it.
   const others = () => [$('meta'), $('lyrics')].filter(Boolean);
   let dims = [];
-  const dim = d => { dims = others().map(el => { const o = +getComputedStyle(el).opacity; return el.animate([{ opacity: o }, { opacity: Math.min(o, 0.12) }], { duration: d, easing: 'ease-in', fill: 'forwards' }); }); };
+  const dim = d => {
+    dims = others().map(el => {
+      const o = +getComputedStyle(el).opacity;
+      return el.animate([{ opacity: o }, { opacity: Math.min(o, 0.12) }], {
+        duration: d,
+        easing: 'ease-in',
+        fill: 'forwards',
+      });
+    });
+  };
   const undim = () => {
     const from = others().map(el => +getComputedStyle(el).opacity);
-    dims.forEach(a => a.cancel()); dims = [];
-    others().forEach((el, i) => { const to = +getComputedStyle(el).opacity; if (Math.abs(to - from[i]) > 0.01) el.animate([{ opacity: from[i] }, { opacity: to }], { duration: ms(320), easing: 'cubic-bezier(.2,.8,.2,1)' }); });
+    dims.forEach(a => a.cancel());
+    dims = [];
+    others().forEach((el, i) => {
+      const to = +getComputedStyle(el).opacity;
+      if (Math.abs(to - from[i]) > 0.01)
+        el.animate([{ opacity: from[i] }, { opacity: to }], { duration: ms(320), easing: 'cubic-bezier(.2,.8,.2,1)' });
+    });
   };
 
   // A damped spring (SwiftUI's response + damping fraction) from `from` to `to`, starting at the finger's speed v (px/ms):
   // the strip keeps the flick's momentum instead of restarting on a fixed curve. x(t) in seconds, end = settled.
   function spring(from, to, v, response, damping) {
-    const w = 2 * Math.PI / response, z = damping, x0 = from - to, v0 = v * 1000, wd = w * Math.sqrt(1 - z * z), b = (v0 + z * w * x0) / wd;
+    const w = (2 * Math.PI) / response,
+      z = damping,
+      x0 = from - to,
+      v0 = v * 1000,
+      wd = w * Math.sqrt(1 - z * z),
+      b = (v0 + z * w * x0) / wd;
     const x = t => to + Math.exp(-z * w * t) * (x0 * Math.cos(wd * t) + b * Math.sin(wd * t));
     const end = Math.log(Math.max(1, (Math.abs(x0) + Math.abs(b)) / 0.5)) / (z * w); // the envelope is under half a pixel
     return { x, end: clamp(end, 0.12, response * 2.5) };
@@ -131,26 +230,44 @@
 
   // Settle from the current offset to the chosen card (k) - or back to the middle (k = 0).
   function settle(k) {
-    const s = g, from = s.x, to = s.cov ? -k * s.step : 0, t0 = performance.now();
+    const s = g,
+      from = s.x,
+      to = s.cov ? -k * s.step : 0,
+      t0 = performance.now();
     // Commit: quick, nearly critically damped (a hair of overshoot as the card lands). Back: a touch springier.
     // The song card (no strip) springs home from where it was, without the throw.
     const sp = spring(from, to, s.cov || !k ? s.v : 0, ms(k ? 380 : 420) / 1000, k ? 0.86 : 0.74);
     let song = null;
-    if (k) { song = window.swipeTo?.(k) ?? null; dim(sp.end * 600); }
+    if (k) {
+      song = window.swipeTo?.(k) ?? null;
+      dim(sp.end * 600);
+    }
     const done = () => {
       run = null;
-      if (k) land(k, song, s); else reset();
+      if (k) land(k, song, s);
+      else reset();
       g = null;
     };
     const frame = now => {
-      const t = Math.min(1, (now - t0) / 1000 / sp.end), x = t < 1 ? sp.x((now - t0) / 1000) : to;
-      s.x = x; render(x, k, k ? smooth(t) : 0);
-      if (t < 1) run.raf = requestAnimationFrame(frame); else done();
+      const t = Math.min(1, (now - t0) / 1000 / sp.end),
+        x = t < 1 ? sp.x((now - t0) / 1000) : to;
+      s.x = x;
+      render(x, k, k ? smooth(t) : 0);
+      if (t < 1) run.raf = requestAnimationFrame(frame);
+      else done();
     };
     // The tab lets go of the finger: back out to its edge by itself - solid white first when it changes the song.
     if (k) cue.classList.add('armed');
     hideCue();
-    run = { raf: requestAnimationFrame(frame), finish: () => { cancelAnimationFrame(run.raf); s.x = to; render(to, k, 1); done(); } };
+    run = {
+      raf: requestAnimationFrame(frame),
+      finish: () => {
+        cancelAnimationFrame(run.raf);
+        s.x = to;
+        render(to, k, 1);
+        done();
+      },
+    };
   }
 
   // The chosen card is exactly where the cover was: hand over in one frame.
@@ -160,7 +277,8 @@
       artEl.classList.toggle('art-wait', !song);
       // The old song's video went off screen with its card: gone now (it used to sit over the new card until the song's
       // details arrived), the box back to the card's square, the new video in if it's loaded (features.js videoHandover).
-      if (song) window.videoHandover?.('landed', 0, song.id); else $('mv')?.style.setProperty('visibility', 'hidden');
+      if (song) window.videoHandover?.('landed', 0, song.id);
+      else $('mv')?.style.setProperty('visibility', 'hidden');
     }
     reset();
     if (song) window.swipeLand?.(song);
@@ -168,86 +286,183 @@
   }
 
   const blocked = e => e.target.closest?.('button, input, select, a, #ctl, #tl, #deck');
-  addEventListener('touchstart', e => {
-    const z = zone();
-    log('start', z?.id, e.target.id || e.target.className, !!run);
-    // (Settings -> Swipe the cover to skip only turns the sideways swipe off: taps and the swipe up still work.)
-    if (!z || document.body.classList.contains('clock') || e.touches.length !== 1 || !z.contains(e.target) || blocked(e)) {
-      if (e.touches.length > 1 && g?.on) { if (g.up) upEnd(false); else { g.x = 0; settle(0); } }
-      return;
-    }
-    if (run) run.finish(); // a swipe still settling: finish it now, then this touch starts a fresh one
-    begin(e.touches[0], z);
-  }, { capture: true, passive: true });
+  addEventListener(
+    'touchstart',
+    e => {
+      const z = zone();
+      log('start', z?.id, e.target.id || e.target.className, !!run);
+      // (Settings -> Swipe the cover to skip only turns the sideways swipe off: taps and the swipe up still work.)
+      if (
+        !z ||
+        document.body.classList.contains('clock') ||
+        e.touches.length !== 1 ||
+        !z.contains(e.target) ||
+        blocked(e)
+      ) {
+        if (e.touches.length > 1 && g?.on) {
+          if (g.up) upEnd(false);
+          else {
+            g.x = 0;
+            settle(0);
+          }
+        }
+        return;
+      }
+      if (run) run.finish(); // a swipe still settling: finish it now, then this touch starts a fresh one
+      begin(e.touches[0], z);
+    },
+    { capture: true, passive: true },
+  );
 
   // Swipe up on the cover (or the song card): play / pause. It lifts with the finger on a rubber band, ticks once letting
   // go would toggle, and on release glides back into its new pose (the paused shrink) while the play / pause pulse runs.
   const LIFT = 9; // vmin: the most it rises
-  const upEl = () => g.cov ? artEl : g.z;
+  const upEl = () => (g.cov ? artEl : g.z);
   function upMove(dy) {
-    const most = LIFT * Math.min(innerWidth, innerHeight) / 100, y = -most * (1 - Math.exp(Math.min(0, dy) / (most * 1.6)));
+    const most = (LIFT * Math.min(innerWidth, innerHeight)) / 100,
+      y = -most * (1 - Math.exp(Math.min(0, dy) / (most * 1.6)));
     upEl().style.transform = `${g.base}translateY(${(y / g.s0).toFixed(2)}px)`;
     const armed = dy < -most * 1.25 || (dy < -most * 0.5 && g.v < -0.6); // ~11 vmin, or a flick
-    if (armed !== !!g.armed) { g.armed = armed; if (armed) buzz(); }
+    if (armed !== !!g.armed) {
+      g.armed = armed;
+      if (armed) buzz();
+    }
   }
   function upEnd(go) {
-    const el = upEl(), last = el.style.transform;
+    const el = upEl(),
+      last = el.style.transform;
     if (go) $('pp').onclick(); // same path as the button: optimistic state, the pulse, the command
-    reset(); g = null;
+    reset();
+    g = null;
     // offset 0: FROM the lifted pose to wherever CSS now puts it. A lone keyframe is the END of an animation - the cover
     // jumped to its new pose, rose back to the lifted one and snapped down again (two moves for one swipe).
-    if (last) el.animate([{ transform: last, offset: 0 }], { duration: ms(520), easing: 'cubic-bezier(.34,1.45,.64,1)' });
+    if (last)
+      el.animate([{ transform: last, offset: 0 }], { duration: ms(520), easing: 'cubic-bezier(.34,1.45,.64,1)' });
   }
 
-  addEventListener('touchmove', e => {
-    if (!g || run || e.touches.length !== 1) return;
-    const t = e.touches[0], dx = t.clientX - g.x0, dy = t.clientY - g.y0;
-    if (!g.on) {
-      const ax = Math.abs(dx), ay = Math.abs(dy);
-      if (ay > 12 && ay > ax) { if (dy > 0) { g = null; return; } g.up = true; } // down: not ours; up: play / pause
-      else if (ax < 10 || ax < ay * 1.3) return;
-      else if (!S.swipe) { g = null; return; }
-      if (!Gesture.claim('cover')) { g = null; return; }
-      g.on = true; g.x0 = t.clientX; g.y0 = t.clientY; // start from here: no jump by the distance it took to decide
-      if (!g.up) { // read the neighbours now, not on finger-down: a swipe finished by this touch has swapped the song since
-        const nb = window.neighbours?.() || { next: [], prev: [] }; g.next = nb.next; g.prev = nb.prev;
+  addEventListener(
+    'touchmove',
+    e => {
+      if (!g || run || e.touches.length !== 1) return;
+      const t = e.touches[0],
+        dx = t.clientX - g.x0,
+        dy = t.clientY - g.y0;
+      if (!g.on) {
+        const ax = Math.abs(dx),
+          ay = Math.abs(dy);
+        if (ay > 12 && ay > ax) {
+          if (dy > 0) {
+            g = null;
+            return;
+          }
+          g.up = true;
+        } // down: not ours; up: play / pause
+        else if (ax < 10 || ax < ay * 1.3) return;
+        else if (!S.swipe) {
+          g = null;
+          return;
+        }
+        if (!Gesture.claim('cover')) {
+          g = null;
+          return;
+        }
+        g.on = true;
+        g.x0 = t.clientX;
+        g.y0 = t.clientY; // start from here: no jump by the distance it took to decide
+        if (!g.up) {
+          // read the neighbours now, not on finger-down: a swipe finished by this touch has swapped the song since
+          const nb = window.neighbours?.() || { next: [], prev: [] };
+          g.next = nb.next;
+          g.prev = nb.prev;
+        }
+        if (g.cov) {
+          const m = getComputedStyle(artEl).transform;
+          g.base = m && m !== 'none' ? m + ' ' : '';
+          g.s0 = scaleOf(artEl);
+        }
+        if (g.cov) body.classList.add('art-dragging');
+        else g.z.style.transition = 'none'; // #left eases its transform (clock view): the drag must follow the finger 1:1
+        clearTimeout(tapT);
+        tapT = 0;
       }
-      if (g.cov) { const m = getComputedStyle(artEl).transform; g.base = m && m !== 'none' ? m + ' ' : ''; g.s0 = scaleOf(artEl); }
-      if (g.cov) body.classList.add('art-dragging');
-      else g.z.style.transition = 'none'; // #left eases its transform (clock view): the drag must follow the finger 1:1
-      clearTimeout(tapT); tapT = 0;
-    }
-    const now = performance.now();
-    if (g.up) { g.v = g.v * 0.4 + 0.6 * (t.clientY - g.ly) / Math.max(1, now - g.lt); g.ly = t.clientY; g.lt = now; return upMove(t.clientY - g.y0); }
-    g.v = g.v * 0.4 + 0.6 * (t.clientX - g.lx) / Math.max(1, now - g.lt); g.lx = t.clientX; g.lt = now;
-    g.x = band(t.clientX - g.x0);
-    render(g.x, aim(g.x));
-  }, { capture: true, passive: true });
+      const now = performance.now();
+      if (g.up) {
+        g.v = g.v * 0.4 + (0.6 * (t.clientY - g.ly)) / Math.max(1, now - g.lt);
+        g.ly = t.clientY;
+        g.lt = now;
+        return upMove(t.clientY - g.y0);
+      }
+      g.v = g.v * 0.4 + (0.6 * (t.clientX - g.lx)) / Math.max(1, now - g.lt);
+      g.lx = t.clientX;
+      g.lt = now;
+      g.x = band(t.clientX - g.x0);
+      render(g.x, aim(g.x));
+    },
+    { capture: true, passive: true },
+  );
 
-  addEventListener('touchend', e => {
-    log('end', !!g, !!run, g?.on, g && Math.round(g.x), g && g.v.toFixed(2));
-    if (!g || run || e.touches.length) return;
-    const s = g, t = e.changedTouches[0];
-    if (!s.on) { g = null; if (s.cov && s.z.contains(e.target)) tap(t, s); return; }
-    if (s.up) return upEnd(!!s.armed);
-    // where it would end up at this speed; a flick counts even when short, a flick back cancels
-    let k = aim(band(s.x + s.v * 130));
-    const flick = Math.abs(s.v) > 0.5 && Math.abs(s.x) > s.step * 0.06;
-    if (flick && Math.sign(s.v) !== Math.sign(s.x)) k = 0;
-    else if (flick && !k) k = s.x < 0 ? 1 : -1;
-    settle(k);
-  }, { capture: true, passive: true });
-  addEventListener('touchcancel', () => { if (g?.up && g.on) upEnd(false); else if (g?.on && !run) settle(0); else if (!run) g = null; }, { capture: true, passive: true });
+  addEventListener(
+    'touchend',
+    e => {
+      log('end', !!g, !!run, g?.on, g && Math.round(g.x), g && g.v.toFixed(2));
+      if (!g || run || e.touches.length) return;
+      const s = g,
+        t = e.changedTouches[0];
+      if (!s.on) {
+        g = null;
+        if (s.cov && s.z.contains(e.target)) tap(t, s);
+        return;
+      }
+      if (s.up) return upEnd(!!s.armed);
+      // where it would end up at this speed; a flick counts even when short, a flick back cancels
+      let k = aim(band(s.x + s.v * 130));
+      const flick = Math.abs(s.v) > 0.5 && Math.abs(s.x) > s.step * 0.06;
+      if (flick && Math.sign(s.v) !== Math.sign(s.x)) k = 0;
+      else if (flick && !k) k = s.x < 0 ? 1 : -1;
+      settle(k);
+    },
+    { capture: true, passive: true },
+  );
+  addEventListener(
+    'touchcancel',
+    () => {
+      if (g?.up && g.on) upEnd(false);
+      else if (g?.on && !run) settle(0);
+      else if (!run) g = null;
+    },
+    { capture: true, passive: true },
+  );
 
   // A tap on the cover: show / hide the controls - a double tap likes instead (the first tap waits a moment for it).
   function tap(t, s) {
-    log('tap', Gesture.tap(), Math.round(t.clientX - s.x0), Math.round(t.clientY - s.y0), Math.round(performance.now() - s.t0), !!tapT);
-    if (!Gesture.tap() || Math.abs(t.clientX - s.x0) > 12 || Math.abs(t.clientY - s.y0) > 12 || performance.now() - s.t0 > 350) return;
+    log(
+      'tap',
+      Gesture.tap(),
+      Math.round(t.clientX - s.x0),
+      Math.round(t.clientY - s.y0),
+      Math.round(performance.now() - s.t0),
+      !!tapT,
+    );
+    if (
+      !Gesture.tap() ||
+      Math.abs(t.clientX - s.x0) > 12 ||
+      Math.abs(t.clientY - s.y0) > 12 ||
+      performance.now() - s.t0 > 350
+    )
+      return;
     const toggle = () => window.showUi(!body.classList.contains('ui'));
     if (!(S.doubleTapLike && S.showLiked)) return toggle();
     const now = performance.now();
-    if (tapT && now - lastTapAt < 320) { clearTimeout(tapT); tapT = 0; window.likeTap?.(t.clientX, t.clientY); return; }
+    if (tapT && now - lastTapAt < 320) {
+      clearTimeout(tapT);
+      tapT = 0;
+      window.likeTap?.(t.clientX, t.clientY);
+      return;
+    }
     lastTapAt = now;
-    tapT = setTimeout(() => { tapT = 0; toggle(); }, 300);
+    tapT = setTimeout(() => {
+      tapT = 0;
+      toggle();
+    }, 300);
   }
 })();

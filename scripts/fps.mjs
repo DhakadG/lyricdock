@@ -8,5 +8,9 @@ const expr = `(async () => { ${pre}; await new Promise(r => setTimeout(r, 1500))
       r(JSON.stringify({ p50: q(.5), p90: q(.9), p99: q(.99), slow: d.filter(x => x > 20).length + '/' + d.length })); } };
     requestAnimationFrame(f); }); })()`;
 const r = await call('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
-console.log(r.exceptionDetails ? 'ERROR ' + (r.exceptionDetails.exception?.description ?? r.exceptionDetails.text) : r.result.value);
+console.log(
+  r.exceptionDetails
+    ? 'ERROR ' + (r.exceptionDetails.exception?.description ?? r.exceptionDetails.text)
+    : r.result.value,
+);
 ws.close();

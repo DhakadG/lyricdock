@@ -24,28 +24,28 @@ Status: proposal (2026-10-01). Scope: a browser build (Windows/any device) and a
 
 ### 1.2 Every `Dock.*` call, and its browser replacement
 
-| Call (where) | Browser replacement |
-|---|---|
-| `send` (app.js:26) | No-op. `Rtc.send` on the same line already covers it. |
-| `version` (app.js:410, features.js:1101) | Constant stamped at deploy from `extension/version.json`. |
-| `lastCrash` (app.js:412) | Return `''`. Optionally keep the last `window.onerror` in localStorage. |
-| `setChannel`, `checkUpdate` (app.js:418) | `navigator.serviceWorker.getRegistration().update()`, then answer `dock({type:'update',state:'current'\|'ready'})`. The install action reloads the page. |
-| `model` (app.js:588, rtc.js:177) | UA-derived name ("Windows browser", "iPhone"). It shows as the device name in Spotify's "Find devices". |
-| `ip` (app.js:589, rtc.js:97) | Return `''`. Browsers can't read the LAN IP; it was only a hint. |
-| `insets` (app.js:607) | Throw, so the existing `applyInsets()` fallback runs. Use CSS `env(safe-area-inset-*)`. |
-| `setOrientation` (app.js:681) | `screen.orientation.lock()`. It works only in fullscreen on Android Chrome and is unsupported on iOS and desktop, so swallow errors. |
-| `webCacheBytes`, `clearWebCache` (features.js:939/948) | Return `0` / no-op. The browser HTTP cache isn't scriptable; the existing `storage.estimate` line covers the total. |
-| `kioskOn`, `leaveKiosk` (settings.js:283-285, features.js:983) | `false` / no-op. The row hides itself through `when`. |
-| `canReopen`, `askReopen` (settings.js:262-264) | `false` / no-op. Hide the row on the web. |
-| `login` (spotify.js:26) | `location.assign(url)`: a full-page redirect to `https://app.lyricdock.losthusky.qzz.io/callback`. Two code changes: make `REDIRECT` `location.origin+'/callback'` when not in the WebView, and persist `pending` (verifier/state) in localStorage so it survives the redirect. On load with `?code=`, call `Web.onAuth({url: location.href})`. Use a redirect, not a popup: popups and `opener` are unreliable in an iOS standalone PWA. |
-| `fetchLyrics` (api.js:28) | Drop for v1 (the existing 8 s timeout resolves `null`). The Spicy key requires "no Origin header", which a browser can't do. Later: a proxy route on the existing Worker. |
-| `call('keepAwake')` (features.js:293) | **Screen Wake Lock API** (`navigator.wakeLock.request('screen')`). Re-acquire on `visibilitychange`. |
-| `call('vibrate')` (features.js:206, swipe.js:23, flipclock.js:164) | `navigator.vibrate` (Android Chrome only; a no-op on iOS and desktop). |
-| `call('battery')` (features.js:272) | `navigator.getBattery()` (Chromium only), cached into a sync `"pct,charging"` string; `''` elsewhere. |
-| `call('brightness')` (features.js:1081) | Drop. There is no web API. |
-| `call('media')` (features.js:1083) | Drop. Media Session only surfaces while the page plays audio. |
-| `call('setVolKeys')` (features.js:662) | Drop. Optionally map ArrowUp/ArrowDown keys to the existing `window.volKey`. |
-| `call('wake')` (features.js:975) | No-op. A page cannot turn on the screen. |
+| Call (where)                                                       | Browser replacement                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `send` (app.js:26)                                                 | No-op. `Rtc.send` on the same line already covers it.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `version` (app.js:410, features.js:1101)                           | Constant stamped at deploy from `extension/version.json`.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `lastCrash` (app.js:412)                                           | Return `''`. Optionally keep the last `window.onerror` in localStorage.                                                                                                                                                                                                                                                                                                                                                                   |
+| `setChannel`, `checkUpdate` (app.js:418)                           | `navigator.serviceWorker.getRegistration().update()`, then answer `dock({type:'update',state:'current'\|'ready'})`. The install action reloads the page.                                                                                                                                                                                                                                                                                  |
+| `model` (app.js:588, rtc.js:177)                                   | UA-derived name ("Windows browser", "iPhone"). It shows as the device name in Spotify's "Find devices".                                                                                                                                                                                                                                                                                                                                   |
+| `ip` (app.js:589, rtc.js:97)                                       | Return `''`. Browsers can't read the LAN IP; it was only a hint.                                                                                                                                                                                                                                                                                                                                                                          |
+| `insets` (app.js:607)                                              | Throw, so the existing `applyInsets()` fallback runs. Use CSS `env(safe-area-inset-*)`.                                                                                                                                                                                                                                                                                                                                                   |
+| `setOrientation` (app.js:681)                                      | `screen.orientation.lock()`. It works only in fullscreen on Android Chrome and is unsupported on iOS and desktop, so swallow errors.                                                                                                                                                                                                                                                                                                      |
+| `webCacheBytes`, `clearWebCache` (features.js:939/948)             | Return `0` / no-op. The browser HTTP cache isn't scriptable; the existing `storage.estimate` line covers the total.                                                                                                                                                                                                                                                                                                                       |
+| `kioskOn`, `leaveKiosk` (settings.js:283-285, features.js:983)     | `false` / no-op. The row hides itself through `when`.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `canReopen`, `askReopen` (settings.js:262-264)                     | `false` / no-op. Hide the row on the web.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `login` (spotify.js:26)                                            | `location.assign(url)`: a full-page redirect to `https://app.lyricdock.losthusky.qzz.io/callback`. Two code changes: make `REDIRECT` `location.origin+'/callback'` when not in the WebView, and persist `pending` (verifier/state) in localStorage so it survives the redirect. On load with `?code=`, call `Web.onAuth({url: location.href})`. Use a redirect, not a popup: popups and `opener` are unreliable in an iOS standalone PWA. |
+| `fetchLyrics` (api.js:28)                                          | Drop for v1 (the existing 8 s timeout resolves `null`). The Spicy key requires "no Origin header", which a browser can't do. Later: a proxy route on the existing Worker.                                                                                                                                                                                                                                                                 |
+| `call('keepAwake')` (features.js:293)                              | **Screen Wake Lock API** (`navigator.wakeLock.request('screen')`). Re-acquire on `visibilitychange`.                                                                                                                                                                                                                                                                                                                                      |
+| `call('vibrate')` (features.js:206, swipe.js:23, flipclock.js:164) | `navigator.vibrate` (Android Chrome only; a no-op on iOS and desktop).                                                                                                                                                                                                                                                                                                                                                                    |
+| `call('battery')` (features.js:272)                                | `navigator.getBattery()` (Chromium only), cached into a sync `"pct,charging"` string; `''` elsewhere.                                                                                                                                                                                                                                                                                                                                     |
+| `call('brightness')` (features.js:1081)                            | Drop. There is no web API.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `call('media')` (features.js:1083)                                 | Drop. Media Session only surfaces while the page plays audio.                                                                                                                                                                                                                                                                                                                                                                             |
+| `call('setVolKeys')` (features.js:662)                             | Drop. Optionally map ArrowUp/ArrowDown keys to the existing `window.volKey`.                                                                                                                                                                                                                                                                                                                                                              |
+| `call('wake')` (features.js:975)                                   | No-op. A page cannot turn on the screen.                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Fullscreen: add a "Full screen" button that calls `document.documentElement.requestFullscreen()` (it needs a user gesture; works on desktop and Android, not on iPhone). Set the manifest to `display: "fullscreen"` with `"standalone"` as the fallback.
 
@@ -53,13 +53,13 @@ Shim pattern (the whole idea): `if (!window.Dock) window.Dock = { version: () =>
 
 ### 1.3 Getting now-playing data into a browser page
 
-| Path | Chrome/Edge | Firefox | Safari (mac/iOS) | Verdict |
-|---|---|---|---|---|
-| **WebRTC pairing via ntfy.sh** (`rtc.js`) | Yes | Yes | Yes | **Default.** Already built; the extension already supports several paired displays. Away from home it needs TURN (the existing `ice` setting). |
-| **Account mode** (Web API, PKCE) | Yes | Yes | Yes | **Second source.** Needs no PC. The user adds `https://app.lyricdock.losthusky.qzz.io/callback` as a redirect URI in their own Spotify app. Since Feb/Mar 2026, dev-mode apps need the owner on **Premium**, 1 Client ID per developer and at most **5 users**. Bring-your-own-Client-ID keeps working. |
-| Helper relay at `http://127.0.0.1:8977` (same PC) | Allowed (loopback isn't mixed content), but **LNA prompt** ("Apps on device"). WebSocket is covered since Chrome 147; Chrome 156 (20 Oct 2026) removes the enterprise opt-out. | Allowed | **Blocked** (Safari treats loopback http as mixed content) | Optional. Prompt friction; also accept `127.0.0.1` in the `relayUrl` check (it already matches the IP regex). |
-| Helper relay at `http://<LAN IP>:8977` | Blocked (mixed content) | Blocked | Blocked | Doesn't work from an https page. It would need https/wss with a real certificate. |
-| `ws://127.0.0.1:8975` (adb) | n/a | n/a | n/a | The page can't be a server. Dev-only; ignore. |
+| Path                                              | Chrome/Edge                                                                                                                                                                    | Firefox | Safari (mac/iOS)                                           | Verdict                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WebRTC pairing via ntfy.sh** (`rtc.js`)         | Yes                                                                                                                                                                            | Yes     | Yes                                                        | **Default.** Already built; the extension already supports several paired displays. Away from home it needs TURN (the existing `ice` setting).                                                                                                                                                          |
+| **Account mode** (Web API, PKCE)                  | Yes                                                                                                                                                                            | Yes     | Yes                                                        | **Second source.** Needs no PC. The user adds `https://app.lyricdock.losthusky.qzz.io/callback` as a redirect URI in their own Spotify app. Since Feb/Mar 2026, dev-mode apps need the owner on **Premium**, 1 Client ID per developer and at most **5 users**. Bring-your-own-Client-ID keeps working. |
+| Helper relay at `http://127.0.0.1:8977` (same PC) | Allowed (loopback isn't mixed content), but **LNA prompt** ("Apps on device"). WebSocket is covered since Chrome 147; Chrome 156 (20 Oct 2026) removes the enterprise opt-out. | Allowed | **Blocked** (Safari treats loopback http as mixed content) | Optional. Prompt friction; also accept `127.0.0.1` in the `relayUrl` check (it already matches the IP regex).                                                                                                                                                                                           |
+| Helper relay at `http://<LAN IP>:8977`            | Blocked (mixed content)                                                                                                                                                        | Blocked | Blocked                                                    | Doesn't work from an https page. It would need https/wss with a real certificate.                                                                                                                                                                                                                       |
+| `ws://127.0.0.1:8975` (adb)                       | n/a                                                                                                                                                                            | n/a     | n/a                                                        | The page can't be a server. Dev-only; ignore.                                                                                                                                                                                                                                                           |
 
 Side risk for the existing product: Spotify desktop is Chromium (CEF). If its CEF picks up LNA, the extension's `127.0.0.1:8977` helper connection may start prompting or failing. Watch the Spotify client updates.
 
@@ -72,32 +72,32 @@ Side risk for the existing product: Spotify desktop is Chromium (CEF). If its CE
 
 ### 1.5 Alternative: Windows window via the Tauri helper
 
-| | Installed PWA (Edge/Chrome "Install app") | Tauri helper window |
-|---|---|---|
-| Own window, taskbar icon | Yes | Yes |
-| Always-on-top, borderless, pick a monitor | No | Yes (a few lines of `WebviewWindow`) |
-| Wake lock, battery, fullscreen | Web APIs | The same web APIs (WebView2); could add native commands |
-| Updates | Instant (SW) | Load the hosted URL, so also instant |
-| Works without the helper / on Mac, Linux, iOS | Yes | No |
+|                                               | Installed PWA (Edge/Chrome "Install app") | Tauri helper window                                     |
+| --------------------------------------------- | ----------------------------------------- | ------------------------------------------------------- |
+| Own window, taskbar icon                      | Yes                                       | Yes                                                     |
+| Always-on-top, borderless, pick a monitor     | No                                        | Yes (a few lines of `WebviewWindow`)                    |
+| Wake lock, battery, fullscreen                | Web APIs                                  | The same web APIs (WebView2); could add native commands |
+| Updates                                       | Instant (SW)                              | Load the hosted URL, so also instant                    |
+| Works without the helper / on Mac, Linux, iOS | Yes                                       | No                                                      |
 
-**Decision: PWA first.** Later, add a helper menu item, "Open dock window", that opens the *hosted URL* in an always-on-top WebviewWindow (about 0.5 day). It shares one codebase and adds no second shim.
+**Decision: PWA first.** Later, add a helper menu item, "Open dock window", that opens the _hosted URL_ in an always-on-top WebviewWindow (about 0.5 day). It shares one codebase and adds no second shim.
 
 ## 2. iPhone
 
 ### 2.1 (a) Home Screen PWA: what works on iOS 26 Safari
 
-| Need | iOS status | Mitigation |
-|---|---|---|
-| Standalone (no browser chrome) | Yes. Since iOS 26, any site added to the Home Screen opens as a web app. | Add `apple-touch-icon` and a `black-translucent` status bar. |
-| Fullscreen API | **Not on iPhone** (iPad only). The status bar stays visible. | Standalone + `viewport-fit=cover`. |
-| Keep screen awake | Wake Lock in Home Screen apps since 18.4; regressions reported on 26.1. | Re-acquire on `visibilitychange`. Fallback: a muted looping inline `<video>` (NoSleep trick). |
-| Orientation lock | **No** | The layout must handle both orientations (CSS). Hide the orientation setting on iOS. |
-| Muted autoplay inline video | Yes, with `muted playsinline` | Already the pattern for animated covers. |
-| Cache Storage / localStorage | Quota up to about 60% of disk per origin. LRU eviction under pressure. Home Screen apps are separate from Safari (log in again inside the app). | Cache is best-effort (it already is). Call `navigator.storage.persist()`. |
-| WebRTC data channel | Yes | JS suspends when the screen locks or the app is backgrounded. Rely on the existing reconnect. |
-| WebSocket to LAN IP from https | **Blocked** (mixed content). `wss://ntfy.sh` works. | The helper relay is unusable. Use ntfy (or later, signalling on our own Worker). |
-| Vibrate, battery, brightness | No | Shim no-ops. |
-| Web Push | Yes (16.4+, Home Screen only) | Not needed. |
+| Need                           | iOS status                                                                                                                                      | Mitigation                                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Standalone (no browser chrome) | Yes. Since iOS 26, any site added to the Home Screen opens as a web app.                                                                        | Add `apple-touch-icon` and a `black-translucent` status bar.                                  |
+| Fullscreen API                 | **Not on iPhone** (iPad only). The status bar stays visible.                                                                                    | Standalone + `viewport-fit=cover`.                                                            |
+| Keep screen awake              | Wake Lock in Home Screen apps since 18.4; regressions reported on 26.1.                                                                         | Re-acquire on `visibilitychange`. Fallback: a muted looping inline `<video>` (NoSleep trick). |
+| Orientation lock               | **No**                                                                                                                                          | The layout must handle both orientations (CSS). Hide the orientation setting on iOS.          |
+| Muted autoplay inline video    | Yes, with `muted playsinline`                                                                                                                   | Already the pattern for animated covers.                                                      |
+| Cache Storage / localStorage   | Quota up to about 60% of disk per origin. LRU eviction under pressure. Home Screen apps are separate from Safari (log in again inside the app). | Cache is best-effort (it already is). Call `navigator.storage.persist()`.                     |
+| WebRTC data channel            | Yes                                                                                                                                             | JS suspends when the screen locks or the app is backgrounded. Rely on the existing reconnect. |
+| WebSocket to LAN IP from https | **Blocked** (mixed content). `wss://ntfy.sh` works.                                                                                             | The helper relay is unusable. Use ntfy (or later, signalling on our own Worker).              |
+| Vibrate, battery, brightness   | No                                                                                                                                              | Shim no-ops.                                                                                  |
+| Web Push                       | Yes (16.4+, Home Screen only)                                                                                                                   | Not needed.                                                                                   |
 
 Net: everything core works (lyrics, covers, RTC pairing, account mode). The losses are orientation lock, a hidden status bar, haptics and brightness. Wake lock is the one real risk.
 
@@ -114,25 +114,25 @@ TestFlight (external testers, 90-day builds), the App Store, ad-hoc distribution
 
 ### 2.4 Testing without an iPhone
 
-| Tool | Catches | Cost |
-|---|---|---|
-| Playwright WebKit on Windows (CI) | WebKit JS/CSS engine bugs, layout | Free |
-| iOS Simulator on a GH macOS runner (`xcrun simctl openurl` plus `simctl io screenshot`) | Real iOS Safari rendering, safe areas, screenshots per release | Free (public repo) |
-| Appetize.io (upload the simulator `.app`) | The Capacitor build interactively in the browser, no signing | Free tier (minutes-limited) |
-| BrowserStack / LambdaTest real iPhones | Wake lock, Add to Home Screen, WebRTC on real hardware | Trial; BrowserStack has an open-source program |
-| A friend's iPhone + `?debug` loading Eruda (an in-page console) | Real-world sanity check | Free |
+| Tool                                                                                    | Catches                                                        | Cost                                           |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------- |
+| Playwright WebKit on Windows (CI)                                                       | WebKit JS/CSS engine bugs, layout                              | Free                                           |
+| iOS Simulator on a GH macOS runner (`xcrun simctl openurl` plus `simctl io screenshot`) | Real iOS Safari rendering, safe areas, screenshots per release | Free (public repo)                             |
+| Appetize.io (upload the simulator `.app`)                                               | The Capacitor build interactively in the browser, no signing   | Free tier (minutes-limited)                    |
+| BrowserStack / LambdaTest real iPhones                                                  | Wake lock, Add to Home Screen, WebRTC on real hardware         | Trial; BrowserStack has an open-source program |
+| A friend's iPhone + `?debug` loading Eruda (an in-page console)                         | Real-world sanity check                                        | Free                                           |
 
 Not possible on Windows: Safari itself, or Web Inspector without a Mac.
 
 ### 2.5 Phased path (recommended)
 
-| Phase | Deliverable | Effort | Risk |
-|---|---|---|---|
-| 1 | Web shim, redirect fix, manifest/SW, `/player`. Deploy to `app.lyricdock…`. Test in Edge/Chrome/Firefox with RTC pairing and account mode. | 1–2 days | Low. The page already tolerates missing `Dock`. |
-| 2 | iOS PWA hardening: wake-lock fallback, orientation CSS, Home Screen install hint, Playwright-WebKit and simulator-screenshot CI, one real-device session. | 2–3 days | Medium. Wake lock and backgrounding behaviour can't be fully verified without hardware. |
-| 3 (optional) | Helper "Open dock window" (always-on-top). | 0.5 day | Low |
-| 4 (optional) | Capacitor iOS: unsigned IPA plus simulator build in CI, Appetize, Sideloadly/SideStore for testers. | 3–5 days | High. Blind builds and 7-day expiry. |
-| 5 (only if demanded) | $99 account, TestFlight, then maybe the App Store. | 1–2 days plus review | High (review/legal) |
+| Phase                | Deliverable                                                                                                                                               | Effort               | Risk                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------- |
+| 1                    | Web shim, redirect fix, manifest/SW, `/player`. Deploy to `app.lyricdock…`. Test in Edge/Chrome/Firefox with RTC pairing and account mode.                | 1–2 days             | Low. The page already tolerates missing `Dock`.                                         |
+| 2                    | iOS PWA hardening: wake-lock fallback, orientation CSS, Home Screen install hint, Playwright-WebKit and simulator-screenshot CI, one real-device session. | 2–3 days             | Medium. Wake lock and backgrounding behaviour can't be fully verified without hardware. |
+| 3 (optional)         | Helper "Open dock window" (always-on-top).                                                                                                                | 0.5 day              | Low                                                                                     |
+| 4 (optional)         | Capacitor iOS: unsigned IPA plus simulator build in CI, Appetize, Sideloadly/SideStore for testers.                                                       | 3–5 days             | High. Blind builds and 7-day expiry.                                                    |
+| 5 (only if demanded) | $99 account, TestFlight, then maybe the App Store.                                                                                                        | 1–2 days plus review | High (review/legal)                                                                     |
 
 ## 3. First 5 steps
 

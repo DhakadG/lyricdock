@@ -11,8 +11,8 @@ New-Item -ItemType Directory -Force $tmp | Out-Null
 $url = ([uri]"$PSScriptRoot\flip-assets.html").AbsoluteUri
 $names = foreach ($t in '', 'light-') { @(0..9 | ForEach-Object { "${t}card-$_"; "${t}numeral-$_" }) + "${t}card-blank" }
 foreach ($n in $names) {
-  & $edge --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --default-background-color=00000000 `
-    --window-size=300,440 "--user-data-dir=$tmp\profile" "--screenshot=$tmp\$n.png" "$url#$n" 2>$null | Out-Null
-  magick "$tmp\$n.png" -define webp:alpha-quality=100 -quality 88 (Join-Path $out "fc-$n.webp")
+    & $edge --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --default-background-color=00000000 `
+        --window-size=300, 440 "--user-data-dir=$tmp\profile" "--screenshot=$tmp\$n.png" "$url#$n" 2>$null | Out-Null
+    magick "$tmp\$n.png" -define webp:alpha-quality=100 -quality 88 (Join-Path $out "fc-$n.webp")
 }
 Write-Host "wrote $($names.Count) images to $out"

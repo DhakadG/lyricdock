@@ -4,3 +4,10 @@
 *.sig
 graphify-out/
 repo-treemap.html
+# Rust: rustfmt (scripts/format.ps1); the XML plugin would claim .rs
+*.rs
+# not shell scripts, though the sh plugin claims them
+.gitignore
+.gitattributes
+**/_headers
+.prettierignore
