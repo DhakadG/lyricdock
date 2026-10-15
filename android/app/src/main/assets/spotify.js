@@ -194,13 +194,14 @@ const Web = (() => {
     else if (cmd === 'repeat') r = await api('PUT', `/me/player/repeat?state=${['off', 'context', 'track'][Number.isFinite(arg) ? arg % 3 : ((state.repeat || 0) + 1) % 3]}`);
     else if (cmd === 'play' && arg?.uri) { if (arg.shuffle) await api('PUT', '/me/player/shuffle?state=true'); r = await api('PUT', '/me/player/play', /^spotify:(playlist|album|artist|show|collection)/.test(arg.uri) ? { context_uri: arg.uri }
       : arg.ctx && !/^spotify:collection/.test(arg.ctx) ? { context_uri: arg.ctx, offset: { uri: arg.uri } } : { uris: [arg.uri] }); }
+    else if (cmd === 'device' && /^[\w-]{1,64}$/.test(arg?.id || '')) r = await api('PUT', '/me/player', { device_ids: [arg.id], play: true });
     else if (cmd === 'heart' && cur) {
       const t = cur, like = t.liked = !t.liked;
       r = await api(like ? 'PUT' : 'DELETE', '/me/library?uris=' + encodeURIComponent(t.uri));
       if (!r || r.status >= 300) t.liked = !like;
     }
     // An idle iPhone stops being Spotify's active device (404): hand playback back to it once, then try again.
-    if (r?.status === 404 && lastDevice && !retried && cmd !== 'heart') {
+    if (r?.status === 404 && lastDevice && !retried && cmd !== 'heart' && cmd !== 'device') {
       const t = await api('PUT', '/me/player', { device_ids: [lastDevice] });
       if (t && t.status < 300) {
         if (cmd === 'toggle') state.playing = !state.playing; else if (cmd === 'shuffle') state.shuffle = !state.shuffle; // the retry flips it again
@@ -281,9 +282,13 @@ const Web = (() => {
     return r && r.status < 300 ? { ok: true } : { ok: false, error: r ? `HTTP ${r.status}` : 'offline' };
   }
 
+  // Spotify Connect devices (the Devices tab): tap one to play there. Restricted ones can't be controlled, so they're left out.
+  const deviceRows = ds => (ds || []).filter(d => d?.id && !d.is_restricted)
+    .map(d => ({ uri: `device:${d.id}`, device: d.id, title: d.name, sub: d.is_active ? `${d.type} · playing here` : d.type, dtype: d.type, live: d.is_active }));
   async function list(which, arg) {
     if (!loggedIn()) return { items: [], error: 'Sign in to your Spotify account first (Settings → Account).' };
     if (which === 'friends') return { items: [], error: 'Friend activity is only available through Spotify on your computer (desktop mode).' };
+    if (which === 'devices') return { items: deviceRows((await api('GET', '/me/player/devices'))?.json?.devices) };
     if (which === 'tracks') return arg ? browse(arg) : { items: [] };
     if (which === 'search') return arg ? search(arg) : { items: [] };
     if (which === 'queue') {

@@ -24,9 +24,8 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
 
   // iPhone / iPad give the sound to one app at a time (every browser there is Safari underneath): the loop below
   // starting paused Spotify playing on this same iPad, and Spotify in the background then refused to play again (403
-  // "Restriction violated", seen 2026-10-15). Spotify is in Control Center there anyway, so with Spotify on a phone or
-  // tablet the loop stays off; it still plays while Spotify is on a computer or a speaker. Unknown counts as here: with
-  // Spotify on a computer linked, the account isn't polled, and the old check read "no device" as safe and played anyway.
+  // "Restriction violated", seen 2026-10-15). Spotify is in Control Center there anyway, so the loop never plays there.
+  // lyricdockIosHere (Spotify playing on this iPhone / iPad, unknown counts as here) still decides install.js's tips.
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   window.lyricdockIosHere = () => ios && !/^(Computer|Speaker|TV|AVR|STB|AudioDongle|GameConsole|CastVideo|CastAudio|Automobile)$/i.test(window.playingOnType?.() || '');
   let silence = null, mediaOn = false;
@@ -144,10 +143,13 @@ window.LYRICDOCK_MINI = new URLSearchParams(location.search).get('mini') || '';
       ms.metadata = new MediaMetadata({ title, artist, artwork: art ? [{ src: art, sizes: '640x640' }] : [] });
       ms.playbackState = playing ? 'playing' : 'paused';
       try { if (P.dur) ms.setPositionState({ duration: P.dur / 1000, position: Math.max(0, Math.min(pos(), P.dur)) / 1000, playbackRate: 1 }); } catch (e) {}
+      // Never on iPhone / iPad: which device Spotify plays on is only known from a fresh beat, and a Home Screen app that
+      // missed one (just opened, Spotify switched to this iPad) played the loop and stopped Spotify here again (2026-10-15).
+      if (ios) return;
       const a = quiet();
-      if (!playing || window.lyricdockIosHere()) return a.pause();
-      // Autoplay rules: sound needs one click on the page first. Checked again then: by that tap Spotify may be playing here.
-      a.play().catch(() => addEventListener('pointerdown', () => mediaOn && P.playing && !window.lyricdockIosHere() && a.play().catch(() => {}), { once: true, capture: true }));
+      if (!playing) return a.pause();
+      // Autoplay rules: sound needs one click on the page first.
+      a.play().catch(() => addEventListener('pointerdown', () => mediaOn && P.playing && a.play().catch(() => {}), { once: true, capture: true }));
     },
     setVolKeys() {},
     wake() {}, // a page can't switch the screen on

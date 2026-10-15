@@ -375,7 +375,8 @@
   // A view stack: the tab at the bottom, each opened playlist / album / artist on top (Back pops it).
   // Rows: tap a song to play it (in the list's context), tap a playlist / album / artist to open it.
   // Swipe right = add to queue (queue tab: move to the top), swipe left = like / unlike (queue tab: remove).
-  const TABS = { queue: 'Nothing queued', recent: 'Nothing played yet', library: 'Your library is empty', search: 'Search songs, artists, albums and playlists', friends: 'No friend activity' };
+  const TABS = { queue: 'Nothing queued', recent: 'Nothing played yet', library: 'Your library is empty', search: 'Search songs, artists, albums and playlists', friends: 'No friend activity',
+    devices: 'No Spotify devices found. Open Spotify on the phone, computer or speaker you want, then come back here.' };
   let stack = [{ which: 'queue' }], items = [], viewData = null, searchT = 0;
   const view = () => stack[stack.length - 1];
   const I = {
@@ -384,6 +385,10 @@
     x: '<svg viewBox="0 0 24 24"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4z"/></svg>',
     top: '<svg viewBox="0 0 24 24"><path d="M5 4h14v2H5zm7 3 6 6h-4v7h-4v-7H6z"/></svg>',
     more: '<svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7-1.4-1.4 5.6-5.6-5.6-5.6z"/></svg>',
+    Computer: '<svg viewBox="0 0 24 24"><path d="M3 5h18v11H3zm2 2v7h14V7zM8 18h8v2H8z"/></svg>',
+    Smartphone: '<svg viewBox="0 0 24 24"><path d="M7 2h10v20H7zm2 2v14h6V4z"/></svg>',
+    Tablet: '<svg viewBox="0 0 24 24"><path d="M4 3h16v18H4zm2 2v12h12V5z"/></svg>',
+    Speaker: '<svg viewBox="0 0 24 24"><path d="M6 2h12v20H6zm6 9a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0-6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>',
   };
   document.querySelectorAll('#lists button').forEach(b => b.onclick = () => openList(b.dataset.list));
   document.querySelectorAll('#listTabs button').forEach(b => b.onclick = () => openList(b.dataset.tab));
@@ -484,14 +489,15 @@
   function row(x, i) {
     const now = i < 0, tab = stack[0].which, v = view(), q = tab === 'queue' && v.which === 'queue';
     let right = '';
-    if (x.friend) right = x.live ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="li-time">${esc(ago(x.time))}</span>`;
+    if (x.device) right = x.live ? '<span class="eq"><i></i><i></i><i></i></span>' : '';
+    else if (x.friend) right = x.live ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="li-time">${esc(ago(x.time))}</span>`;
     else if (x.box) right = `<span class="li-go">${I.more}</span>`;
     else if (isTrack(x) && !now) right = (q ? (x.queued ? `<button data-a="top" aria-label="Move to top">${I.top}</button><button data-a="remove" aria-label="Remove from queue">${I.x}</button>` : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`)
       : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`) + `<button data-a="like" class="${x.liked ? 'on' : ''}" aria-label="Like">${I.heart}</button>`;
     const time = x.time && !x.friend && tab === 'recent' ? `<span class="li-time">${esc(ago(x.time))}</span>` : '';
     return `<div class="li${now ? ' now' : ''}${x.box ? ' box' : ''}"${now ? '' : ` data-i="${i}"`}>
       <div class="li-swipe l">${q && x.queued ? I.x : I.heart}</div><div class="li-swipe r">${q && x.queued ? I.top : I.add}</div>
-      <div class="li-main"><div class="li-art${artBg(x.art)}${x.round || x.friend ? ' round' : ''}"${artStyle(x.art)}>${x.live ? '<b></b>' : ''}</div>
+      <div class="li-main"><div class="li-art${artBg(x.art)}${x.round || x.friend ? ' round' : ''}${x.device ? ' dev' : ''}"${artStyle(x.art)}>${x.device ? I[x.dtype] || I.Speaker : x.live ? '<b></b>' : ''}</div>
       <div class="li-txt"><div class="li-t">${esc(x.title)}</div><div class="li-s">${esc(x.sub || '')}</div>${x.ctxName ? `<div class="li-c">${esc(x.ctxName)}</div>` : ''}</div>
       <div class="li-r">${time}${right}</div></div></div>`;
   }
@@ -523,6 +529,11 @@
         return;
       }
       if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) return; // a scroll
+      if (x.device) {
+        cmdOf('device', { id: x.device });
+        window.notice?.(`Playing on ${x.title}`);
+        return document.body.classList.remove('lists-open');
+      }
       if (x.box) return browse(x.uri, x.title);
       const ctx = x.ctx || viewData?.ctx;
       cmdOf('play', { uri: x.uri, ctx });

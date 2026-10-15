@@ -133,7 +133,7 @@ const Settings = (() => {
       help: 'How the battery is drawn. It turns green while charging and red below 20 %.' },
     { k: 'statPos', label: 'Battery and time corner', type: 'choice', def: 'tr', local: true, when: s => s.battery || s.timeStyle !== 'off', opts: [['tr', 'Top right'], ['tl', 'Top left'], ['br', 'Bottom right'], ['bl', 'Bottom left']],
       help: 'Where the battery and the time sit. Top right steps aside while the controls are showing.' },
-    { k: 'mediaNotif', label: window.LYRICDOCK_WEB ? 'System media controls' : 'Media notification', type: 'toggle', def: true, local: true, when: () => app || (!!window.LYRICDOCK_WEB && !!navigator.mediaSession && !window.LYRICDOCK_MINI),
+    { k: 'mediaNotif', label: window.LYRICDOCK_WEB ? 'System media controls' : 'Media notification', type: 'toggle', def: false, local: true, when: () => app || (!!window.LYRICDOCK_WEB && !!navigator.mediaSession && !window.LYRICDOCK_MINI),
       desc: window.LYRICDOCK_WEB ? 'The song in your computer\'s media controls and keyboard play / next / previous keys' : undefined, help: 'Shows the song with previous / play-pause / next in the notification shade and on the lock screen (normal, non-kiosk use).' },
     { k: 'lockLyric', label: 'Lyrics on the lock screen', desc: 'The line being sung, in the lock-screen player', type: 'toggle', def: true, local: true, when: s => (app || (!!window.LYRICDOCK_WEB && !window.LYRICDOCK_MINI)) && s.mediaNotif,
       help: 'The lock screen and notification player show the current lyric line under the song title (instead of the artist), line by line.' },

@@ -237,13 +237,23 @@ body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / 
   body.layout-lyrics #wrap, body.layout-cinema #wrap { padding-top: calc(var(--sa-t) + 6vmin); }
   #lyrics { -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent); }
 }
-/* Squarer portrait screens (iPad, foldables; phones are taller than 3:5): cover on the left, title and artist beside it,
-   so the lyrics get the bottom half instead of what a stacked cover + title leave over. */
+/* Squarer portrait screens (iPad, foldables; phones are taller than 3:5): cover on the left, title, artist and the
+   controls (always shown, app.js placeCtl) beside it in the top 40 %, lyrics in the other 60 %. */
 @media (orientation: portrait) and (min-aspect-ratio: 3/5) {
-  body.layout-split #left { flex-direction: row; align-items: center; gap: 5vmin; }
-  body.layout-split #artbox { flex: none; width: min(44vw, calc(38vh / var(--art-h))); }
+  body.layout-split #left { flex: 0 0 calc(40vh - var(--sa-t) - 6vmin); flex-direction: row; align-items: center; gap: 5vmin; }
+  body.layout-split #artbox { flex: none; width: min(36vw, calc(31vh / var(--art-h))); }
   body.layout-split #meta { flex: 1; margin: 0; text-align: left; }
   body.layout-split #titlerow, body.layout-split #tags { justify-content: flex-start; }
+  body.side-ctl #meta > #ctl { position: static; width: 100%; margin-top: 3vmin; padding: 0; gap: 1vmin; justify-content: flex-start;
+    background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+    opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
+  body.side-ctl #ctl button { width: 7vmin; height: 7vmin; }
+  body.side-ctl #ctl svg { width: 4.2vmin; height: 4.2vmin; }
+  body.side-ctl #ctl #pp { width: 9vmin; height: 9vmin; }
+  body.side-ctl #ctl #pp svg { width: 5vmin; height: 5vmin; }
+  body.side-ctl #ctl button.small { width: 6vmin; height: 6vmin; }
+  body.side-ctl #ctl button.small svg { width: 3.6vmin; height: 3.6vmin; }
+  body.side-ctl #volrow, body.side-ctl #lists { flex-basis: 100%; justify-content: flex-start; gap: 1vmin; border-top: 0; }
 }
 
 /* ======================================================================= controls
@@ -588,6 +598,7 @@ body.lists-open #listPanel { transform: none; visibility: visible; transition: t
 .li.now .li-t { color: rgb(var(--acc)); }
 .li-art { position: relative; flex: none; width: 46px; height: 46px; border-radius: 5px; background: #2a2a2e center/cover; }
 .li-art.round { border-radius: 50%; }
+.li-art.dev { display: grid; place-items: center; } .li-art.dev svg { width: 24px; height: 24px; fill: rgba(255, 255, 255, .8); }
 .li-art.liked, .li-hart.liked { background: linear-gradient(135deg, #4527d8, #8ec9b5); }
 .li-art.liked::after, .li-hart.liked::after { content: ''; position: absolute; inset: 30%; background: #fff;
   -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/></svg>') center/contain no-repeat; }

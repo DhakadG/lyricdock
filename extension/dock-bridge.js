@@ -461,13 +461,14 @@
       else if (m.cmd === 'shuffle') P.toggleShuffle();
       else if (m.cmd === 'repeat') { if (P.setRepeat) P.setRepeat(Number.isFinite(m.v) ? m.v % 3 : (P.getRepeat() + 1) % 3); else P.toggleRepeat(); }
       else if (m.cmd === 'play' && uri) playItem(uri, URI.test(m.ctx ?? '') ? m.ctx : null, !!m.shuffle);
+      else if (m.cmd === 'device' && /^[\w-]{1,64}$/.test(m.id ?? '')) web('/me/player', 'PUT', { device_ids: [m.id], play: true }).catch(e => noteErr('device', e));
       else if (uri && ['queueAdd', 'queueRemove', 'queueTop', 'like', 'unlike'].includes(m.cmd))
         act(m.cmd, uri, typeof m.uid === 'string' ? m.uid : null).then(r => sendTo(from, { type: 'acted', cmd: m.cmd, uri, ...r }));
       setTimeout(beat, 80);
     }
     // The phone restarted after a crash (CrashLog.java): keep it with the diagnostics, and in Spotify's DevTools console.
     else if (m.type === 'crashlog' && typeof m.text === 'string') { console.warn('[LyricDock] phone crash log:\n' + m.text.slice(0, 4000)); noteErr('phone', m.text.split('\n').filter(Boolean).pop()); }
-    else if (m.type === 'list' && ['queue', 'recent', 'library', 'friends', 'tracks', 'search'].includes(m.which)) {
+    else if (m.type === 'list' && ['queue', 'recent', 'library', 'friends', 'devices', 'tracks', 'search'].includes(m.which)) {
       const arg = m.which === 'tracks' ? (URI.test(m.uri ?? '') ? m.uri : null) : m.which === 'search' ? String(m.q ?? '').slice(0, 100) : null;
       lists(m.which, arg).then(r => sendTo(from, { type: 'list', which: m.which, uri: m.uri, q: m.q, ...r }));
     }
@@ -491,10 +492,11 @@
     } catch {}
     return Spicetify.Platform.Session?.accessToken;
   }
-  async function web(path, method = 'GET') {
+  async function web(path, method = 'GET', body) {
     const tok = await token();
     if (!tok) throw new Error('no Spotify token yet');
-    const r = await fetch(path.startsWith('https:') ? path : `https://api.spotify.com/v1${path}`, { method, headers: { authorization: `Bearer ${tok}` } });
+    const r = await fetch(path.startsWith('https:') ? path : `https://api.spotify.com/v1${path}`, { method, headers: { authorization: `Bearer ${tok}`, ...(body ? { 'content-type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.status === 204 ? null : r.json().catch(() => null);
   }
@@ -604,6 +606,11 @@
         return { items: (r?.friends ?? []).sort((a, b) => b.timestamp - a.timestamp).map(f => ({ uri: f.track?.uri, ctx: f.track?.context?.uri,
           title: f.user?.name, sub: `${f.track?.name ?? ''} · ${f.track?.artist?.name ?? ''}`, ctxName: f.track?.context?.name,
           art: f.user?.imageUrl || '', time: f.timestamp, live: Date.now() - f.timestamp < 5 * 60000, friend: true })) };
+      }
+      if (which === 'devices') { // same rows as the phone's spotify.js deviceRows
+        const r = await web('/me/player/devices');
+        return { items: (r?.devices ?? []).filter(d => d?.id && !d.is_restricted)
+          .map(d => ({ uri: `device:${d.id}`, device: d.id, title: d.name, sub: d.is_active ? `${d.type} · playing here` : d.type, dtype: d.type, live: d.is_active })) };
       }
       if (which === 'tracks' && arg) return await browse(arg);
       if (which === 'search' && arg) return await search(arg);

@@ -881,10 +881,7 @@ function apply(k) {
   r.setProperty('--blur', S.blurAmount + 'px');
   r.setProperty('--gk', S.glowStrength);
   b.classList.toggle('no-glass', !S.glass);
-  // Controls: over the cover (Default/TV), in the always-visible deck (Player card), centred on screen otherwise.
-  const artCtl = ['split', 'clocksplit'].includes(S.layout);
-  b.classList.toggle('art-ctl', artCtl);
-  (artCtl ? $('artbox') : S.layout === 'player' ? $('deck') : b).appendChild($('ctl'));
+  placeCtl();
   if (kw) { kw.animationSpeed = S.bgSpeed; kw.warpIntensity = S.bgWarp; kw.blurPasses = S.bgBlur; kw.saturation = S.bgSaturation; kw.transitionDuration = S.bgFade; }
   if (!k || k === '*' || k === 'bg') art(P.art).then(im => background(P.art, im));
   if (kw && k === 'bgBeat') kw.animationSpeed = S.bgSpeed;
@@ -892,11 +889,21 @@ function apply(k) {
   requestAnimationFrame(() => { Lyrics.refresh(); sizeBg(); });
   window.afterApply?.(k);
 }
+// Controls: over the cover (Default/TV), in the always-visible deck (Player card), centred on screen otherwise. A tablet
+// held upright (Default): always there, under the title beside the cover (style.css, same media query).
+// (the viewport's own size, not matchMedia: at a resize event the media query can still hold the old answer)
+function placeCtl() {
+  const b = document.body, side = S.layout === 'split' && innerHeight > innerWidth && innerWidth / innerHeight >= 0.6, artCtl = !side && ['split', 'clocksplit'].includes(S.layout);
+  b.classList.toggle('art-ctl', artCtl);
+  b.classList.toggle('side-ctl', side);
+  const to = artCtl ? $('artbox') : side ? $('meta') : S.layout === 'player' ? $('deck') : b;
+  if ($('ctl').parentElement !== to) to.appendChild($('ctl')); // resize calls this too (rotation)
+}
 Settings.onChange(apply);
 apply();
 pullInsets();
 setPlaying(false);
-addEventListener('resize', () => { pullInsets(); Lyrics.refresh(); sizeBg(); });
+addEventListener('resize', () => { pullInsets(); placeCtl(); Lyrics.refresh(); sizeBg(); });
 
 // ---- progress bar: one linear animation over the whole song per bar, run by the compositor (smooth at any frame rate, no
 // per-frame work). Re-synced only on seek / pause / new song / drift > 200ms. A Web Animation, not a CSS transition: a
