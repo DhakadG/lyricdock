@@ -312,7 +312,9 @@ function collect(id, l) {
   const flat = x => x ? [one(x), ...(x.alts ?? []).flatMap(flat)] : [];
   for (const x of flat(l)) if (x?.lines?.length && !have.some(h => h.source === x.source && h.kind === x.kind)) have.push(x);
   pool.delete(id); pool.set(id, have);
-  if (pool.size > 8) { const old = pool.keys().next().value; pool.delete(old); picked.delete(old); }
+  // Oldest first, but never the song on screen: preloads of the next songs (and a few quick skips) used to push it out,
+  // and the lyrics pill (features.js) then lost its versions mid-song.
+  while (pool.size > 8) { const old = [...pool.keys()].find(k => k !== P.id && k !== id); if (!old) break; pool.delete(old); picked.delete(old); }
   return choose(id) ?? { kind: 'none', lines: [] };
 }
 Settings.onChange(k => { // a new order (or a source switched off): re-pick for the song on screen
