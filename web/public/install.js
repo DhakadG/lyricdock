@@ -85,9 +85,43 @@
   const ipad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
   const macSafari = !ipad && /Macintosh/.test(navigator.userAgent) && /Version\/1[7-9]|Version\/[2-9]\d/.test(navigator.userAgent) && !/Chrome|Chromium|Edg|Firefox/.test(navigator.userAgent);
   // The Home Screen app keeps its own storage, apart from Safari: say so, or the second sign-in is a surprise.
-  if ((ios || ipad) && !standalone()) setTimeout(() => chip('Add LyricDock to your Home Screen: tap Share, then "Add to Home Screen". You sign in once more inside it.'), 8000);
-  else if (macSafari && !standalone()) setTimeout(() => chip('Add LyricDock to your Dock: File → "Add to Dock"'), 8000);
-  window.lyricdockInstall = () => !!deferred && (promptInstall(), true);
+  if ((ios || ipad) && !standalone()) setTimeout(() => chip('Add LyricDock to your Home Screen: its own icon, full screen, no browser bars.', 'Show me', showGuide), 8000);
+  else if (macSafari && !standalone()) setTimeout(() => chip('Add LyricDock to your Dock: its own window and icon, like an app.', 'Show me', showGuide), 8000);
+
+  // ---- The steps for this browser, as a card (Settings -> Install, the chip, full screen where a page can't have it).
+  // Where the browser has its own prompt (Chrome / Edge on a computer, Android) that prompt is used instead.
+  const SHARE = '<svg viewBox="0 0 24 24" aria-label="Share"><path d="M12 14V3M8 7l4-4 4 4M7 10H5v11h14V10h-2"/></svg>';
+  const ua = navigator.userAgent, iosOther = /CriOS|EdgiOS|FxiOS/.test(ua);
+  function guideSteps() {
+    if (ios || ipad) return ['Home Screen', [
+      iosOther ? `Tap ${SHARE} Share in the address bar (or in the ⋯ menu)` : `Tap ${SHARE} Share in the toolbar`,
+      'Scroll down and choose <b>Add to Home Screen</b>',
+      'Turn on <b>Open as Web App</b> if it is there, then tap <b>Add</b>',
+      'Open LyricDock from its new icon: full screen, no browser bars. Sign in once more inside it'], 'Add to Home Screen'];
+    if (macSafari) return ['Dock', [`In the menu bar choose <b>File → Add to Dock</b> (or ${SHARE} Share → Add to Dock)`,
+      'Click <b>Add</b>', 'LyricDock now opens in its own window from the Dock and Launchpad. Sign in once more inside it'], 'Add to Dock'];
+    if (/Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome|Chromium|Edg|Firefox/.test(ua))
+      return ['Dock', ['Add to Dock needs Safari 17 (macOS Sonoma) or later', 'Or open LyricDock in Chrome or Edge and install it from there'], 'Add to Dock'];
+    if (/Edg\//.test(ua)) return ['app', ['Open the <b>⋯</b> menu', 'Choose <b>Apps → Install this site as an app</b>', 'Click <b>Install</b>'], 'Install'];
+    if (/Firefox/.test(ua)) return ['app', ['Firefox can\'t install web apps on a computer', 'Open LyricDock in Chrome, Edge or Safari to install it'], 'Install'];
+    return ['app', ['Open the <b>⋮</b> menu', 'Choose <b>Cast, save and share → Install page as app</b>', 'Click <b>Install</b>'], 'Install'];
+  }
+  function showGuide() {
+    document.getElementById('installGuide')?.remove();
+    document.getElementById('installChip')?.remove();
+    const [where, steps] = guideSteps(), el = document.createElement('div');
+    el.id = 'installGuide';
+    el.innerHTML = `<div class="ig-card" role="dialog" aria-modal="true" aria-labelledby="igT"><img src="icons/icon-192.png" alt="">
+      <h2 id="igT">Add LyricDock to your ${where === 'app' ? 'computer' : where}</h2><ol>${steps.map(s => `<li>${s}</li>`).join('')}</ol>
+      <button class="ig-done">Got it</button></div>`;
+    const close = () => { el.classList.remove('on'); setTimeout(() => el.remove(), 320); };
+    el.onclick = e => { if (e.target === el || e.target.closest('.ig-done')) close(); };
+    addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); removeEventListener('keydown', esc); } });
+    document.body.append(el);
+    requestAnimationFrame(() => el.classList.add('on'));
+  }
+  window.lyricdockInstall = () => (deferred ? promptInstall() : showGuide(), true);
+  window.lyricdockInstallWord = () => deferred ? 'Install' : guideSteps()[2];
 
   // ---- Tips that depend on where Spotify plays, each offered once.
   //  - Spotify on THIS computer (the extension's link is direct and under 1.5 ms: same machine, or as good as): it
@@ -154,8 +188,8 @@
   window.lyricdockFullscreen = () => {
     const d = document, el = d.documentElement;
     if (fullscreenEl()) return Promise.resolve((d.exitFullscreen || d.webkitExitFullscreen)?.call(d)).catch(() => {});
-    const no = () => window.notice?.(ios || ipad ? 'Full screen here: Share → "Add to Home Screen", then open LyricDock from your Home Screen'
-      : 'This browser won\'t go full screen from a page - use its own menu (View → Full screen)', 6000);
+    const no = () => ios || ipad ? showGuide() // the Home Screen app is how full screen works there
+      : window.notice?.('This browser won\'t go full screen from a page - use its own menu (View → Full screen)', 6000);
     if (!(d.fullscreenEnabled || d.webkitFullscreenEnabled)) return no();
     try { Promise.resolve(el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen()).catch(no); } catch (e) { no(); }
   };

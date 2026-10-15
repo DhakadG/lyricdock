@@ -919,7 +919,7 @@
     preloads = mine; // this call's own list: a newer call replaces it, and this one then stops adding to it
     for (const [i, n] of ns.entries()) {
       const base = info(n, n.metadata || {}), old = sent.find(p => p.uri === n.uri);
-      const p = { type: 'preload', ...base, ahead: i + 1, lyrics: old?.lyrics ?? await fromSpicyCache(base.id) };
+      const p = { type: 'preload', ...base, ahead: i + 1, after: now, lyrics: old?.lyrics ?? await fromSpicyCache(base.id) };
       if (preloads !== mine) return; // a newer preloadNext took over while we awaited
       mine.push(p);
       send(p);

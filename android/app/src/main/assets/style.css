@@ -29,11 +29,11 @@ html, body { touch-action: pan-x pan-y; overscroll-behavior: none; } /* scroll y
 #bgc, #bg, #bgGrad, #dim { position: fixed; inset: 0; }
 #bgc { width: 100%; height: 100%; display: none; }
 body.bg-dynamic #bgc, body.bg-artist #bgc { display: block; }
-#bg { display: none; background: #111 center/cover; transform: scale(1.4); filter: blur(60px) saturate(1.7) brightness(.7); }
+#bg { display: none; background: #111 center/cover; transform: scale(1.4); filter: blur(60px) saturate(calc(var(--bgsat, 1.2) * 1.13)) brightness(.7); }
 body.bg-blur #bg { display: block; }
 /* Song change: the new cover's glow blooms out of the cover's centre (app.js reveal). Transform/opacity only, so it stays on the compositor. */
 #reveal { position: fixed; display: none; border-radius: 50%; background: #111 center/cover; pointer-events: none; will-change: transform, opacity;
-  filter: blur(60px) saturate(1.7) brightness(.7); -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent); mask-image: radial-gradient(closest-side, #000 72%, transparent); }
+  filter: blur(60px) saturate(calc(var(--bgsat, 1.2) * 1.13)) brightness(.7); -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent); mask-image: radial-gradient(closest-side, #000 72%, transparent); }
 #bgGrad { display: none; background: linear-gradient(135deg, var(--c1, #333), var(--c2, #181818), var(--c3, #050505));
   background-size: 300% 300%; animation: gradmove calc(18s / var(--as)) ease-in-out infinite alternate; }
 body.bg-gradient #bgGrad { display: block; }
@@ -147,9 +147,10 @@ body.blurlines .ln[data-d="3"] { filter: blur(calc(var(--blur) * 2)); }
 .sy { display: inline-block; --gp: -20%; --gd: 90deg; padding: .25em .06em; margin: -.25em -.06em;
   background-image: linear-gradient(var(--gd), rgba(var(--cs), var(--a1)) var(--gp), rgba(var(--cu), var(--a0)) calc(var(--gp) + 20%));
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  /* The gradient stops 1 px short of the box's sides: on a GPU layer that is scaling (the words' springs) Chrome can leave the
-     text clip a pixel short at the edge, and the sweep showed through as a thin '|' (accent-coloured once sung, white before). */
-  background-repeat: no-repeat; background-size: calc(100% - 2px) 100%; background-position: 50% 0;
+  /* The gradient stops 1 px short of every edge of the box: on a GPU layer that is scaling or blurred, Chrome and WebKit can
+     leave the text clip a pixel short at the edge and the background shows through - a thin '|' at the sides, and on iPad
+     a coloured bar along the top of the first blurred line. The glyphs sit well inside the padding, so nothing is lost. */
+  background-repeat: no-repeat; background-size: calc(100% - 2px) calc(100% - 2px); background-position: 50% 50%;
   transform: translate3d(0, .01em, 0) scale(.95); } /* idle pose: what the springs rest at, so a line activating never snaps its words */
 .sy.lt { transform: translate3d(0, .02em, 0) scale(.95); }
 .sy.lt.sp { white-space: pre; min-width: .3ch; } /* a space inside a held syllable ("oh no"): inline-block would collapse it to 0 px */
@@ -169,6 +170,8 @@ body.no-lift .sy, body.no-lift .sy.lt { transform: none; }
 .ln.indic { line-height: 1.45; }
 .wg { white-space: nowrap; }
 .bgv { font-size: .55em; opacity: .85; margin-top: .3vmin; font-style: italic; --a1: .68; }
+/* Italic leans past its advance width: the text clip only paints inside the box, so the slanted tops were cut off. */
+.bgv .sy { padding-left: .22em; padding-right: .22em; margin-left: -.22em; margin-right: -.22em; }
 .ln.on .bgv { --a0: var(--lop); }
 .ln.rtl { text-align: right; transform-origin: right center; }
 body.align-center .ln.rtl { text-align: center; transform-origin: center; }
@@ -227,7 +230,9 @@ body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / 
   body.layout-split #wrap { flex-direction: column; gap: 2vmin;
     padding: calc(var(--sa-t) + 6vmin) calc(var(--sa-r) + 6vmin) calc(var(--sa-b) + var(--bar-by) + 4vmin) calc(var(--sa-l) + 6vmin); }
   body.layout-split #left { flex: 0 0 auto; }
-  body.layout-split #artbox { width: 62vmin; }
+  /* 62 % of the width on a phone; on squarer screens (iPad) the height caps it, so a tall 3:4 cover (--art-h) never
+     leaves the lyrics a strip at the bottom: the cover is at most 40 % of the screen's height, square or tall. */
+  body.layout-split #artbox { width: min(62vmin, calc(40vh / var(--art-h))); }
   #meta { margin-top: 3vmin; }
   body.layout-lyrics #wrap, body.layout-cinema #wrap { padding-top: calc(var(--sa-t) + 6vmin); }
   #lyrics { -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent); }
@@ -685,7 +690,7 @@ body.settings-peek .sl-cols { columns: 1; }
    The sharp thumbnail sits under the player, so the still frame shows until the video starts. */
 #ytbox { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: #000; opacity: 0; transition: opacity .8s cubic-bezier(.2, .8, .2, 1); }
 #ytbox.on { opacity: 1; }
-#ytbox::before { content: ''; position: absolute; inset: -12%; background: var(--thumb) center/cover; filter: blur(48px) saturate(1.5) brightness(.62); transform: scale(1.15); }
+#ytbox::before { content: ''; position: absolute; inset: -12%; background: var(--thumb) center/cover; filter: blur(48px) saturate(var(--bgsat, 1.2)) brightness(.62); transform: scale(1.15); }
 #ytbox .ytv { position: absolute; left: 50%; top: 50%; width: min(100vw, 177.78vh); height: min(100vh, 56.25vw); transform: translate(-50%, -50%); background: var(--thumb) center/cover;
   -webkit-mask-image: linear-gradient(transparent, #000 9%, #000 91%, transparent); mask-image: linear-gradient(transparent, #000 9%, #000 91%, transparent); }
 @media (min-aspect-ratio: 16/9) { #ytbox .ytv { -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); } }
@@ -698,7 +703,7 @@ body:not(.bg-canvas):not(.bg-motion):not(.bg-motionblur) #cv { display: none; }
 /* Blurred animated cover: the video drawn at a quarter size and scaled up, so the blur is cheap on weak GPUs. */
 #cvb { position: fixed; z-index: 0; opacity: 0; transition: opacity .8s; pointer-events: none; }
 #cvb.on { opacity: 1; }
-body.bg-motionblur #cv, #cvb { inset: auto; left: -6vw; top: -6vh; width: 28vw; height: 28vh; transform: scale(4); transform-origin: 0 0; filter: blur(4px) saturate(1.5) brightness(.65); }
+body.bg-motionblur #cv, #cvb { inset: auto; left: -6vw; top: -6vh; width: 28vw; height: 28vh; transform: scale(4); transform-origin: 0 0; filter: blur(4px) saturate(var(--bgsat, 1.2)) brightness(.65); }
 /* Drift: the still blurred cover slowly pans and zooms (one GPU-composited layer). */
 body.drift #bg { animation: drift 38s ease-in-out infinite alternate; }
 @keyframes drift { 0% { transform: scale(1.4) translate(0, 0); } 33% { transform: scale(1.55) translate(-4%, 3%); } 66% { transform: scale(1.48) translate(4%, -2%); } 100% { transform: scale(1.6) translate(-2%, -4%); } }

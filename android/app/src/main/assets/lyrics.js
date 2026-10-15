@@ -399,12 +399,16 @@ const Lyrics = (() => {
     }
   }
 
-  // Fluid cascade: Cascade's ripple on springs. The list jumps to the target and every nearby line keeps an offset that a
-  // spring pulls home: the sung line and the ones behind first, each line ahead a little softer and ~22 ms later, so they
-  // trail like a ripple. A new scroll mid-flight adds to each line's offset and keeps its speed, so a fast passage flows
-  // as one wave instead of restarting, and it settles without a bounce. Uses the CSS translate property (Chrome 104+),
-  // which stacks on the transforms the word animations write; older WebViews get the plain spring.
-  const FLUID = CSS.supports('translate', '0 1px'), flow = new Map(); // line entry -> { sp: offset spring (goal 0), wait: s }
+  // Fluid cascade (Apple Music's lyric scroll): the list jumps to the target and every nearby line keeps an offset that a
+  // spring pulls home. The sung line and the ones already passed leave together; each line ahead starts a beat later
+  // (35 ms a line) and is a touch softer, so the lines arrive one after another like a wave and spread apart a little on
+  // the way instead of moving as one block. Every line is drawn at its offset from the very frame the list jumps - a
+  // line waiting for its turn used to be painted at its new place for a frame and snap back. A scroll that comes while
+  // lines are still moving adds to their offsets and keeps their speed (no new wait for a line already on its way), so a
+  // fast passage flows as one wave. Uses the CSS translate property (Chrome 104+), which stacks on the transforms the word
+  // animations write; older WebViews get the plain spring.
+  const FLUID = CSS.supports('translate', '0 1px'), flow = new Map(); // line entry -> { sp: offset spring (goal 0), wait: s, base: Hz }
+  const flowDraw = (x, y) => { x.el.style.translate = `0 ${y.toFixed(2)}px`; };
   function fluid(i, y) {
     const off = curY - y;
     sc.on = false; sc.sp.set(y, true); curY = y; writeY(y);
@@ -413,19 +417,21 @@ const Lyrics = (() => {
     for (let j = Math.max(0, i - n); j <= Math.min(lines.length - 1, i + n); j++) {
       const x = lines[j], r = j - i, d = Math.abs(r), ahead = off > 0 ? r > 0 : r < 0;
       let f = flow.get(x);
-      if (!f) flow.set(x, f = { sp: new Anim.Spring(0, 1, 0.92), wait: 0 });
+      const moving = !!f && f.wait <= 0;
+      if (!f) flow.set(x, f = { sp: new Anim.Spring(0, 1, 0.9), wait: 0 });
       f.sp.p += off; f.sp.g = 0;
-      f.base = ahead ? 1.2 - Math.min(d, 6) * 0.06 : 1.3; // Hz: lines further ahead are softer, so they trail
-      f.wait = Math.max(f.wait, ahead ? Math.min(d, 8) * 0.022 : 0); // a line holds where it was until its turn
+      f.base = ahead ? 1.55 - Math.min(d, 6) * 0.05 : 1.55; // Hz (~0.65 s); lines further ahead slightly softer
+      if (!moving) f.wait = ahead ? Math.min(d, 6) * 0.035 : 0;
+      flowDraw(x, f.sp.p); // this frame already: the list moved, the line holds where it was
     }
   }
   function flowStep(dt) {
     for (const [x, f] of flow) {
-      if (f.wait > 0) { f.wait -= dt; continue; }
+      if (f.wait > 0) { f.wait -= dt; flowDraw(x, f.sp.p); continue; }
       f.sp.f = f.base * Settings.S.animSpeed;
       const y = f.sp.step(dt);
       if (Math.abs(y) < 0.05 && Math.abs(f.sp.v) < 0.3) { x.el.style.translate = ''; flow.delete(x); continue; }
-      x.el.style.translate = `0 ${y.toFixed(2)}px`;
+      flowDraw(x, y);
     }
   }
   function still() { for (const x of flow.keys()) x.el.style.translate = ''; flow.clear(); } // a jump / new song: no ripple left over

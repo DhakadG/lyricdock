@@ -33,7 +33,11 @@
     $('album').textContent = S.albumLine ? [a.album || P.album, a.year].filter(Boolean).join(' · ') : '';
     marquee($('album'));
   }
-  window.afterSwap = m => { fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album; if (P.next?.id === m.id) P.next = null; if (P.next2?.id === m.id) P.next2 = null; /* the bridge's preloads for the new song may already be here */ remarquee(); albumLine(); badge(); hideChip(); };
+  window.afterSwap = m => { fitArt(); document.documentElement.style.setProperty('--artimg', m.art ? `url("${m.art}")` : 'none'); P.album = m.album;
+    // The bridge's preloads for the new song may already be here; the ones for another song go (a swipe back left the
+    // song after the one we went back from as "next": the following swipe and the early song-end change then took it).
+    const stale = x => x && (x.id === m.id || (x.for && x.for !== m.id));
+    if (stale(P.next)) P.next = null; if (stale(P.next2)) P.next2 = null; remarquee(); albumLine(); badge(); hideChip(); };
   window.afterPreload = m => { if (m.ahead === 2) P.next2 = m; else P.next = m; }; // ahead: 1 = next, 2 = the one after
   // Cover + title in the left column (Default / TV, landscape): the column is padded clear of the song times and
   // progress bar, and the cover is capped so cover + title + artist + album always fit between them.

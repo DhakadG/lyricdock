@@ -407,7 +407,10 @@ function onPreload(m) {
   pre.set(m.id, m);
   if (pre.size > 6) pre.delete(pre.keys().next().value);
   art(m.art).then(im => { try { if (im) colours(im); } catch (e) {} }); // warm the decode and the colours now
-  window.afterPreload?.(m);
+  // after: the song it follows. One for a song the source has already left (a late answer) is never "next".
+  m.for = idOf({ uri: m.after });
+  const now = SRC[P.source].track?.id || P.skip?.target || P.id;
+  if (!m.for || !now || m.for === now) window.afterPreload?.(m);
   // Warm the API cache for the next song too, and keep whichever is better for when it starts.
   if (Api.enabled() && Lyrics.rank(m.lyrics) < Lyrics.top()) Api.get(m.id).then(l => { m.lyrics = collect(m.id, l) ?? m.lyrics; });
 }
@@ -654,7 +657,7 @@ window.neighbours = () => {
   const q = P.upq, at = q.findIndex(x => idOf(x) === id);
   const after = (at >= 0 ? q.slice(at + 1) : q).filter(x => idOf(x) !== id && idOf(x) !== P.id);
   const next = [];
-  if (P.next?.id && P.next.id !== id && P.next.id !== P.id) next.push(P.next);
+  if (P.next?.id && P.next.id !== id && P.next.id !== P.id && (!P.next.for || P.next.for === id)) next.push(P.next);
   for (const x of after) if (next.length < 3 && !next.some(n => n.id === idOf(x)))
     next.push({ id: idOf(x), uri: x.uri, title: x.title, artist: x.sub, art: x.big || x.art, dur: x.dur });
   return { next, prev: (P.hist || []).slice(0, 3) };
@@ -726,7 +729,7 @@ $('next').onclick = () => jump(1);
 let endFor = null;
 function songEnd(real) {
   const t = P.next, now = performance.now();
-  if (endFor === P.id || !P.playing || !P.dur || real < P.dur - 150 || P.repeat === 2 || P.skip || !t?.id || t.id === P.id) return;
+  if (endFor === P.id || !P.playing || !P.dur || real < P.dur - 150 || P.repeat === 2 || P.skip || !t?.id || t.id === P.id || (t.for && t.for !== P.id)) return;
   endFor = P.id;
   if (!arts.has(t.art)) return;
   P.skip = { target: t.id, pass: new Set([P.id]), until: now + 5000, passed: [] };
@@ -870,6 +873,7 @@ function apply(k) {
   const r = document.documentElement.style;
   r.setProperty('--size', S.size);
   r.setProperty('--dim', S.bgDim);
+  r.setProperty('--bgsat', S.bgSaturation); // Vibrance: the CSS backgrounds (kawarp gets it below)
   r.setProperty('--as', S.animSpeed);
   r.setProperty('--lw', S.weight);
   r.setProperty('--lgap', S.lineGap + 'vmin');

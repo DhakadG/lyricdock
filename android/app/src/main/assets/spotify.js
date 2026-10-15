@@ -163,9 +163,9 @@ const Web = (() => {
     const n = q?.json?.queue?.find(x => x?.type === 'track');
     if (!n || cur !== t) return;
     const ni = info(n);
-    out({ type: 'preload', ...ni, lyrics: null });
+    out({ type: 'preload', ...ni, after: t.uri, lyrics: null });
     const nl = await lyrics(ni);
-    if (nl && cur === t) out({ type: 'preload', ...ni, lyrics: nl });
+    if (nl && cur === t) out({ type: 'preload', ...ni, after: t.uri, lyrics: nl });
   }
 
   // ---- controls (Premium). Poll right after so the screen follows immediately.
