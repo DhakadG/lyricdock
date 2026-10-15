@@ -1,0 +1,6 @@
+# generated or signed: never reformat
+**/package-lock.json
+**/Cargo.lock
+*.sig
+graphify-out/
+repo-treemap.html

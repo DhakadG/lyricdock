@@ -1,0 +1,15 @@
+{
+  "name": "lyricdock",
+  "private": true,
+  "description": "Dev tooling only (formatting). Each app/worker keeps its own package.json.",
+  "scripts": {
+    "format": "pwsh -NoProfile -File scripts/format.ps1",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@prettier/plugin-xml": "^3.4.2",
+    "prettier": "^3.9.10",
+    "prettier-plugin-sh": "^0.20.2",
+    "prettier-plugin-toml": "^3.0.2"
+  }
+}

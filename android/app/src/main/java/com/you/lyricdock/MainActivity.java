@@ -70,7 +70,9 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         // Keep Wi-Fi out of power-save while the dock runs: its naps stalled the WebRTC link long enough to drop.
         try {
             android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            wifiLock = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "lyricdock:link");
+            // HIGH_PERF is deprecated (API 34) but LOW_LATENCY only exists from API 29, and minSdk is 26.
+            @SuppressWarnings("deprecation") int mode = android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF;
+            wifiLock = wm.createWifiLock(mode, "lyricdock:link");
             wifiLock.setReferenceCounted(false);
             wifiLock.acquire();
         } catch (Exception ignored) {}
@@ -418,6 +420,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         runOnUiThread(new UiOp(this, UiOp.KIOSK_EXIT, 0, null));
     }
 
+    @SuppressWarnings("deprecation") // clearDeviceOwnerApp has no replacement: an owner app can still drop itself
     void exitKiosk() {
         if (!isOwner()) return;
         DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);

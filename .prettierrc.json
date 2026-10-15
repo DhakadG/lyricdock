@@ -1,0 +1,10 @@
+{
+  "printWidth": 120,
+  "singleQuote": true,
+  "arrowParens": "avoid",
+  "endOfLine": "lf",
+  "embeddedLanguageFormatting": "off",
+  "proseWrap": "preserve",
+  "plugins": ["@prettier/plugin-xml", "prettier-plugin-sh", "prettier-plugin-toml"],
+  "overrides": [{ "files": "*.webmanifest", "options": { "parser": "json" } }]
+}

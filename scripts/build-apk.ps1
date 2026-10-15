@@ -40,7 +40,7 @@ $vj = Get-Content "$root\extension\version.json" -Raw | ConvertFrom-Json
 $ver = if ($vj.beta -and [version]$vj.beta -gt [version]$vj.version) { $vj.beta } else { $vj.version } # a beta build carries the beta version
 $parts = $ver.Split('.') | ForEach-Object { [int]$_ }
 $code = $parts[0] * 10000 + $parts[1] * 100 + $parts[2]
-$manifest = (Get-Content "$app\AndroidManifest.xml" -Raw) -replace '<manifest ', "<manifest package=`"com.you.lyricdock`" android:versionCode=`"$code`" android:versionName=`"$ver`" "
+$manifest = (Get-Content "$app\AndroidManifest.xml" -Raw) -replace '<manifest\s', "<manifest package=`"com.you.lyricdock`" android:versionCode=`"$code`" android:versionName=`"$ver`" "
 Set-Content "$out\AndroidManifest.xml" $manifest
 
 & "$bt\aapt2.exe" compile --dir "$app\res" -o "$out\res.zip"
