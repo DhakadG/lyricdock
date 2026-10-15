@@ -1,6 +1,6 @@
 [package]
 name = "lyricdock-helper"
-version = "1.8.25"
+version = "1.8.26"
 description = "Windows companion for LyricDock: extension status, install/repair, phone setup, developer tools."
 edition = "2021"
 build = "build.rs"
