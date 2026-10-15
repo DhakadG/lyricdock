@@ -244,8 +244,11 @@ body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / 
   body.layout-split #artbox { flex: none; width: min(36vw, calc(31vh / var(--art-h))); }
   body.layout-split #meta { flex: 1; margin: 0; text-align: left; }
   body.layout-split #titlerow, body.layout-split #tags { justify-content: flex-start; }
-  body.side-ctl #meta > #ctl { position: static; width: 100%; margin-top: 3vmin; padding: 0; gap: 1vmin; justify-content: flex-start;
-    background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+  /* The transport row and the list-button row share one width and both run edge to edge (space-between), so their
+     first and last buttons line up however many list buttons there are. The negative margin pulls the buttons' empty
+     padding out past the text column, so the icons (not the hit areas) sit flush with the title above. */
+  body.side-ctl #meta > #ctl { position: static; width: min(calc(100% + 2.6vmin), 66vmin); margin: 3vmin -1.3vmin 0; padding: 0; gap: 1vmin 0;
+    justify-content: space-between; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
     opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
   body.side-ctl #ctl button { width: 7vmin; height: 7vmin; }
   body.side-ctl #ctl svg { width: 4.2vmin; height: 4.2vmin; }
@@ -253,7 +256,12 @@ body.layout-nowbar:not(.paused):not(.no-spin) #art { animation: spin calc(12s / 
   body.side-ctl #ctl #pp svg { width: 5vmin; height: 5vmin; }
   body.side-ctl #ctl button.small { width: 6vmin; height: 6vmin; }
   body.side-ctl #ctl button.small svg { width: 3.6vmin; height: 3.6vmin; }
-  body.side-ctl #volrow, body.side-ctl #lists { flex-basis: 100%; justify-content: flex-start; gap: 1vmin; border-top: 0; }
+  /* '#ctl #lists button' (two ids, further down) beat the side sizes above, so the list icons came out bigger than
+     the transport icons; pin them to the same size here. */
+  body.side-ctl #ctl #lists button { width: 7vmin; height: 7vmin; }
+  body.side-ctl #ctl #lists svg { width: 4.2vmin; height: 4.2vmin; }
+  body.side-ctl #volrow { flex-basis: 100%; justify-content: flex-start; gap: 1vmin; border-top: 0; }
+  body.side-ctl #lists { flex-basis: 100%; justify-content: space-between; gap: 0; margin-top: 1vmin; padding-top: 0; border-top: 0; }
 }
 
 /* ======================================================================= controls

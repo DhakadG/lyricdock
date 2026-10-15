@@ -461,7 +461,9 @@
       else if (m.cmd === 'shuffle') P.toggleShuffle();
       else if (m.cmd === 'repeat') { if (P.setRepeat) P.setRepeat(Number.isFinite(m.v) ? m.v % 3 : (P.getRepeat() + 1) % 3); else P.toggleRepeat(); }
       else if (m.cmd === 'play' && uri) playItem(uri, URI.test(m.ctx ?? '') ? m.ctx : null, !!m.shuffle);
-      else if (m.cmd === 'device' && /^[\w-]{1,64}$/.test(m.id ?? '')) web('/me/player', 'PUT', { device_ids: [m.id], play: true }).catch(e => noteErr('device', e));
+      else if (m.cmd === 'device' && /^[\w-]{1,64}$/.test(m.id ?? ''))
+        transferTo(m.id).then(() => sendTo(from, { type: 'acted', cmd: 'device', ok: true }),
+          e => { noteErr('device', e); sendTo(from, { type: 'acted', cmd: 'device', ok: false, error: String(e?.message || e).slice(0, 80) }); });
       else if (uri && ['queueAdd', 'queueRemove', 'queueTop', 'like', 'unlike'].includes(m.cmd))
         act(m.cmd, uri, typeof m.uid === 'string' ? m.uid : null).then(r => sendTo(from, { type: 'acted', cmd: m.cmd, uri, ...r }));
       setTimeout(beat, 80);
@@ -563,6 +565,36 @@
   const trackRow = (t, art) => ({ uri: t?.uri, uid: t?.uid, title: t?.name, sub: names(t?.artists?.items ?? t?.artists), art: art ?? pickImg(t?.album?.images ?? t?.albumOfTrack?.coverArt?.sources), dur: t?.duration?.milliseconds ?? t?.duration?.totalMilliseconds ?? t?.duration_ms });
   const boxRow = (uri, title, sub, art) => ({ uri, title, sub, art, box: true });
 
+  // ---- Spotify Connect (the phone's Devices tab). The client's own ConnectAPI first: it needs no Web API call, so
+  // the client token's hard 429 limit can't empty the list or swallow a tap, and it also sees the Cast and
+  // local-network speakers the Web API leaves out. The Web API stays as the fallback for clients without it.
+  const connect = () => Spicetify.Platform?.ConnectAPI;
+  // ConnectAPI says 'smartphone', 'cast_audio'...; the Web API says 'Smartphone'. The phone picks its icon by the
+  // Web API spelling (Computer / Smartphone / Tablet, anything else is a speaker).
+  const dtypeOf = t => { const s = String(t ?? '').toLowerCase(); return s === 'computer' ? 'Computer' : s === 'smartphone' ? 'Smartphone' : s === 'tablet' ? 'Tablet' : 'Speaker'; };
+  const typeLabel = t => { const s = String(t ?? '').replace(/_/g, ' ').trim(); return s ? s[0].toUpperCase() + s.slice(1).toLowerCase() : 'Device'; };
+  const deviceRow = (id, name, type, active, local) => ({ uri: `device:${id}`, device: id, title: name || 'Unnamed device',
+    sub: [local ? 'This computer' : typeLabel(type), active && 'playing here'].filter(Boolean).join(' · '), dtype: dtypeOf(type), live: !!active });
+  async function deviceList() {
+    const C = connect();
+    if (C?.state) {
+      let ds = safe(() => C.state.devices, null);
+      if (!ds?.length && C.discoverDevices) { safe(() => C.discoverDevices()); await new Promise(r => setTimeout(r, 1200)); ds = safe(() => C.state.devices, null); }
+      const rows = (ds ?? []).filter(d => d?.id && /^[\w-]{1,64}$/.test(d.id) && !d.isDisabled)
+        .map(d => deviceRow(d.id, d.name, d.type, d.isActive, d.isLocal));
+      if (rows.length) return { items: rows.sort((a, b) => b.live - a.live) };
+    }
+    const r = await web('/me/player/devices');
+    return { items: (r?.devices ?? []).filter(d => d?.id && !d.is_restricted).map(d => deviceRow(d.id, d.name, d.type, d.is_active, false)) };
+  }
+  async function transferTo(id) {
+    const C = connect();
+    if (C?.transferPlayback) {
+      try { await C.transferPlayback(id, {}); return; } catch (e) { noteErr('device-connect', e); }
+    }
+    await web('/me/player', 'PUT', { device_ids: [id], play: true });
+  }
+
   async function lists(which, arg) {
     try {
       if (which === 'queue') {
@@ -607,11 +639,7 @@
           title: f.user?.name, sub: `${f.track?.name ?? ''} · ${f.track?.artist?.name ?? ''}`, ctxName: f.track?.context?.name,
           art: f.user?.imageUrl || '', time: f.timestamp, live: Date.now() - f.timestamp < 5 * 60000, friend: true })) };
       }
-      if (which === 'devices') { // same rows as the phone's spotify.js deviceRows
-        const r = await web('/me/player/devices');
-        return { items: (r?.devices ?? []).filter(d => d?.id && !d.is_restricted)
-          .map(d => ({ uri: `device:${d.id}`, device: d.id, title: d.name, sub: d.is_active ? `${d.type} · playing here` : d.type, dtype: d.type, live: d.is_active })) };
-      }
+      if (which === 'devices') return await deviceList();
       if (which === 'tracks' && arg) return await browse(arg);
       if (which === 'search' && arg) return await search(arg);
     } catch (e) { return { items: [], error: `Couldn't load this (${String(e?.message || e).slice(0, 80)})` }; }

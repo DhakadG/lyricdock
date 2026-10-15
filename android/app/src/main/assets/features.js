@@ -531,7 +531,7 @@
       if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) return; // a scroll
       if (x.device) {
         cmdOf('device', { id: x.device });
-        window.notice?.(`Playing on ${x.title}`);
+        window.notice?.(x.live ? `Already playing on ${x.title}` : `Switching to ${x.title}…`); // a failed switch says so (acted / control)
         return document.body.classList.remove('lists-open');
       }
       if (x.box) return browse(x.uri, x.title);
@@ -553,7 +553,7 @@
   }
   function heartPop(el) { el.querySelector('button[data-a=like]')?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: ms(320), easing: 'cubic-bezier(.3,1.6,.5,1)' }); }
   function acted(m) {
-    if (m.ok === false) window.notice?.(`Couldn't do that: ${m.error || 'failed'}`);
+    if (m.ok === false) window.notice?.(m.cmd === 'device' ? `Couldn't switch device: ${m.error || 'failed'} - open Spotify on it once, then try again` : `Couldn't do that: ${m.error || 'failed'}`);
     if (view().which === 'queue' && ['queueRemove', 'queueTop', 'queueAdd'].includes(m.cmd)) setTimeout(() => request(view()), 350);
   }
 
