@@ -81,10 +81,17 @@
     + `<div class="pp-off"><i class="pp-clk">${chev('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2')}</i><button data-o="-100" aria-label="Lyrics earlier">${chev('M6 12h12')}</button>`
     + `<button class="pp-val" data-o="0" aria-label="Reset sync offset" title="Sync offset (tap for 0)"></button><button data-o="100" aria-label="Lyrics later">${chev('M6 12h12M12 6v12')}</button></div>`;
   document.body.append(pillEl);
-  const versions = () => [...(pool.get(P.id) ?? [])].sort((a, b) => Lyrics.rank(b) - Lyrics.rank(a));
+  // The lyrics on screen always count as one of the versions: a copy from the cover swipe's history, a preload or the
+  // device store can be a different object than the pool's (or missing from it), and the pill then stayed hidden.
+  const sameAs = (a, b) => a && b && (a === b || (a.source === b.source && a.kind === b.kind));
+  const versions = () => {
+    const have = pool.get(P.id) ?? [], cur = P.lyrics;
+    if (cur?.lines?.length && P.id && !have.some(h => sameAs(h, cur))) { have.push(cur); pool.set(P.id, have); }
+    return [...have].sort((a, b) => Lyrics.rank(b) - Lyrics.rank(a));
+  };
   let pillSig = '';
   function pill() {
-    const v = versions(), i = v.indexOf(P.lyrics), src = v.length > 1 && i >= 0, off = ['word', 'line'].includes(P.lyrics?.kind);
+    const v = versions(), i = v.findIndex(h => sameAs(h, P.lyrics)), src = v.length > 1 && i >= 0, off = ['word', 'line'].includes(P.lyrics?.kind);
     const r = $('lyrics').getBoundingClientRect(), sig = `${src}|${off}|${S.offset}|${P.id}|${i}|${v.length}|${r.left | 0}|${r.width | 0}|${r.bottom | 0}`;
     if (sig === pillSig) return;
     pillSig = sig;
@@ -113,7 +120,7 @@
       if (v !== S.offset) Settings.set('offset', v, false);
       return pill();
     }
-    const v = versions(), i = v.indexOf(P.lyrics), n = v[(i + +b.dataset.d + v.length) % v.length];
+    const v = versions(), i = v.findIndex(h => sameAs(h, P.lyrics)), n = v[(i + +b.dataset.d + v.length) % v.length];
     if (!n || n === P.lyrics) return;
     picked.set(P.id, `${n.source}:${n.kind}`);
     P.lyrics = n;
@@ -396,6 +403,9 @@
     Smartphone: '<svg viewBox="0 0 24 24"><path d="M7 2h10v20H7zm2 2v14h6V4z"/></svg>',
     Tablet: '<svg viewBox="0 0 24 24"><path d="M4 3h16v18H4zm2 2v12h12V5z"/></svg>',
     Speaker: '<svg viewBox="0 0 24 24"><path d="M6 2h12v20H6zm6 9a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0-6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>',
+    grip: '<svg viewBox="0 0 24 24"><path d="M4 7h16v2H4zm0 4h16v2H4zm0 4h16v2H4z"/></svg>',
+    vol: '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="vw" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.3 6.6a7.8 7.8 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="vx" d="M15.5 9.5l5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    refresh: '<svg viewBox="0 0 24 24"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.2L13 11h7V4z"/></svg>',
   };
   document.querySelectorAll('#lists button').forEach(b => b.onclick = () => openList(b.dataset.list));
   document.querySelectorAll('#listTabs button').forEach(b => b.onclick = () => openList(b.dataset.tab));
@@ -471,6 +481,8 @@
     if (m.head) html += `<div class="li-head"><div class="li-hart${artBg(m.head.art)}${m.head.round ? ' round' : ''}"${artStyle(m.head.art)}></div>
       <div class="li-htxt"><div class="li-ht">${esc(m.head.title)}</div><div class="li-hs">${esc(m.head.sub || '')}</div>
       <div class="li-hbtns"><button class="li-play" data-a="play">Play</button><button data-a="shuffle">Shuffle</button></div></div></div>`;
+    if (v.which === 'devices') return devices(out, m);
+    reo = reorderMode(v, m);
     if (!items.length) { out.innerHTML = html + `<div class="li-empty">${esc(m.error || TABS[stack[0].which] || 'Nothing here')}</div>`; wireHead(out, m); return; }
     if (v.which === 'queue' && m.now) html += `<h4>Now playing</h4>${row(m.now, -1)}`;
     let section = v.which === 'queue' ? null : '';
@@ -484,6 +496,7 @@
     out.scrollTop = top;
     wireHead(out, m);
     out.querySelectorAll('.li[data-i]').forEach(wireRow);
+    if (reo) wireReorder(out);
   }
   function wireHead(out, m) {
     out.querySelectorAll('.li-head button').forEach(b => b.onclick = () => {
@@ -501,8 +514,9 @@
     else if (x.box) right = `<span class="li-go">${I.more}</span>`;
     else if (isTrack(x) && !now) right = (q ? (x.queued ? `<button data-a="top" aria-label="Move to top">${I.top}</button><button data-a="remove" aria-label="Remove from queue">${I.x}</button>` : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`)
       : `<button data-a="add" aria-label="Add to queue">${I.add}</button>`) + `<button data-a="like" class="${x.liked ? 'on' : ''}" aria-label="Like">${I.heart}</button>`;
+    if (!now && movable(x)) right += `<span class="li-grip" role="button" aria-label="Drag to reorder">${I.grip}</span>`;
     const time = x.time && !x.friend && tab === 'recent' ? `<span class="li-time">${esc(ago(x.time))}</span>` : '';
-    return `<div class="li${now ? ' now' : ''}${x.box ? ' box' : ''}"${now ? '' : ` data-i="${i}"`}>
+    return `<div class="li${now ? ' now' : ''}${x.box ? ' box' : ''}${!now && movable(x) ? ' movable' : ''}"${now ? '' : ` data-i="${i}"`}>
       <div class="li-swipe l">${q && x.queued ? I.x : I.heart}</div><div class="li-swipe r">${q && x.queued ? I.top : I.add}</div>
       <div class="li-main"><div class="li-art${artBg(x.art)}${x.round || x.friend ? ' round' : ''}${x.device ? ' dev' : ''}"${artStyle(x.art)}>${x.device ? I[x.dtype] || I.Speaker : x.live ? '<b></b>' : ''}</div>
       <div class="li-txt"><div class="li-t">${esc(x.title)}</div><div class="li-s">${esc(x.sub || '')}</div>${x.ctxName ? `<div class="li-c">${esc(x.ctxName)}</div>` : ''}</div>
@@ -562,6 +576,171 @@
   function acted(m) {
     if (m.ok === false) window.notice?.(m.cmd === 'device' ? `Couldn't switch device: ${m.error || 'failed'} - open Spotify on it once, then try again` : `Couldn't do that: ${m.error || 'failed'}`);
     if (view().which === 'queue' && ['queueRemove', 'queueTop', 'queueAdd'].includes(m.cmd)) setTimeout(() => request(view()), 350);
+    // A move is already drawn; the refresh shows Spotify's own order (or puts the row back when it failed).
+    if (['queueMove', 'playlistMove'].includes(m.cmd)) setTimeout(() => request(view()), m.ok === false ? 0 : 700);
+    if (m.cmd === 'devVolume' && m.ok === false && view().which === 'devices') setTimeout(() => request(view()), 300);
+  }
+
+  // ---- drag to reorder: the songs you queued (desktop mode: Spotify's Web API can't reorder the queue) and the songs of
+  // a playlist you can edit. A drag starts on the row's grip: the row lifts and follows the finger, the others make room,
+  // the list scrolls near its edges, and the drop is drawn at once while Spotify catches up (acted -> refresh).
+  let reo = null; // 'queue' | 'playlist' | null, for the view on screen
+  function reorderMode(v, m) {
+    if (P.source === 'web' || window.LYRICDOCK_MINI) return null;
+    if (v.which === 'queue') return 'queue';
+    if (v.which === 'tracks' && m.head?.editable && /^spotify:playlist:/.test(v.uri || '')) return 'playlist';
+    return null;
+  }
+  const movable = x => !!x?.uid && (reo === 'queue' ? !!x.queued : reo === 'playlist' && isTrack(x));
+  function wireReorder(out) {
+    const rows = [...out.querySelectorAll('.li.movable[data-i]')];
+    if (rows.length < 2) { rows.forEach(r => r.classList.remove('movable')); return; }
+    rows.forEach(el => el.querySelector('.li-grip')?.addEventListener('pointerdown', e => lift(e, el, rows)));
+  }
+  function lift(e, el, rows) {
+    if (e.button > 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const grip = e.currentTarget, body = $('listBody'), id = e.pointerId, from = rows.indexOf(el);
+    const rects = rows.map(r => r.getBoundingClientRect()), step = rows.length > 1 ? rects[1].top - rects[0].top : rects[from].height;
+    const top0 = body.scrollTop, y0 = e.clientY;
+    let y = y0, to = from, raf = 0, on = true;
+    try { grip.setPointerCapture(id); } catch (err) {}
+    el.classList.add('lifted');
+    document.body.classList.add('reordering');
+    call('vibrate', 12);
+    const place = () => {
+      const lo = rects[0].top - rects[from].top, hi = rects[rects.length - 1].top - rects[from].top;
+      const dy = Math.max(lo - step * .4, Math.min(hi + step * .4, y - y0 + body.scrollTop - top0));
+      el.style.transform = `translateY(${dy}px)`;
+      const mid = rects[from].top + rects[from].height / 2 + dy;
+      // The first other row whose middle is below the dragged row's middle decides where it lands.
+      let t = rects.findIndex((r, k) => k !== from && mid < r.top + r.height / 2);
+      t = t < 0 ? rects.length - 1 : t > from ? t - 1 : t;
+      if (t !== to) {
+        to = t;
+        call('vibrate', 6);
+        rows.forEach((r, k) => {
+          if (r === el) return;
+          const sh = from < to && k > from && k <= to ? -step : from > to && k >= to && k < from ? step : 0;
+          r.style.transform = sh ? `translateY(${sh}px)` : '';
+        });
+      }
+    };
+    const tick = () => { // near the top or bottom edge the list scrolls, faster the closer the finger
+      if (!on) return;
+      const b = body.getBoundingClientRect(), edge = 64;
+      const v = y < b.top + edge ? -(b.top + edge - y) : y > b.bottom - edge ? y - (b.bottom - edge) : 0;
+      if (v) { body.scrollTop += Math.max(-18, Math.min(18, v / 3)); place(); }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    const move = ev => { if (ev.pointerId !== id) return; y = ev.clientY; place(); };
+    const drop = ev => {
+      if (ev.pointerId !== id) return;
+      on = false; cancelAnimationFrame(raf);
+      grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', drop); grip.removeEventListener('pointercancel', drop);
+      document.body.classList.remove('reordering');
+      const done = () => { el.classList.remove('lifted', 'landing'); rows.forEach(r => { r.style.transform = ''; }); };
+      if (ev.type === 'pointercancel' || to === from) { el.classList.add('landing'); el.style.transform = ''; rows.forEach(r => { r.style.transform = ''; }); return setTimeout(done, 260); }
+      done();
+      commitMove(rows.map(r => +r.dataset.i), from, to);
+    };
+    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', drop); grip.addEventListener('pointercancel', drop);
+  }
+  function commitMove(group, from, to) {
+    const v = view(), x = items[group[from]], y = items[group[to]], after = to > from;
+    if (!x || !y) return;
+    const next = items.filter(it => it !== x);
+    next.splice(next.indexOf(y) + (after ? 1 : 0), 0, x);
+    const m = { ...viewData, items: next };
+    cacheSave(v, m);
+    showList({ ...m, cached: true });
+    const moved = $('listBody').querySelector(`.li[data-i="${next.indexOf(x)}"]`);
+    moved?.animate([{ background: 'rgba(255, 255, 255, .08)' }, { background: 'transparent' }], { duration: ms(700), easing: 'ease-out' });
+    send({ type: 'cmd', cmd: reo === 'queue' ? 'queueMove' : 'playlistMove', uri: x.uri, uid: x.uid, to: y.uid, after, list: v.uri });
+  }
+
+  // ---- Devices: where Spotify plays, as cards. The one playing on top, big, with the song and its volume; every other
+  // device below with "Play here" and its own volume when Spotify lets it be set. Switching keeps the panel open and
+  // looks again a moment later, so the card that lights up is the real answer.
+  let devDrag = 0, devPending = null, devSync = 0;
+  const DEV = { Computer: 'Computer', Smartphone: 'Phone', Tablet: 'Tablet', Speaker: 'Speaker' };
+  const volRow = (x, big) => x.vol === null || x.vol === undefined ? '' : `<div class="dv-vol${big ? ' big' : ''}${+x.vol === 0 ? ' muted' : ''}">
+      <button class="dv-mute" aria-label="${+x.vol === 0 ? 'Unmute' : 'Mute'} ${esc(x.title)}">${I.vol}</button>
+      <input type="range" min="0" max="100" step="1" value="${+x.vol}" style="--p:${+x.vol}%" aria-label="Volume on ${esc(x.title)}">
+      <output>${+x.vol}</output></div>`;
+  function devices(out, m) {
+    if (devDrag) { viewData = m; return; } // a slider is in the finger: the refresh waits for the next one
+    const live = items.find(x => x.live), rest = items.filter(x => x !== live);
+    const cur = P.cur, ic = x => I[x.dtype] || I.Speaker, kind = x => esc(x.kind || DEV[x.dtype] || x.dtype || 'Device');
+    let html = '<div class="dv">';
+    if (live) html += `<section class="dv-now" data-i="${items.indexOf(live)}">
+        <div class="dv-head"><div class="dv-ic">${ic(live)}</div><div class="dv-txt"><small>Playing on</small><b>${esc(live.title)}</b><span>${kind(live)}</span></div>
+          <span class="eq${P.playing ? '' : ' paused'}"><i></i><i></i><i></i></span></div>
+        ${cur?.title ? `<div class="dv-song"><div class="dv-art"${artStyle(P.art || cur.art)}></div><div class="dv-txt"><b>${esc(cur.title)}</b><span>${esc(cur.artist || '')}</span></div></div>` : ''}
+        ${volRow(live, true)}</section>`;
+    else if (items.length) html += `<section class="dv-now idle"><div class="dv-head"><div class="dv-ic">${I.Speaker}</div><div class="dv-txt"><small>Not playing</small><b>Pick a device</b><span>Spotify starts there</span></div></div></section>`;
+    if (rest.length) {
+      html += `<h4>${live ? 'Other devices' : 'Devices'}</h4><div class="dv-grid">`;
+      for (const x of rest) html += `<section class="dv-card${devPending === x.device ? ' pending' : ''}" data-i="${items.indexOf(x)}">
+          <button class="dv-go" aria-label="Play on ${esc(x.title)}"><div class="dv-ic">${ic(x)}</div><div class="dv-txt"><b>${esc(x.title)}</b><span>${kind(x)}</span></div>
+          <span class="dv-cta">${devPending === x.device ? 'Switching…' : 'Play here'}</span></button>${volRow(x)}</section>`;
+      html += '</div>';
+    }
+    if (!items.length) html += `<div class="li-empty">${esc(m.error || TABS.devices)}</div>`;
+    html += `<button class="dv-refresh">${I.refresh}<span>Refresh</span></button><p class="dv-hint">Don't see a device? Open Spotify on it once, on the same account.</p></div>`;
+    out.innerHTML = html;
+    out.querySelector('.dv-refresh').onclick = e => { e.currentTarget.classList.add('spin'); request(view()); };
+    out.querySelectorAll('[data-i]').forEach(card => {
+      const x = items[+card.dataset.i];
+      if (!x) return;
+      card.querySelector('.dv-go')?.addEventListener('click', () => {
+        devPending = x.device;
+        cmdOf('device', { id: x.device });
+        call('vibrate', 15);
+        card.classList.add('pending');
+        card.querySelector('.dv-cta').textContent = 'Switching…';
+        setTimeout(() => view().which === 'devices' && request(view()), 1400);
+        setTimeout(() => { devPending = null; if (view().which === 'devices') request(view()); }, 4000);
+      });
+      const box = card.querySelector('.dv-vol');
+      if (box) wireDevVol(box, x);
+    });
+    clearInterval(devSync);
+    // The playing device's slider follows the main volume (keys, Spotify itself) while nobody is dragging it.
+    devSync = setInterval(() => {
+      if (view().which !== 'devices' || !document.body.classList.contains('lists-open')) return clearInterval(devSync);
+      const lv = items.find(x => x.live), box = lv && out.querySelector('.dv-now .dv-vol');
+      if (!box || devDrag) return;
+      const v = +$('vol').value;
+      if (Number.isFinite(v) && v !== lv.vol) { lv.vol = v; showVol(box, v); }
+    }, 1000);
+  }
+  function showVol(box, v) {
+    const r = box.querySelector('input');
+    r.value = v; r.style.setProperty('--p', `${v}%`);
+    box.querySelector('output').textContent = v;
+    box.classList.toggle('muted', v === 0);
+  }
+  function wireDevVol(box, x) {
+    const r = box.querySelector('input');
+    let sentAt = 0, t = 0, before = x.vol || 50;
+    const send_ = (v, now) => {
+      clearTimeout(t);
+      const go = () => {
+        sentAt = performance.now();
+        if (x.live) { const mv = $('vol'); mv.value = v; mv.dispatchEvent(new Event('input')); } // the main slider's own path
+        else cmdOf('devVolume', { id: x.device, vol: v });
+      };
+      if (now || performance.now() - sentAt > 250) go(); else t = setTimeout(go, 250 - (performance.now() - sentAt));
+    };
+    const set = (v, now) => { v = Math.max(0, Math.min(100, Math.round(v))); if (v > 0) before = v; x.vol = v; showVol(box, v); send_(v, now); };
+    r.addEventListener('pointerdown', () => { devDrag++; });
+    const up = () => { if (devDrag) devDrag--; };
+    r.addEventListener('pointerup', up); r.addEventListener('pointercancel', up);
+    r.addEventListener('input', () => set(+r.value));
+    r.addEventListener('change', () => { set(+r.value, true); devDrag = 0; });
+    box.querySelector('.dv-mute').onclick = e => { e.stopPropagation(); set(x.vol > 0 ? 0 : before || 50, true); call('vibrate', 10); };
   }
 
   // ---- settings live preview: the sheet slides to one side so the player behind it shows every change live.

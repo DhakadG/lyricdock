@@ -464,6 +464,11 @@
       else if (m.cmd === 'device' && /^[\w-]{1,64}$/.test(m.id ?? ''))
         transferTo(m.id).then(() => sendTo(from, { type: 'acted', cmd: 'device', ok: true }),
           e => { noteErr('device', e); sendTo(from, { type: 'acted', cmd: 'device', ok: false, error: String(e?.message || e).slice(0, 80) }); });
+      else if (m.cmd === 'devVolume' && /^[\w-]{1,64}$/.test(m.id ?? '') && Number.isFinite(m.vol))
+        deviceVolume(m.id, Math.max(0, Math.min(100, Math.round(m.vol)))).then(() => sendTo(from, { type: 'acted', cmd: 'devVolume', id: m.id, ok: true }),
+          e => { noteErr('devVolume', e); sendTo(from, { type: 'acted', cmd: 'devVolume', id: m.id, ok: false, error: String(e?.message || e).slice(0, 80) }); });
+      else if (uri && (m.cmd === 'queueMove' || m.cmd === 'playlistMove') && typeof m.uid === 'string' && typeof m.to === 'string')
+        move(m.cmd, uri, m.uid, m.to, !!m.after, URI.test(m.list ?? '') ? m.list : null).then(r => sendTo(from, { type: 'acted', cmd: m.cmd, uri, ...r }));
       else if (uri && ['queueAdd', 'queueRemove', 'queueTop', 'like', 'unlike'].includes(m.cmd))
         act(m.cmd, uri, typeof m.uid === 'string' ? m.uid : null).then(r => sendTo(from, { type: 'acted', cmd: m.cmd, uri, ...r }));
       setTimeout(beat, 80);
@@ -554,6 +559,34 @@
     } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 120) }; }
   }
 
+  // Drag to reorder (the phone's queue and playlists you can edit). uid / to: the moved row and the row it lands next
+  // to (after = below it). The queue: PlayerAPI.reorderQueue where the client has it, else the queued songs are taken
+  // out and put back in the new order (like queueTop). A playlist: PlaylistAPI.move.
+  async function move(cmd, uri, uid, to, after, list) {
+    try {
+      const where = after ? { after: { uid: to } } : { before: { uid: to } };
+      if (cmd === 'playlistMove') {
+        const A = Spicetify.Platform?.PlaylistAPI;
+        if (!list || !/^spotify:playlist:/.test(list) || !A?.move) throw new Error('this Spotify version cannot move playlist songs');
+        await A.move(list, [{ uri, uid }], where);
+        return { ok: true };
+      }
+      const queued = (Spicetify.Queue?.nextTracks ?? []).filter(t => t?.provider === 'queue').map(t => t.contextTrack ?? t).filter(t => t?.uri);
+      const it = queued.find(t => t.uid === uid), dest = queued.find(t => t.uid === to);
+      if (!it || !dest) throw new Error('the queue changed - try again');
+      const PA = Spicetify.Platform?.PlayerAPI;
+      if (PA?.reorderQueue) {
+        try { await PA.reorderQueue([{ uri: it.uri, uid: it.uid }], after ? { after: { uri: dest.uri, uid: dest.uid } } : { before: { uri: dest.uri, uid: dest.uid } }); return { ok: true }; }
+        catch (e) { noteErr('reorderQueue', e); }
+      }
+      const rest = queued.filter(t => t !== it), at = rest.indexOf(dest) + (after ? 1 : 0);
+      rest.splice(at, 0, it);
+      await Spicetify.removeFromQueue(queued.map(t => ({ uri: t.uri, uid: t.uid })));
+      await Spicetify.addToQueue(rest.map(t => ({ uri: t.uri })));
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 120) }; }
+  }
+
   // Local play history: always available, even when Spotify's recently-played endpoint refuses.
   const HISTORY_KEY = 'lyricdock:history';
   function remember_(t) {
@@ -573,19 +606,38 @@
   // Web API spelling (Computer / Smartphone / Tablet, anything else is a speaker).
   const dtypeOf = t => { const s = String(t ?? '').toLowerCase(); return s === 'computer' ? 'Computer' : s === 'smartphone' ? 'Smartphone' : s === 'tablet' ? 'Tablet' : 'Speaker'; };
   const typeLabel = t => { const s = String(t ?? '').replace(/_/g, ' ').trim(); return s ? s[0].toUpperCase() + s.slice(1).toLowerCase() : 'Device'; };
-  const deviceRow = (id, name, type, active, local) => ({ uri: `device:${id}`, device: id, title: name || 'Unnamed device',
-    sub: [local ? 'This computer' : typeLabel(type), active && 'playing here'].filter(Boolean).join(' · '), dtype: dtypeOf(type), live: !!active });
+  // vol: 0-100 when the device reports one (the phone draws a slider for it), null when it can't be set.
+  const pct = v => v === null || v === undefined || v === '' || !Number.isFinite(+v) ? null : Math.round(Math.max(0, Math.min(100, +v > 1 ? +v > 100 ? +v / 655.35 : +v : +v * 100)));
+  const deviceRow = (id, name, type, active, local, vol) => ({ uri: `device:${id}`, device: id, title: name || 'Unnamed device',
+    sub: [local ? 'This computer' : typeLabel(type), active && 'playing here'].filter(Boolean).join(' · '), kind: local ? 'This computer' : typeLabel(type),
+    dtype: dtypeOf(type), live: !!active, local: !!local, vol: active && local ? safe(() => Math.round(P.getVolume() * 100), pct(vol)) : pct(vol) });
   async function deviceList() {
     const C = connect();
     if (C?.state) {
       let ds = safe(() => C.state.devices, null);
       if (!ds?.length && C.discoverDevices) { safe(() => C.discoverDevices()); await new Promise(r => setTimeout(r, 1200)); ds = safe(() => C.state.devices, null); }
       const rows = (ds ?? []).filter(d => d?.id && /^[\w-]{1,64}$/.test(d.id) && !d.isDisabled)
-        .map(d => deviceRow(d.id, d.name, d.type, d.isActive, d.isLocal));
-      if (rows.length) return { items: rows.sort((a, b) => b.live - a.live) };
+        .map(d => deviceRow(d.id, d.name, d.type, d.isActive, d.isLocal, d.volume ?? d.volumePercent));
+      if (rows.length) {
+        // ConnectAPI doesn't always carry the volume: fill it from the Web API (cached briefly, the token is rate-limited).
+        if (rows.some(x => x.vol === null)) try {
+          const r = await webCached('/me/player/devices', 15000), byId = new Map((r?.devices ?? []).map(d => [d.id, d]));
+          for (const x of rows) { const d = byId.get(x.device); if (x.vol === null && d?.supports_volume !== false) x.vol = pct(d?.volume_percent); }
+        } catch {}
+        return { items: rows.sort((a, b) => b.live - a.live) };
+      }
     }
     const r = await web('/me/player/devices');
-    return { items: (r?.devices ?? []).filter(d => d?.id && !d.is_restricted).map(d => deviceRow(d.id, d.name, d.type, d.is_active, false)) };
+    return { items: (r?.devices ?? []).filter(d => d?.id && !d.is_restricted)
+      .map(d => deviceRow(d.id, d.name, d.type, d.is_active, false, d.supports_volume === false ? null : d.volume_percent)).sort((a, b) => b.live - a.live) };
+  }
+  // A device's own volume (the Devices tab). This computer through the player itself; anything else through Connect
+  // where the client can, else the Web API's device_id.
+  async function deviceVolume(id, vol) {
+    const C = connect(), d = safe(() => C?.state?.devices?.find(x => x.id === id), null);
+    if (d?.isLocal) return P.setVolume(vol / 100);
+    if (C?.setVolume) { try { await C.setVolume(vol / 100, id); return; } catch (e) { noteErr('connect-volume', e); } }
+    await web(`/me/player/volume?volume_percent=${vol}&device_id=${id}`, 'PUT');
   }
   async function transferTo(id) {
     const C = connect();
@@ -658,7 +710,9 @@
       const A = Spicetify.Platform.PlaylistAPI;
       const [meta, c] = await Promise.all([A.getMetadata(uri).catch(() => null), A.getContents(uri, { limit: 500 })]);
       const items = (c?.items ?? []).filter(t => t?.uri && t?.name).map(t => trackRow(t)); // unavailable / local rows have no name
-      return { head: { uri, title: meta?.name ?? 'Playlist', sub: [meta?.owner?.displayName ?? meta?.owner?.name, `${c?.totalLength ?? items.length} songs`].filter(Boolean).join(' · '), art: pickImg(meta?.images) }, ctx: uri, items: await withLiked(items) };
+      const me = safe(() => Spicetify.Platform.username, null), own = !!me && (meta?.owner?.username ?? meta?.owner?.uri?.split(':').pop()) === me;
+      const editable = !!A.move && (meta?.permissions?.canEditItems ?? own); // the phone shows drag handles
+      return { head: { uri, title: meta?.name ?? 'Playlist', sub: [meta?.owner?.displayName ?? meta?.owner?.name, `${c?.totalLength ?? items.length} songs`].filter(Boolean).join(' · '), art: pickImg(meta?.images), editable }, ctx: uri, items: await withLiked(items) };
     }
     if (type === 'album') {
       let head, items;
