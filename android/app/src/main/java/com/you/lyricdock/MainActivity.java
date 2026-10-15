@@ -272,7 +272,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
     public void setFullscreen(boolean on) {
         immersive = on;
         getSharedPreferences("dock", MODE_PRIVATE).edit().putBoolean("immersive", on).apply();
-        runOnUiThread(this::applyBars);
+        runOnUiThread(new Runnable() { public void run() { applyBars(); } }); // no lambdas: build-apk.ps1 compiles with plain javac
     }
     @JavascriptInterface
     public boolean isFullscreen() { return immersive; }
