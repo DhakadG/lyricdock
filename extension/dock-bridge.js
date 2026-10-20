@@ -3014,14 +3014,15 @@
   // button never showed ("LyricDock vanished", 2026-10-15). So LyricDock places it itself, and again whenever Spotify
   // redraws the top bar: just before the app icons' row, looking like them (outside their scroller, which is only as wide
   // as its icons: inside it, the last icon slid behind a scroll arrow); else after back / forward; else on the right
-  // beside Spotify's own round buttons.
+  // beside Spotify's own round buttons. Spotify 1.3.5 minified its own top-bar class names (main-globalNav-* gone), so
+  // the app icons are found by Spicetify's row instead, which Spicetify names itself.
   setInterval(() => {
     const el = tb?.element;
     if (!el) return;
     // (not LyricDock's own button: it takes the same class)
     const app = [
       ...document.querySelectorAll(
-        '.main-globalNav-historyButtonsWrapper .main-globalNav-navLink, .main-globalNav-historyButtons .main-globalNav-navLink',
+        '.custom-navlinks-scrollable_container .main-globalNav-navLink, .main-globalNav-historyButtonsWrapper .main-globalNav-navLink, .main-globalNav-historyButtons .main-globalNav-navLink',
       ),
     ].find(b => !el.contains(b));
     const row = app?.closest('.custom-navlinks-scrollable_container');
@@ -3045,8 +3046,14 @@
           : '<span aria-hidden="true">';
       tb.button.innerHTML = wrap + ICON.replace('width="16" height="16"', 'width="24" height="24"') + '</span>';
       tb.button.setAttribute('aria-label', 'LyricDock');
-      if (row) row.before(el);
-      else app.parentElement.prepend(el);
+      if (row) {
+        row.before(el);
+        // Spaced like the app icons, as the row's first one (the top bar puts a wider gap between its groups).
+        const want = parseFloat(getComputedStyle(app).marginInlineEnd) || 8,
+          has = parseFloat(getComputedStyle(el.parentElement).columnGap) || 0;
+        el.style.marginInlineEnd = `${want - has}px`;
+        tb.button.style.margin = '0';
+      } else app.parentElement.prepend(el);
     } else like.parentElement.append(el);
   }, 1000);
 
