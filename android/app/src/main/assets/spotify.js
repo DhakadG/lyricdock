@@ -625,6 +625,18 @@ const Web = (() => {
     login,
     logout,
     onAuth,
+    // Spotify's catalogue for a song known only by name (phone.js Match): [{id, title, artist, dur}], or null signed out.
+    search: async q => {
+      if (!loggedIn()) return null;
+      const r = await api('GET', '/search?type=track&limit=10&q=' + encodeURIComponent(q));
+      return (r?.json?.tracks?.items ?? []).map(it => ({
+        id: it.id,
+        title: it.name,
+        artist: (it.artists || []).map(a => a.name).join(', '),
+        dur: it.duration_ms,
+        art: [...(it.album?.images || [])].sort((a, b) => b.width - a.width)[0]?.url || null,
+      }));
+    },
     control,
     setWanted,
     loggedIn,

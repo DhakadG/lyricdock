@@ -118,6 +118,58 @@ async function findLyrics(req, env, ctx) {
   return out(body);
 }
 
+// /lyrics/spotify?q=: Spotify's catalogue search for a song known only by name (phone.js Match picks from the results),
+// for screens not signed in to Spotify. Spotify's app-only token (client credentials) - no user involved, no 5-user cap.
+// Secrets: SPOTIFY_ID, SPOTIFY_SECRET (developer.spotify.com -> your app -> Settings). Results kept a day.
+let spToken = { v: '', exp: 0 };
+async function spotifySearch(req, env, ctx) {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+  const out = (body, status = 200) =>
+    new Response(body, {
+      status,
+      headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store', ...CORS },
+    });
+  const q = (new URL(req.url).searchParams.get('q') || '').slice(0, 300).trim();
+  if (!q) return out('{"error":"no query"}', 400);
+  const me = await appUser(req);
+  if (!me) return out('{"error":"sign in"}', 401);
+  if (!env.SPOTIFY_ID || !env.SPOTIFY_SECRET) return out('{"error":"search not configured"}', 503);
+  const key = new Request(`https://lyrics.cache.invalid/spotify/${encodeURIComponent(q.toLowerCase())}`),
+    hit = await caches.default.match(key);
+  if (hit) return out(hit.body);
+  if (env.LYRICS_LIMIT && !(await env.LYRICS_LIMIT.limit({ key: me.email || me.sub })).success)
+    return out('{"error":"slow down"}', 429);
+  if (Date.now() > spToken.exp) {
+    const t = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        authorization: 'Basic ' + btoa(`${env.SPOTIFY_ID}:${env.SPOTIFY_SECRET}`),
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: 'grant_type=client_credentials',
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (!t?.access_token) return out('{"error":"spotify token"}', 502);
+    spToken = { v: t.access_token, exp: Date.now() + (t.expires_in - 60) * 1000 };
+  }
+  const r = await fetch(`https://api.spotify.com/v1/search?type=track&limit=10&q=${encodeURIComponent(q)}`, {
+    headers: { authorization: `Bearer ${spToken.v}` },
+  }).catch(() => null);
+  if (!r?.ok) return out(`{"error":"spotify ${r?.status ?? 'unreachable'}"}`, 502);
+  const body = JSON.stringify(
+    ((await r.json()).tracks?.items ?? []).map(it => ({
+      id: it.id,
+      title: it.name,
+      artist: (it.artists || []).map(a => a.name).join(', '),
+      dur: it.duration_ms,
+      art: [...(it.album?.images || [])].sort((a, b) => b.width - a.width)[0]?.url || null,
+    })),
+  );
+  ctx.waitUntil(caches.default.put(key, new Response(body, { headers: { 'cache-control': 'max-age=86400' } })));
+  return out(body);
+}
+
 export default {
   async fetch(req, env, ctx) {
     const { pathname } = new URL(req.url);
@@ -125,6 +177,7 @@ export default {
     if (ic) return ic;
     if (pathname === '/turn') return turn(req, env);
     if (pathname === '/lyrics/find') return findLyrics(req, env, ctx);
+    if (pathname === '/lyrics/spotify') return spotifySearch(req, env, ctx);
     if (pathname.startsWith('/lyrics/')) return lyrics(req, env, ctx, pathname.slice(8));
     if (
       pathname === '/manifest.webmanifest' ||
