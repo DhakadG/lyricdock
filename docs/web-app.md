@@ -64,6 +64,16 @@ The app checks `window.LYRICDOCK_WEB` only where web and phone differ:
 
   Spotify's 2026 rules for development-mode apps: the app owner must have Premium, and at most 5 users.
 
+- **Apps on my PC** (the LyricDock Helper, Windows): the helper reads Windows' media sessions (Apple Music, YouTube
+  Music in a browser, VLC…) and streams them on `127.0.0.1:8977` (`/media/ws`, `/media/art/<hash>`, `/media/cmd`).
+  The web app connects only when this source is picked; the CSP allows exactly that address.
+- **Listen** (name it by sound): a shared tab's or the microphone's sound, fingerprinted in the page (`shazam.js`) and
+  named by Shazam through `/lyrics/shazam`. Tab sound needs desktop Chrome / Edge. On iPhone / iPad the microphone
+  takes the audio session, so it is for music playing somewhere else.
+
+Search, the library and playing from a list go to Spotify on the computer while its link is up, else the signed-in
+Spotify account, whatever source the screen follows (`features.js spotifyPath`).
+
 ## Local network access (Chrome / Edge)
 
 - **The rule:** browsers (2026) keep public sites away from this PC and the home network until the user allows it.

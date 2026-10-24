@@ -18,14 +18,23 @@ Spotify desktop (Spicetify, dock-bridge.js)                          Phone
   preloadNext: next track's cover + cached lyrics · beat(): position/play/liked/quality/volume/shuffle/repeat every ~500 ms
   extras: artist image, album + year, Canvas URL, audio analysis (tempo + loudness per 0.5 s)
 Spotify account source (spotify.js, Web API polled 1 s / 3 s paused) → same messages; lyrics from the Spicy API (user's sl_pk_ key) or LRCLIB
+Songs known by name (pc.js, phone.js, listen.js → Named): Spotify match (Match: ISRC, else title/artist/length) → Spicy API, plus LRCLIB
+Every source (app.js topUp): the Spicy API and /lyrics/find (NetEase word+line, Kugou word, QQ line; web/src/cnlyrics.js) side by side
 ```
 
-Ranking word 3 > line 2 > static 1 > none 0; `offerLyrics` only replaces what is on screen with something better, and fades just the list in
-(opacity only — the pane may still be running the song-change animation and the list's transform belongs to the scroll spring).
+Ranking is Settings → Music → Lyrics sources (`Lyrics.rank`, source × sync type, word first by default); `offerLyrics` only replaces what
+is on screen with something better, and fades just the list in (opacity only — the pane may still be running the song-change animation
+and the list's transform belongs to the scroll spring). Every version stays in the pool (the source pill steps through them).
+
+**Blend** (`blend.js`): with no real word sync, the best non-catalogue text gets NetEase / Kugou word timing (LCS over the whole song;
+failing exact words, consonant skeletons in Latin letters - Devanagari text vs Latin-letter timing). In Hindi / Punjabi script mode a
+Latin-letter version's timing goes under an Indic-script text (`.script`, preferred while that mode is on).
 
 **Normalized shape** (`Lyrics.fromSpicy`): `{ kind, lines, writers, source, contributors }`; word lines `{ t, e, opp, w:[{s,r,t,e,p}], bg:[…] }`
 (ms; `s` text, `r` romanization, `p` joined to the next syllable). Background groups are flattened into one `bg` list per line.
 **Romanization** at build time: `smart` (Devanagari stays), `always`, `off`; the provider's romanization wins, else our Indic/Urdu transliterator.
+`deva` / `guru` write any Brahmic script in Devanagari / Gurmukhi letter for letter, per syllable (`Roman.toScript`); Latin stays Latin.
+**Timing:** lyrics run at `pos() - delay()`, delay = the sync offset (positive = later) + the delay kept for the output playing (`P.out`).
 
 ## 2. DOM (`Lyrics.build`)
 
