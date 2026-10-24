@@ -12,7 +12,7 @@
   // control() (app.js), not Web.control: the miniplayer's copy must hand commands to the main copy - its own Web never
   // polls, so a toggle there (shuffle) read a blank state and could only ever switch on.
   const cmdOf = (c, extra = {}) =>
-    P.source === 'web'
+    P.source !== 'bridge'
       ? control(c, 'ms' in extra ? extra.ms : 'v' in extra ? extra.v : extra)
       : send({ type: 'cmd', cmd: c, ...extra });
 
@@ -2659,9 +2659,12 @@
 
   // ---- Lyrics kept on the device (Cache Storage 'dock-lyrics', newest 500 songs): replays and offline start instantly.
   const lyId = id => `https://dock.local/lyrics/${id}`;
+  // Not songs from another app on the phone (phone.js, ids 'ph…'): those lyrics were found by name, and a wrong match
+  // kept here would come back every time (a fresh lookup from the same source can't replace it).
+  const keep = id => !!id && !String(id).startsWith('ph');
   window.lyricStore = {
     put(id, lyr) {
-      if (!id || !Lyrics.rank(lyr)) return;
+      if (!keep(id) || !Lyrics.rank(lyr)) return;
       let body;
       try {
         body = JSON.stringify(lyr);
@@ -2678,11 +2681,13 @@
         .catch(() => {});
     },
     get: id =>
-      caches
-        .open('dock-lyrics')
-        .then(c => c.match(lyId(id)))
-        .then(r => (r ? r.json() : null))
-        .catch(() => null),
+      !keep(id)
+        ? Promise.resolve(null)
+        : caches
+            .open('dock-lyrics')
+            .then(c => c.match(lyId(id)))
+            .then(r => (r ? r.json() : null))
+            .catch(() => null),
   };
 
   // ---- Settings -> Storage: what is kept on this phone, and clearing it.
@@ -3161,7 +3166,7 @@
       line: l?.text ? { i: l.i, text: l.text, t: l.t, e: l.e } : null,
       prev: l?.prev || '',
       next: l?.next || [],
-      src: P.source === 'web' ? 'webapi' : 'bridge',
+      src: P.source === 'web' ? 'webapi' : P.source,
     };
   }
   setInterval(() => {

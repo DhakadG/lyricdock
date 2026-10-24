@@ -67,7 +67,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         CrashLog.install(
                 this); // a crash on any thread is written down (shown on the next start) instead of
-                       // vanishing
+        // vanishing
         // Development builds only (scripts/build-apk.ps1 without -Release): page inspection over
         // adb, and the adb
         // link below. A release build has neither, so adb on the phone can't read the app's tokens
@@ -104,6 +104,58 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         signedIn(getIntent()); // started cold by the sign-in link
     }
 
+    // ---- "Any app on this phone" (PlayerWatch.java, phone.js). Called on the main thread.
+    void phone(String json) {
+        if (web != null)
+            web.evaluateJavascript(
+                    "window.phoneMsg&&phoneMsg(JSON.parse(" + JSONObject.quote(json) + "))", null);
+    }
+
+    @JavascriptInterface
+    public boolean phoneAccess() {
+        return PlayerWatch.allowed(this);
+    }
+
+    @JavascriptInterface
+    public void phoneResend() {
+        PlayerWatch.resend();
+    }
+
+    @JavascriptInterface
+    public void phoneCmd(String c, double arg) {
+        PlayerWatch.cmd(c, arg);
+    }
+
+    @JavascriptInterface
+    public void openPhoneAccess() {
+        runOnUiThread(new UiOp(this, UiOp.ACCESS, 0, null));
+    }
+
+    // Android's notification-access switch: straight to LyricDock's own page where the phone has
+    // one (11+).
+    void openAccess() {
+        if (isOwner())
+            try {
+                stopLockTask(); // kiosk mode pins the dock; onResume pins it again
+            } catch (Exception ignored) {
+            }
+        Intent i =
+                Build.VERSION.SDK_INT >= 30
+                        ? new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                                .putExtra(
+                                        Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                                        new android.content.ComponentName(this, PlayerWatch.class)
+                                                .flattenToString())
+                        : new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+        try {
+            startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception e) {
+            startActivity(
+                    new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        }
+    }
+
     // ---- LyricDock sign-in (account.js). Google won't sign in inside a WebView, so the page opens
     // auth.lyricdock in
     // the phone's browser; it comes back here as lyricdock://signed-in?code=... (intent filter in
@@ -121,10 +173,8 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         android.net.Uri u = i == null ? null : i.getData();
         if (u == null || !"lyricdock".equals(u.getScheme()) || !"signed-in".equals(u.getHost()))
             return;
-        ssoLink =
-                u
-                        .toString(); // the code is only good with the verifier the page kept, so a
-                                     // forged link can't sign in
+        ssoLink = u.toString(); // the code is only good with the verifier the page kept, so a
+        // forged link can't sign in
         if (web != null) web.evaluateJavascript("window.Account&&Account.check()", null);
     }
 
@@ -181,7 +231,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         web.addJavascriptInterface(
                 this,
                 "Dock"); // page -> PC (prev/play/next/seek); only @JavascriptInterface methods are
-                         // exposed
+        // exposed
         web.setOnApplyWindowInsetsListener(this);
         root.addView(web, 0);
         web.loadUrl("file:///android_asset/index.html");
@@ -618,7 +668,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
 
     @SuppressWarnings(
             "deprecation") // clearDeviceOwnerApp has no replacement: an owner app can still drop
-                           // itself
+    // itself
     void exitKiosk() {
         if (!isOwner()) return;
         DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);

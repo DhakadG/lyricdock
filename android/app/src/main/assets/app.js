@@ -758,13 +758,15 @@ function onPos(m) {
 // ---- sources. The bridge (native -> dock()) and the Web API (spotify.js) both produce track/pos/preload; each
 // keeps its latest state and only the active one reaches the screen. Auto: whichever is actually playing, the
 // desktop bridge winning ties; switching replays the new source's state so the screen catches up instantly.
-const SRC = { bridge: { at: 0, playing: false }, web: { at: 0, playing: false } };
+// phone (phone.js): any app playing on this Android phone, after the two Spotify sources (they know the Spotify track).
+const SRC = { bridge: { at: 0, playing: false }, web: { at: 0, playing: false }, phone: { at: 0, playing: false } };
 P.source = 'bridge';
 function dock(m) {
   route('bridge', m);
 }
 Rtc.onMessage(m => route('bridge', m)); // same bridge, reached over WebRTC instead of adb
 Web.onMessage(m => route('web', m));
+Phone.onMessage(m => route('phone', m));
 
 function route(src, m) {
   window.miniFeed?.(src, m); // an open miniplayer gets everything this copy hears (mini.js)
@@ -786,9 +788,11 @@ function route(src, m) {
 function decideSource() {
   const b = SRC.bridge,
     w = SRC.web,
+    p = SRC.phone,
     t = performance.now();
   const bLive = t - b.at < 2500,
-    wLive = t - w.at < 7000;
+    wLive = t - w.at < 7000,
+    pLive = t - p.at < 2500;
   const want =
     S.source !== 'auto'
       ? S.source
@@ -796,15 +800,24 @@ function decideSource() {
         ? 'bridge'
         : wLive && w.playing
           ? 'web'
-          : bLive
-            ? 'bridge'
-            : wLive
-              ? 'web'
-              : P.source;
+          : pLive && p.playing
+            ? 'phone'
+            : bLive
+              ? 'bridge'
+              : wLive
+                ? 'web'
+                : P.source;
   Web.setWanted(S.source === 'web' || (S.source === 'auto' && !(bLive && b.playing)));
   if (want === P.source) return;
   P.source = want;
-  if (P.shown) notice(want === 'web' ? 'Following your Spotify account' : 'Following Spotify on the computer');
+  if (P.shown)
+    notice(
+      want === 'web'
+        ? 'Following your Spotify account'
+        : want === 'phone'
+          ? `Following ${Phone.app() || 'music on this phone'}`
+          : 'Following Spotify on the computer',
+    );
   const s = SRC[want];
   for (const m of [s.track && { ...s.track, dir: 1 }, s.preload, s.pos]) if (m) handle(m);
 }
@@ -1043,7 +1056,9 @@ const control = (c, arg) =>
     ? window.miniHost?.({ ctl: [c, arg] })
     : P.source === 'web'
       ? Web.control(c, arg)
-      : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
+      : P.source === 'phone'
+        ? Phone.control(c, arg)
+        : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
 // Spotify refused a command (spotify.js): drop the optimistic state so its next answer puts the screen back.
 window.controlFailed = () => {
   P.skip = null;

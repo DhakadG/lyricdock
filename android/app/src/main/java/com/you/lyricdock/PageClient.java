@@ -21,6 +21,17 @@ class PageClient extends WebViewClient {
         // player inside it
         // has a proper embedding page (a file:// parent gets Error 153). It relays play/pause/seek
         // from the app.
+        // The cover of the song playing in another app on this phone (PlayerWatch). The number in
+        // the address only changes it for the page's image cache. ACAO: the page samples its
+        // colours.
+        if (url.startsWith(PlayerWatch.ART_URL)) {
+            byte[] b = PlayerWatch.art;
+            if (b == null) return null;
+            Map<String, String> h = new HashMap<String, String>();
+            h.put("Access-Control-Allow-Origin", "*");
+            return new WebResourceResponse(
+                    "image/jpeg", null, 200, "OK", h, new java.io.ByteArrayInputStream(b));
+        }
         if (url.startsWith("https://video.lyricdock.app/player")) {
             String id = req.getUrl().getQueryParameter("v"),
                     start = req.getUrl().getQueryParameter("t");

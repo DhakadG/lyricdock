@@ -62,6 +62,18 @@
             </intent-filter>
         </activity-alias>
         <receiver android:name=".MediaReceiver" android:exported="false" />
+        <!-- Playback source "Any app on this phone": other apps' media sessions (PlayerWatch.java). Only the system binds it,
+             and only once the user switches LyricDock on under Notification access. -->
+        <service
+      android:name=".PlayerWatch"
+      android:exported="true"
+      android:label="LyricDock: follow music from any app"
+      android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+    >
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
         <!-- Home-screen widgets (NowPlaying.java draws both; they never poll) -->
         <receiver android:name=".NowWidget" android:exported="false" android:label="LyricDock: now playing">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>

@@ -961,13 +961,32 @@ const Settings = (() => {
       label: 'Playback source',
       type: 'choice',
       def: 'auto',
-      desc: 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
+      desc: app
+        ? 'Auto: the desktop bridge while Spotify plays on the PC, then your Spotify account, then any app playing on this phone'
+        : 'Auto: the desktop bridge while Spotify plays on the PC, otherwise your Spotify account (phone, speakers…)',
       opts: [
         ['auto', 'Auto'],
         ['bridge', 'Desktop (Spicetify)'],
         ['web', 'Spotify account'],
+        ...(app ? [['phone', 'Any app on this phone']] : []),
       ],
-      help: "Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify's Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise.",
+      help:
+        "Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify's Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise." +
+        (app
+          ? ' Any app on this phone: YouTube Music, Apple Music, Spotify or anything else playing on this phone, the moment it changes song (needs Notification access below).'
+          : ''),
+    },
+    {
+      label: 'Music from other apps',
+      type: 'action',
+      when: () => app && !!window.Phone?.available(),
+      text: () => (window.Phone?.allowed() ? 'Change' : 'Allow'),
+      run: () => window.Phone.openAccess(),
+      info: () =>
+        window.Phone?.allowed()
+          ? `On${window.Phone.app() ? ` · ${window.Phone.app()}` : ''}`
+          : 'Off - switch LyricDock on under Notification access',
+      help: "Android only shows other apps' playing songs to apps with Notification access. LyricDock reads the song, artist, cover and position - never your notifications. Greyed out? Android 13+ blocks it for apps installed outside the Play Store: Settings → Apps → LyricDock → ⋮ → Allow restricted settings, then try again.",
     },
     // Signing in goes through the setup screen: the dashboard link, the redirect URI and the errors live there.
     {
