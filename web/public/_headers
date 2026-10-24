@@ -1,10 +1,11 @@
 # script-src 'self': the Spotify sign-in and the LyricDock app token live in localStorage, so no injected script may run.
-# connect-src stays open to https/wss: lyrics sources, Piped instances and a custom ntfy server are chosen at run time.
+# connect-src stays open to https/wss: lyrics sources, Piped instances and a custom ntfy server are chosen at run time;
+# http/ws to 127.0.0.1:8977 is the LyricDock Helper on this PC (pc.js: Apps on my PC), its covers in img-src too.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: screen-wake-lock=(self), fullscreen=(self), autoplay=*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://www.youtube-nocookie.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https: http://127.0.0.1:8977; media-src 'self' blob: https:; connect-src 'self' https: wss: http://127.0.0.1:8977 ws://127.0.0.1:8977; frame-src 'self' https://www.youtube-nocookie.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'
 
 /
   Cache-Control: no-cache

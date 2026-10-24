@@ -12,9 +12,20 @@
   // control() (app.js), not Web.control: the miniplayer's copy must hand commands to the main copy - its own Web never
   // polls, so a toggle there (shuffle) read a blank state and could only ever switch on.
   const cmdOf = (c, extra = {}) =>
-    P.source !== 'bridge'
-      ? control(c, 'ms' in extra ? extra.ms : 'v' in extra ? extra.v : extra)
-      : send({ type: 'cmd', cmd: c, ...extra });
+    LIB.has(c) && !window.LYRICDOCK_MINI
+      ? spWeb()
+        ? Web.control(c, extra)
+        : send({ type: 'cmd', cmd: c, ...extra })
+      : P.source !== 'bridge'
+        ? control(c, 'ms' in extra ? extra.ms : 'v' in extra ? extra.v : extra)
+        : send({ type: 'cmd', cmd: c, ...extra });
+  // Spotify's search, library, queue and playing (LIB): through Spotify on the computer while its link is up (any
+  // network: the link relays when the two aren't on one), else the signed-in Spotify account - whatever the screen
+  // follows (a PC app, this phone, Listen). Play / pause / next stay with the source on screen.
+  const LIB = new Set(['play', 'device', 'devVolume']);
+  const spDesk = () => performance.now() - (SRC.bridge.heard || 0) < 6000;
+  const spWeb = () => P.source === 'web' || (!spDesk() && !!window.Web?.loggedIn());
+  window.spotifyPath = () => (spDesk() && P.source !== 'web' ? 'desktop' : window.Web?.loggedIn() ? 'account' : null);
 
   // ---- marquee: only text that does not fit scrolls, back and forth, with soft edges.
   function marquee(el) {
@@ -761,6 +772,24 @@
       load();
     }
   };
+  // Recent searches (this device, newest first, 12): kept when Enter is pressed or a result is opened or played.
+  const HIST = 'dock:searchHist';
+  const searchHist = () => {
+    try {
+      return JSON.parse(localStorage.getItem(HIST)) || [];
+    } catch (e) {
+      return [];
+    }
+  };
+  const saveHist = h => {
+    try {
+      localStorage.setItem(HIST, JSON.stringify(h));
+    } catch (e) {}
+  };
+  const rememberSearch = s => {
+    s = String(s || '').trim();
+    if (s.length > 1) saveHist([s, ...searchHist().filter(x => x.toLowerCase() !== s.toLowerCase())].slice(0, 12));
+  };
   function openList(which) {
     stack = [{ which }];
     document.body.classList.add('lists-open');
@@ -785,13 +814,34 @@
       $('listBody').innerHTML =
         `<div class="li-search"><input id="liQ" type="search" placeholder="What do you want to play?" value="${esc(v.q || '')}" enterkeyhint="search"></div><div id="liRes"></div>`;
       const q = $('liQ');
+      const empty = () => {
+        const h = searchHist();
+        $('liRes').innerHTML = h.length
+          ? `<div class="li-hist"><div class="li-hist-head"><b>Recent searches</b><button class="li-hist-clear">Clear</button></div>${h
+              .map(s => `<button class="li-chip">${esc(s)}</button>`)
+              .join('')}</div>`
+          : `<div class="li-empty">${TABS.search}</div>`;
+        $('liRes')
+          .querySelectorAll('.li-chip')
+          .forEach(
+            b =>
+              (b.onclick = () => {
+                q.value = v.q = b.textContent;
+                request(v);
+              }),
+          );
+        const c = $('liRes').querySelector('.li-hist-clear');
+        if (c) c.onclick = () => (saveHist([]), empty());
+      };
       q.oninput = () => {
         clearTimeout(searchT);
         v.q = q.value;
+        if (!v.q.trim()) return empty();
         searchT = setTimeout(() => request(v), 450);
       };
+      q.onkeydown = e => e.key === 'Enter' && rememberSearch(q.value);
       if (v.q) request(v);
-      else $('liRes').innerHTML = `<div class="li-empty">${TABS.search}</div>`;
+      else empty();
       if (!v.q) setTimeout(() => q.focus(), 350);
       return;
     }
@@ -810,7 +860,14 @@
     const msg = { which: v.which, uri: v.uri, q: v.q };
     if (v.which === 'search' && !v.q?.trim()) return;
     if (v.which === 'search') $('liRes').innerHTML = skeleton();
-    if (P.source === 'web') Web.list(v.which, v.uri || v.q).then(r => showList({ ...msg, ...r }));
+    if (!window.spotifyPath())
+      return showList({
+        ...msg,
+        items: [],
+        error:
+          "Spotify isn't reachable: open Spotify on your computer (with the LyricDock extension), or sign in to your Spotify account in Settings → Account.",
+      });
+    if (spWeb()) Web.list(v.which, v.uri || v.q).then(r => showList({ ...msg, ...r }));
     else send({ type: 'list', ...msg });
   }
   window.onExtra = m => {
@@ -1009,6 +1066,7 @@
         window.notice?.(x.live ? `Already playing on ${x.title}` : `Switching to ${x.title}…`); // a failed switch says so (acted / control)
         return document.body.classList.remove('lists-open');
       }
+      if (stack[0].which === 'search') rememberSearch(stack[0].q); // the search led somewhere: worth keeping
       if (x.box) return browse(x.uri, x.title);
       const ctx = x.ctx || viewData?.ctx;
       cmdOf('play', { uri: x.uri, ctx });
@@ -1041,7 +1099,7 @@
         unlike: `Removed ${x.title} from Liked Songs`,
       }[cmd],
     );
-    if (P.source === 'web') Web.act(cmd, x.uri).then(r => acted({ cmd, uri: x.uri, ...r }));
+    if (spWeb()) Web.act(cmd, x.uri).then(r => acted({ cmd, uri: x.uri, ...r }));
     else send({ type: 'cmd', cmd, uri: x.uri, uid: x.uid });
   }
   function heartPop(el) {
@@ -1069,7 +1127,7 @@
   // the list scrolls near its edges, and the drop is drawn at once while Spotify catches up (acted -> refresh).
   let reo = null; // 'queue' | 'playlist' | null, for the view on screen
   function reorderMode(v, m) {
-    if (P.source === 'web' || window.LYRICDOCK_MINI) return null;
+    if (spWeb() || window.LYRICDOCK_MINI) return null;
     if (v.which === 'queue') return 'queue';
     if (v.which === 'tracks' && m.head?.editable && /^spotify:playlist:/.test(v.uri || '')) return 'playlist';
     return null;
@@ -1551,15 +1609,19 @@
     'clockVolume',
     'clockHaptic',
   ];
-  const QUICK = {
-    split: ['artSide', 'progress', ...LYR],
-    player: [...LYR, ...STATUS],
-    lyrics: [...LYR, ...STATUS],
-    cinema: [...LYR, ...STATUS],
-    nowbar: ['spin', ...LYR, ...STATUS],
-    clocksplit: ['artSide', ...CLK],
-    clock: [...CLK, ...STATUS],
-  };
+  // Every layout starts with where the music comes from: Spotify here or on the computer, another app, the music
+  // around you (Listen) - one tap from the screen, not deep in Settings.
+  const QUICK = Object.fromEntries(
+    Object.entries({
+      split: ['artSide', 'progress', ...LYR],
+      player: [...LYR, ...STATUS],
+      lyrics: [...LYR, ...STATUS],
+      cinema: [...LYR, ...STATUS],
+      nowbar: ['spin', ...LYR, ...STATUS],
+      clocksplit: ['artSide', ...CLK],
+      clock: [...CLK, ...STATUS],
+    }).map(([k, v]) => [k, ['source', ...v]]),
+  );
   function renderQs() {
     // Rotate and full screen on every device (the miniplayer window has neither); where a platform can't do one, the
     // button says why instead of vanishing. An Android app too old for the bars toggle leaves full screen out.

@@ -119,6 +119,49 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
                     "window.phoneMsg&&phoneMsg(JSON.parse(" + JSONObject.quote(json) + "))", null);
     }
 
+    // Search -> play with Spotify running nowhere (spotify.js control): Spotify's app opened on the song, so it becomes
+    // a device the Web API can play on; then the dock comes back (toFront). false = no Spotify app here.
+    @JavascriptInterface
+    public boolean openSpotify(String uri) {
+        if (uri == null || !uri.matches("spotify:(track|album|playlist|artist|show|episode):[A-Za-z0-9]{1,40}"))
+            return false;
+        Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).setPackage("com.spotify.music");
+        if (i.resolveActivity(getPackageManager()) == null) return false;
+        runOnUiThread(new UiOp(this, UiOp.OPEN_APP, 0, uri));
+        return true;
+    }
+
+    @JavascriptInterface
+    public void toFront() {
+        runOnUiThread(new UiOp(this, UiOp.FRONT, 0, null));
+    }
+
+    void openApp(String uri) {
+        if (isOwner())
+            try {
+                stopLockTask(); // kiosk mode pins the dock; onResume pins it again
+            } catch (Exception ignored) {
+            }
+        try {
+            startActivity(
+                    new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri))
+                            .setPackage("com.spotify.music")
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception ignored) {
+        }
+    }
+
+    void toFrontNow() {
+        try {
+            startActivity(
+                    new Intent(this, MainActivity.class)
+                            .addFlags(
+                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                                            | Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception ignored) {
+        }
+    }
+
     // Where this phone's sound comes out (app.js: a lyrics delay is kept per output - Bluetooth runs late):
     // "bt:<name>", "wired" or "speaker".
     @JavascriptInterface

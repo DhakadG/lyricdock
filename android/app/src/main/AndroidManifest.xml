@@ -28,6 +28,8 @@
         <intent>
             <action android:name="android.intent.action.MEDIA_BUTTON" />
         </intent>
+        <!-- search -> play with Spotify running nowhere: its app opened on the song (MainActivity.openSpotify) -->
+        <package android:name="com.spotify.music" />
     </queries>
 
     <application

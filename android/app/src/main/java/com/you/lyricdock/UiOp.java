@@ -16,7 +16,9 @@ class UiOp implements Runnable {
             AWAKE = 7,
             KIOSK_EXIT = 8,
             BARS = 9,
-            ACCESS = 10;
+            ACCESS = 10,
+            OPEN_APP = 11,
+            FRONT = 12;
     private final MainActivity a;
     private final int op;
     private final float f;
@@ -63,6 +65,10 @@ class UiOp implements Runnable {
             a.applyBars();
         } else if (op == ACCESS) {
             a.openAccess();
+        } else if (op == OPEN_APP) {
+            a.openApp(s);
+        } else if (op == FRONT) {
+            a.toFrontNow();
         } else if (op == KIOSK_EXIT) {
             a.exitKiosk();
         } else if (op == JS && a.web != null) {

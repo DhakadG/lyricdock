@@ -2680,6 +2680,37 @@ body.lists-open #listPanel {
 .li-search input:focus {
   outline: 2px solid rgba(255, 255, 255, 0.5);
 }
+/* recent searches (features.js searchHist) */
+.li-hist {
+  padding: 6px 4px;
+}
+.li-hist-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 2px 10px;
+  font:
+    700 14px var(--font),
+    system-ui;
+}
+.li-hist-clear,
+.li-chip {
+  border: 0;
+  font:
+    500 13px var(--font),
+    system-ui;
+  color: #fff;
+}
+.li-hist-clear {
+  background: none;
+  opacity: 0.6;
+}
+.li-chip {
+  margin: 0 6px 8px 0;
+  padding: 8px 14px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.1);
+}
 .li-skel .li-art,
 .li-skel i {
   background: linear-gradient(90deg, #1f1f23 30%, #2a2a2f 50%, #1f1f23 70%) 0 0 / 300% 100%;

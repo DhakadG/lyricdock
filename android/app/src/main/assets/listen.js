@@ -67,10 +67,14 @@ const Listen = (() => {
       mute.gain.value = 0; // keeps the graph pulling without playing it back
       let tap;
       // (a data: URL: the phone app's file:// page can't load a worklet from a blob: one)
-      const worklet = await ctx.audioWorklet?.addModule('data:text/javascript;base64,' + btoa(TAP)).then(
-        () => true,
-        () => false,
-      );
+      // its file (the web app allows only its own scripts), else a data: URL (the phone app's file:// page refuses the
+      // file and blob: ones), else the older ScriptProcessor below
+      const load = u =>
+        ctx.audioWorklet?.addModule(u).then(
+          () => true,
+          () => false,
+        );
+      const worklet = (await load('listen-tap.js')) || (await load('data:text/javascript;base64,' + btoa(TAP)));
       if (worklet) {
         tap = new AudioWorkletNode(ctx, 'ld-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2 });
         tap.port.onmessage = e => this.push(e.data);

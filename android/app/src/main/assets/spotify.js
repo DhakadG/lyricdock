@@ -362,7 +362,7 @@ const Web = (() => {
       if (arg.shuffle) await api('PUT', '/me/player/shuffle?state=true');
       r = await api(
         'PUT',
-        '/me/player/play',
+        '/me/player/play' + (/^[\w-]{1,64}$/.test(arg.device || '') ? `?device_id=${arg.device}` : ''),
         /^spotify:(playlist|album|artist|show|collection)/.test(arg.uri)
           ? { context_uri: arg.uri }
           : arg.ctx && !/^spotify:collection/.test(arg.ctx)
@@ -381,6 +381,24 @@ const Web = (() => {
         like = (t.liked = !t.liked);
       r = await api(like ? 'PUT' : 'DELETE', '/me/library?uris=' + encodeURIComponent(t.uri));
       if (!r || r.status >= 300) t.liked = !like;
+    }
+    // Playing a song (search, library) with no device active: the one playing, else a phone / any one Spotify lists; with
+    // none at all, this phone's Spotify app is opened on the song (Dock.openSpotify) and used once it shows up.
+    if (cmd === 'play' && arg?.uri && r?.status === 404 && !retried) {
+      const pick = async () => {
+        const ds = ((await api('GET', '/me/player/devices'))?.json?.devices || []).filter(d => !d.is_restricted);
+        return ds.find(d => d.is_active) || ds.find(d => d.type === 'Smartphone') || ds[0];
+      };
+      let dev = await pick();
+      if (!dev && window.Dock?.openSpotify?.(arg.uri)) {
+        window.notice?.('Opening Spotify…', 4000);
+        for (let i = 0; i < 10 && !dev; i++) {
+          await new Promise(res => setTimeout(res, 1000));
+          dev = await pick();
+        }
+        window.Dock?.toFront?.();
+      }
+      if (dev) return control(cmd, { ...arg, device: dev.id }, true);
     }
     // An idle iPhone stops being Spotify's active device (404): hand playback back to it once, then try again.
     if (r?.status === 404 && lastDevice && !retried && cmd !== 'heart' && cmd !== 'device' && cmd !== 'devVolume') {
