@@ -5,10 +5,12 @@
 //   GET  /media/art/<n>    the cover of the song in the last track message
 //   POST /media/cmd        {"cmd":"toggle"|"next"|"prev"|"seek","ms":n}
 // The page (pc.js) turns these into the same source messages as the other sources.
+use std::collections::HashSet;
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tungstenite::Message;
+use windows::Foundation::TypedEventHandler;
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSession as Session,
     GlobalSystemMediaTransportControlsSessionManager as Manager,
@@ -20,6 +22,7 @@ struct Now {
     key: String,
     track: String, // the last track message, for a screen that connects later
     art: Option<Vec<u8>>,
+    stale: Option<Vec<u8>>, // the previous song's cover
     art_n: u32,
     app: String,
 }
@@ -27,7 +30,9 @@ static NOW: Mutex<Option<Now>> = Mutex::new(None);
 static SUBS: Mutex<Vec<Sender<String>>> = Mutex::new(Vec::new());
 static STARTED: Mutex<bool> = Mutex::new(false);
 
-// The reader runs once the first screen subscribes, then for good (a poll every 500 ms is cheap).
+// The reader runs once the first screen subscribes, then for good. Windows' own events (a session came or went, the
+// current one changed, a song or play state changed - as the Taskbar Fluent Media Player mod does) wake it at once; a
+// 500 ms poll is the fallback, and drives the beat every second.
 fn start() {
     let mut s = STARTED.lock().unwrap();
     if *s {
@@ -42,15 +47,57 @@ fn start() {
                 Err(_) => std::thread::sleep(Duration::from_secs(5)),
             }
         };
+        let (wake, woken) = channel::<()>();
+        // (a macro: each event has its own handler type)
+        macro_rules! poke {
+            () => {{
+                let w = wake.clone();
+                TypedEventHandler::new(move |_, _| {
+                    let _ = w.send(());
+                    Ok(())
+                })
+            }};
+        }
+        let _ = mgr.SessionsChanged(&poke!());
+        let _ = mgr.CurrentSessionChanged(&poke!());
+        let mut watched: HashSet<String> = HashSet::new(); // sessions whose song / play-state events wake us
         let mut cur: Option<String> = None; // the followed session's app id
-        let mut tick = 0u32;
+        let mut beat_at = Instant::now();
+        let mut gone: Option<Instant> = None; // since when the followed session is missing
         loop {
-            if let Some((s, id)) = pick(&mgr, cur.as_deref()) {
-                cur = Some(id);
-                let _ = read(&s, tick % 2 == 0);
+            if let Ok(all) = mgr.GetSessions() {
+                for s in all {
+                    if watched.insert(app_id(&s)) {
+                        let _ = s.MediaPropertiesChanged(&poke!());
+                        let _ = s.PlaybackInfoChanged(&poke!());
+                    }
+                }
             }
-            tick += 1;
-            std::thread::sleep(Duration::from_millis(500));
+            let beat = beat_at.elapsed() >= Duration::from_millis(950);
+            if beat {
+                beat_at = Instant::now();
+            }
+            // Chrome drops its session for a moment between two songs: a paused session of another app only takes over
+            // once the followed one has been gone for 3 s (one that plays takes over at once).
+            match pick(&mgr, cur.as_deref()) {
+                Some((s, id))
+                    if cur.as_ref() == Some(&id)
+                        || cur.is_none()
+                        || playing(&s)
+                        || gone.is_some_and(|g| g.elapsed() > Duration::from_secs(3)) =>
+                {
+                    gone = None;
+                    cur = Some(id);
+                    let _ = read(&s, beat);
+                }
+                _ => {
+                    gone.get_or_insert_with(Instant::now);
+                }
+            }
+            if woken.recv_timeout(Duration::from_millis(500)).is_ok() {
+                std::thread::sleep(Duration::from_millis(40)); // a burst of events: read once, when it settles
+                while woken.try_recv().is_ok() {}
+            }
         }
     });
 }
@@ -79,8 +126,11 @@ fn pick(mgr: &Manager, cur: Option<&str>) -> Option<(Session, String)> {
     let keep = all
         .iter()
         .find(|s| Some(app_id(s).as_str()) == cur && playing(s));
+    // A player between two songs isn't "playing" for a moment: the followed session is kept while it exists, rather than
+    // jumping to whatever Windows calls current (it flapped to a paused tab and back).
     let s = keep
         .or_else(|| all.iter().find(|s| playing(s)))
+        .or_else(|| all.iter().find(|s| Some(app_id(s).as_str()) == cur))
         .or_else(|| {
             let c = mgr.GetCurrentSession().ok().map(|c| app_id(&c));
             all.iter().find(|s| Some(app_id(s)) == c)
@@ -152,7 +202,19 @@ fn read(s: &Session, beat: bool) -> windows::core::Result<()> {
         let fresh = now.as_ref().map(|n| n.key != key).unwrap_or(true);
         let need_art = fresh || now.as_ref().map(|n| n.art.is_none()).unwrap_or(true);
         // A player names the song a moment before its cover (and its length): the same song again, now with them.
-        let art = if need_art { cover(&p) } else { None };
+        // Browsers hand over the previous song's cover first: one identical to it waits for the real one.
+        let stale = now.as_ref().and_then(|n| {
+            if fresh {
+                n.art.clone()
+            } else {
+                n.stale.clone()
+            }
+        });
+        let art = if need_art {
+            cover(&p).filter(|b| Some(b) != stale.as_ref())
+        } else {
+            None
+        };
         if fresh
             || art.is_some()
             || now
@@ -164,11 +226,12 @@ fn read(s: &Session, beat: bool) -> windows::core::Result<()> {
                 key: String::new(),
                 track: String::new(),
                 art: None,
+                stale: None,
                 art_n: 0,
                 app: String::new(),
             });
             if fresh {
-                n.art = None;
+                n.stale = n.art.take();
             }
             if art.is_some() {
                 n.art = art;
