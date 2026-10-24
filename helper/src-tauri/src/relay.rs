@@ -213,13 +213,15 @@ fn handle(mut s: TcpStream, subs: Subs) -> std::io::Result<()> {
     }
     match method {
         "OPTIONS" => reply(&mut s, "204 No Content", "", org.as_deref()),
-        "GET" if path.starts_with("/media/art/") => match crate::media::art() {
-            Some((b, ty)) => {
-                write!(s, "HTTP/1.1 200 OK\r\n{}Content-Type: {ty}\r\nCache-Control: max-age=86400\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", cors(org.as_deref()), b.len())?;
-                s.write_all(&b)
+        "GET" if path.starts_with("/media/art/") => {
+            match crate::media::art(&path["/media/art/".len()..]) {
+                Some((b, ty)) => {
+                    write!(s, "HTTP/1.1 200 OK\r\n{}Content-Type: {ty}\r\nCache-Control: max-age=86400\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", cors(org.as_deref()), b.len())?;
+                    s.write_all(&b)
+                }
+                None => reply(&mut s, "404 Not Found", "", org.as_deref()),
             }
-            None => reply(&mut s, "404 Not Found", "", org.as_deref()),
-        },
+        }
         "POST" if path == "/media/cmd" => {
             crate::media::cmd(&String::from_utf8_lossy(
                 &buf[body_at..(body_at + len).min(buf.len())],

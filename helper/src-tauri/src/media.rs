@@ -22,8 +22,8 @@ struct Now {
     key: String,
     track: String, // the last track message, for a screen that connects later
     art: Option<Vec<u8>>,
-    stale: Option<Vec<u8>>, // the previous song's cover
-    since: Instant,         // when this song was first seen
+    since: Instant,                    // when this song was first seen
+    arts: Vec<(u64, String, Vec<u8>)>, // the last few covers: address (hash), the song shown with, the image
     app: String,
 }
 static NOW: Mutex<Option<Now>> = Mutex::new(None);
@@ -200,21 +200,42 @@ fn read(s: &Session, beat: bool) -> windows::core::Result<()> {
     {
         let mut now = NOW.lock().unwrap();
         let fresh = now.as_ref().map(|n| n.key != key).unwrap_or(true);
-        let need_art = fresh || now.as_ref().map(|n| n.art.is_none()).unwrap_or(true);
-        // A player names the song a moment before its cover (and its length): the same song again, now with them.
-        // Browsers hand over the previous song's cover first: one identical to it waits for the real one - for 3 s, since
-        // the next song from the same album really has the same cover.
-        let stale = now.as_ref().and_then(|n| {
-            if fresh {
-                n.art.clone()
-            } else if n.since.elapsed() < Duration::from_secs(3) {
-                n.stale.clone()
-            } else {
-                None
-            }
-        });
-        let art = if need_art {
-            cover(&p).filter(|b| Some(b) != stale.as_ref())
+        // A player names the song a moment before its cover (and its length): the same song again, now with them. The
+        // cover is read again for a song's first 8 s: browsers hand over covers of earlier songs first (not only the last
+        // one) and the real one later. A cover already shown for another song waits 3 s (the next song from the same
+        // album really has it).
+        let young = now
+            .as_ref()
+            .map(|n| fresh || n.since.elapsed() < Duration::from_secs(3))
+            .unwrap_or(true);
+        let need_art = fresh
+            || now
+                .as_ref()
+                .map(|n| n.art.is_none() || n.since.elapsed() < Duration::from_secs(8))
+                .unwrap_or(true);
+        let shown = now
+            .as_ref()
+            .filter(|_| !fresh)
+            .and_then(|n| n.art.as_deref().map(hash_bytes));
+        // Chrome then sends the same cover again, smaller (150 px, then 120 px): a smaller one never replaces it.
+        let shown_w = now
+            .as_ref()
+            .filter(|_| !fresh)
+            .and_then(|n| n.art.as_deref().and_then(png_width));
+        // A cover handed over with the song change itself is an earlier song's (at some other size): from 0.7 s on.
+        let settled = now
+            .as_ref()
+            .is_some_and(|n| !fresh && n.since.elapsed() >= Duration::from_millis(700));
+        let art = if need_art && settled {
+            cover(&p).filter(|b| {
+                let h = hash_bytes(b);
+                !matches!((shown_w, png_width(b)), (Some(a), Some(w)) if w <= a)
+                    && Some(h) != shown
+                    && !(young
+                        && now
+                            .as_ref()
+                            .is_some_and(|n| n.arts.iter().any(|(k, s, _)| *k == h && *s != key)))
+            })
         } else {
             None
         };
@@ -229,16 +250,23 @@ fn read(s: &Session, beat: bool) -> windows::core::Result<()> {
                 key: String::new(),
                 track: String::new(),
                 art: None,
-                stale: None,
                 since: Instant::now(),
+                arts: Vec::new(),
                 app: String::new(),
             });
             if fresh {
-                n.stale = n.art.take();
+                n.art = None;
                 n.since = Instant::now();
             }
-            if art.is_some() {
-                n.art = art;
+            if let Some(b) = art {
+                // kept by address: a screen asking for a cover a moment late (or going back) gets that one
+                let h = hash_bytes(&b);
+                n.arts.retain(|(k, _, _)| *k != h);
+                n.arts.push((h, key.clone(), b.clone()));
+                if n.arts.len() > 8 {
+                    n.arts.remove(0);
+                }
+                n.art = Some(b);
             }
             n.key = key.clone();
             n.app = app_name(&id);
@@ -284,6 +312,11 @@ fn com() {
     }
 }
 
+fn png_width(b: &[u8]) -> Option<u32> {
+    (b.starts_with(&[0x89, b'P', b'N', b'G']) && b.len() > 24)
+        .then(|| u32::from_be_bytes([b[16], b[17], b[18], b[19]]))
+}
+
 fn hash(s: &str) -> u64 {
     hash_bytes(s.as_bytes())
 }
@@ -305,6 +338,11 @@ fn cover(
     r.LoadAsync(size).ok()?.join().ok()?;
     let mut b = vec![0u8; size as usize];
     r.ReadBytes(&mut b).ok()?;
+    // Between songs Chrome hands over its own logo (a 256 px PNG with transparency) instead of the cover: album art
+    // never has an alpha channel (PNG colour type 4 or 6), so such a picture is not a cover.
+    if b.starts_with(&[0x89, b'P', b'N', b'G']) && b.len() > 25 && (b[25] == 4 || b[25] == 6) {
+        return None;
+    }
     Some(b)
 }
 
@@ -334,8 +372,18 @@ pub fn ws(s: std::net::TcpStream) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn art() -> Option<(Vec<u8>, &'static str)> {
-    let b = NOW.lock().unwrap().as_ref()?.art.clone()?;
+// The cover at /media/art/<hash>: exactly that one, or none (never the current one under another song's address).
+pub fn art(name: &str) -> Option<(Vec<u8>, &'static str)> {
+    let h = u64::from_str_radix(name, 16).ok()?;
+    let b = NOW
+        .lock()
+        .unwrap()
+        .as_ref()?
+        .arts
+        .iter()
+        .find(|(k, _, _)| *k == h)?
+        .2
+        .clone();
     let ty = if b.starts_with(&[0x89, b'P', b'N', b'G']) {
         "image/png"
     } else {
