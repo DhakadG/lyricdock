@@ -349,6 +349,7 @@ const Settings = (() => {
       def: [
         'Apple Music:word',
         'Spicy Lyrics:word',
+        'Blend:word', // the best text with NetEase / Kugou word timing (blend.js)
         'NetEase:word',
         'Kugou:word',
         'Apple Music:line',
@@ -2005,15 +2006,18 @@ const Settings = (() => {
       o.offset = -(+o.offset || 0) || 0;
       o.offsetV2 = true;
     }
-    // Lyrics sources added since this list was saved: each goes in under the last entry of its sync type (a saved
-    // list ranks unknown sources 0 = never shown).
+    // Lyrics sources added since this list was saved (a saved list ranks unknown sources 0 = never shown): each goes in
+    // right under the entry it follows in the default list, else under the last entry of its sync type.
     if (Array.isArray(o.srcOrder))
-      for (const k of defaults.srcOrder)
-        if (!o.srcOrder.some(x => x.replace(/^-/, '') === k)) {
-          const kind = k.split(':')[1],
-            at = o.srcOrder.findLastIndex(x => x.endsWith(':' + kind));
-          o.srcOrder = at < 0 ? [...o.srcOrder, k] : [...o.srcOrder.slice(0, at + 1), k, ...o.srcOrder.slice(at + 1)];
-        }
+      defaults.srcOrder.forEach((k, di) => {
+        const has = x => o.srcOrder.findIndex(y => y.replace(/^-/, '') === x);
+        if (has(k) >= 0) return;
+        let at = -1;
+        for (let p = di - 1; p >= 0 && at < 0; p--)
+          if (defaults.srcOrder[p].endsWith(':' + k.split(':')[1])) at = has(defaults.srcOrder[p]);
+        if (at < 0) at = o.srcOrder.findLastIndex(x => x.endsWith(':' + k.split(':')[1]));
+        o.srcOrder = at < 0 ? [...o.srcOrder, k] : [...o.srcOrder.slice(0, at + 1), k, ...o.srcOrder.slice(at + 1)];
+      });
     return o;
   };
   const S = fix({ ...defaults, ...saved });

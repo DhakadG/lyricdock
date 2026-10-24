@@ -530,6 +530,14 @@ function collect(id, l) {
   const flat = x => (x ? [one(x), ...(x.alts ?? []).flatMap(flat)] : []);
   for (const x of flat(l))
     if (x?.lines?.length && !have.some(h => h.source === x.source && h.kind === x.kind)) have.push(x);
+  // the best text with a catalogue's word timing (blend.js), made again as better versions come in
+  const b = Blend.of(
+      have.filter(h => h.source !== 'Blend'),
+      Lyrics.rank,
+    ),
+    old = have.findIndex(h => h.source === 'Blend');
+  if (old >= 0) have.splice(old, 1);
+  if (b) have.push(b);
   pool.delete(id);
   pool.set(id, have);
   // Oldest first, but never the song on screen: preloads of the next songs (and a few quick skips) used to push it out,

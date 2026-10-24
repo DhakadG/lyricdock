@@ -262,7 +262,7 @@ const Lyrics = (() => {
   // Which lyrics win: Settings -> Lyrics -> Lyrics sources, a list of source x sync type, most wanted first (Better
   // Lyrics' provider list). Disabled entries ('-' prefix) score 0 = never shown. A source the list doesn't name (Spicy's
   // 'Local DB') sits just under the first named entry of its sync type.
-  const SOURCES = ['Apple Music', 'Spicy Lyrics', 'Spotify', 'LRCLIB', 'NetEase', 'Kugou', 'QQ Music'];
+  const SOURCES = ['Apple Music', 'Spicy Lyrics', 'Blend', 'Spotify', 'LRCLIB', 'NetEase', 'Kugou', 'QQ Music'];
   function rank(l) {
     if (!l?.lines?.length || !['word', 'line', 'static'].includes(l.kind)) return 0;
     const o = Settings.S.srcOrder ?? [],
