@@ -282,8 +282,10 @@ const Settings = (() => {
         ['smart', 'Smart (keep Hindi)'],
         ['always', 'Always'],
         ['off', 'Original script'],
+        ['deva', 'Hindi script (Devanagari)'],
+        ['guru', 'Punjabi script (Gurmukhi)'],
       ],
-      help: 'Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization.',
+      help: 'Smart: Hindi stays in Devanagari, Punjabi (Gurmukhi/Shahmukhi), Urdu and other scripts become Latin letters. Always: everything in Latin letters. Original: no romanization. Hindi script / Punjabi script: lyrics in any Indian script (Punjabi, Hindi, Bengali, Gujarati, Tamil, Telugu...) written in Devanagari or Gurmukhi, letter for letter - lyrics written in Latin letters stay as they are.',
     },
     {
       k: 'countdown',

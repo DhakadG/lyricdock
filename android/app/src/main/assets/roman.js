@@ -82,7 +82,7 @@ const Roman = (() => {
   const hasGuru = s => /[਀-੿]/.test(s);
   const ARABIC = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
   const hasArabic = s => ARABIC.test(s); // Urdu / Shahmukhi Punjabi
-  const isIndic = s => hasDeva(s) || hasGuru(s) || hasArabic(s); // everything we can romanize
+  const isIndic = s => /[ऀ-ൿ]/.test(s) || hasArabic(s); // everything we can romanize
 
   const offset = ch => {
     const c = ch.codePointAt(0);
@@ -363,14 +363,71 @@ const Roman = (() => {
       .replace(/[،]/g, ',')
       .replace(/[؟]/g, '?');
 
+  // ---- one Indic script into another (Settings -> Romanization: Hindi script / Punjabi script). The Brahmic scripts all
+  // follow the ISCII layout, each block the same table 0x80 apart, so most letters map by offset; Gurmukhi's own signs
+  // are spelled out. Latin and Urdu text stays as it is. Timing is untouched: each syllable is converted on its own.
+  const BRAHMIC = /[ऀ-ൿ]/,
+    OTHER = /[ঀ-৿઀-ൿ]+/g; // Bengali, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam
+  const unassigned = /\p{Cn}/u;
+  const UNASP = { ਖ: 'ਕ', ਘ: 'ਗ', ਛ: 'ਚ', ਝ: 'ਜ', ਠ: 'ਟ', ਢ: 'ਡ', ਥ: 'ਤ', ਧ: 'ਦ', ਫ: 'ਪ', ਭ: 'ਬ' };
+  const GURU_TO_DEVA = [
+    [/ੲਿ/g, 'इ'],
+    [/ੲੀ/g, 'ई'],
+    [/ੲੇ/g, 'ए'],
+    [/ੲ/g, 'इ'],
+    [/ੳੁ/g, 'उ'],
+    [/ੳੂ/g, 'ऊ'],
+    [/ੳੋ/g, 'ओ'],
+    [/ੳ/g, 'उ'],
+    // addak: the next consonant doubled - an aspirated one with its plain form first (ਅੱਖ = akkh)
+    [/ੱ([ਕ-ਹਖ਼-ਫ਼])/g, (_, c) => `${UNASP[c] ?? c}੍${c}`],
+    [/ੱ/g, ''], // (an addak ending a word-synced syllable: its consonant is in the next one)
+    [/[ੰਂ]/g, 'ं'], // tippi and bindi
+  ];
+  const DEVA_TO_GURU = [
+    [/ृ/g, '੍ਰਿ'],
+    [/ऋ/g, 'ਰਿ'],
+    [/ष/g, 'ਸ਼'],
+    [/[ंँ]/g, 'ਂ'], // bindi (Gurmukhi's chandrabindu is archaic)
+    // Gurmukhi writes a halant only under ਰ ਵ ਹ ਯ (ਪ੍ਰੇਮ); elsewhere the cluster is written plain (ਹੁਸਨ, not ਹੁਸ੍ਨ)
+    [/्(?![रवहय])/g, ''],
+    [/ॉ/g, 'ੋ'],
+    [/ऑ/g, 'ਓ'],
+  ];
+  const shift = (s, from, to) =>
+    [...s]
+      .map(ch => {
+        const c = ch.codePointAt(0),
+          base = c >= 0x0900 && c <= 0x0d7f ? c & ~0x7f : -1;
+        if (base !== from && from !== -1) return ch;
+        if (base < 0 || base === to) return ch;
+        const t = String.fromCodePoint(to + (c - base));
+        return unassigned.test(t) ? ch : t;
+      })
+      .join('');
+  // Runs already in the target script are left alone (a round trip would spell Gurmukhi's doubled letters as conjuncts).
+  const toDeva = w => {
+    for (const [re, v] of GURU_TO_DEVA) w = w.replace(re, v); // Gurmukhi's own signs first
+    return shift(w, -1, 0x0900);
+  };
+  function toScript(text, target) {
+    if (!BRAHMIC.test(text)) return text;
+    if (target !== 'guru') return text.replace(/[ঀ-ൿ]+/g, toDeva);
+    return text.replace(/[ऀ-৿઀-ൿ]+/g, w => {
+      w = toDeva(w);
+      for (const [re, v] of DEVA_TO_GURU) w = w.replace(re, v);
+      return shift(w, 0x0900, 0x0a00);
+    });
+  }
+
   // cap=false for mid-line fragments (single syllables of word-synced lyrics).
   function translit(text, cap = true) {
     if (!isIndic(text)) return text;
-    let out = text.replace(/[ऀ-ॿ਀-੿]+/g, word);
+    let out = text.replace(OTHER, w => toScript(w, 'deva')).replace(/[ऀ-ॿ਀-੿]+/g, word);
     if (hasArabic(out)) out = urdu(out);
     return cap ? out.charAt(0).toUpperCase() + out.slice(1) : out;
   }
 
-  return { translit, hasDeva, hasGuru, hasArabic, isIndic };
+  return { translit, toScript, hasDeva, hasGuru, hasArabic, isIndic };
 })();
 if (typeof module !== 'undefined') module.exports = Roman;

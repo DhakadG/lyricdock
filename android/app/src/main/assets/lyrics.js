@@ -70,15 +70,21 @@ const Lyrics = (() => {
   // cut off the moment the line ends (Spicy keeps stepping a sung line until the next one is done).
   const COOL = 1200;
 
-  // 'orig' keeps the original script; 'roman' prefers the provider's romanization, else our own.
+  // 'orig' keeps the original script; 'roman' prefers the provider's romanization, else our own; 'deva' / 'guru' write
+  // any Indic script (Punjabi, Bengali, Hindi...) in Devanagari / Gurmukhi (roman.js toScript), Latin staying Latin.
   const mode = text => {
     const r = Settings.S.roman;
     if (r === 'off') return 'orig';
+    if (r === 'deva' || r === 'guru') return r;
     return r === 'smart' && Roman.hasDeva(text) ? 'orig' : 'roman'; // Hindi (even partly) stays as is
   };
   const pick = (s = '', r, m, cap = true) =>
     (window.cleanWords ?? (t => t))(
-      m === 'orig' ? s || r || '' : (r ?? (Roman.isIndic(s) ? Roman.translit(s, cap) : s)),
+      m === 'orig'
+        ? s || r || ''
+        : m === 'deva' || m === 'guru'
+          ? Roman.toScript(s || r || '', m)
+          : (r ?? (Roman.isIndic(s) ? Roman.translit(s, cap) : s)),
     );
 
   // Spicy's letter mode: any syllable held at least Settings -> Long note length glows and lifts letter by letter,

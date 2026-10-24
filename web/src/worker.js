@@ -107,14 +107,11 @@ async function findLyrics(req, env, ctx) {
   if (hit) return out(hit.body);
   if (env.LYRICS_LIMIT && !(await env.LYRICS_LIMIT.limit({ key: me.email || me.sub })).success)
     return out('{"error":"slow down"}', 429);
-  const found = await find(want),
+  const { found, complete } = await find(want),
     body = JSON.stringify(found);
-  ctx.waitUntil(
-    caches.default.put(
-      key,
-      new Response(body, { headers: { 'cache-control': `max-age=${found.length ? 7 * 86400 : 86400}` } }),
-    ),
-  );
+  // a catalogue that didn't answer: kept 10 minutes only, so its lyrics aren't missed for a week
+  const age = !complete ? 600 : found.length ? 7 * 86400 : 86400;
+  ctx.waitUntil(caches.default.put(key, new Response(body, { headers: { 'cache-control': `max-age=${age}` } })));
   return out(body);
 }
 

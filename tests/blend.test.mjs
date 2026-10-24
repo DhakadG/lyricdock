@@ -55,6 +55,42 @@ test("the base's words, the donor's times; unmatched words fill the gaps", () =>
   );
 });
 
+test('Hindi in Devanagari takes the timing of the same words in Latin letters, spelled differently', () => {
+  const c2 = vm.createContext({});
+  for (const f of ['roman.js', 'blend.js'])
+    vm.runInContext(fs.readFileSync(new URL(`../android/app/src/main/assets/${f}`, import.meta.url), 'utf8'), c2);
+  vm.runInContext('this.B = Blend', c2);
+  const base = { kind: 'line', source: 'LRCLIB', lines: [{ t: 0, s: 'केसरिया तेरा इश्क़ है, पिया' }] };
+  const kugou = {
+    kind: 'word',
+    source: 'Kugou',
+    lines: [
+      {
+        t: 900,
+        e: 4000,
+        w: [
+          W('Kesariya', 900, 1700),
+          W('tera', 1700, 2900),
+          W('ishq', 2900, 3200),
+          W('hai', 3200, 3500),
+          W('piya', 3500, 4000),
+        ],
+      },
+    ],
+  };
+  const b = c2.B.blend(base, kugou);
+  assert.deepEqual(
+    b.lines[0].w.map(w => [w.s, w.t]),
+    [
+      ['केसरिया', 900],
+      ['तेरा', 1700],
+      ['इश्क़', 2900],
+      ['है,', 3200],
+      ['पिया', 3500],
+    ],
+  );
+});
+
 test('another song (too few words in common) is no blend', () => {
   const other = { kind: 'line', source: 'LRCLIB', lines: [{ t: 0, s: 'something else entirely here' }] };
   assert.equal(blend(other, donor), null);

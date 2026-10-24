@@ -4,10 +4,11 @@
 // word and line); the page ranks them with Settings -> Lyrics sources (lyrics.js rank). Same shape as Lyrics.fromSpicy.
 
 const T = 5000; // a slow catalogue gives up, the others still answer
-const get = (url, init = {}) =>
+// fail(): told when a catalogue didn't answer (as opposed to having nothing), so find() knows the result is partial
+const fetchJson = (url, init = {}, fail = () => {}) =>
   fetch(url, { ...init, signal: AbortSignal.timeout(T) }).then(
-    r => (r.ok ? r.json() : null),
-    () => null,
+    r => (r.ok ? r.json().catch(() => (fail(), null)) : (fail(), null)),
+    () => (fail(), null),
   );
 
 // ---- matching: titles and artists compared loosely, the length strictly (same-name songs are common)
@@ -104,7 +105,7 @@ export const krc = (t, want) => words(t, /<(\d+),(\d+),\d+>([^<]*)/g, true, want
 const tag = (l, source) => (l ? { ...l, writers: [], source } : null);
 
 // ---- NetEase Cloud Music: yrc (word) and lrc (line) in one answer
-async function netease(want) {
+async function netease(want, get = fetchJson) {
   const q = query(want);
   const h = { referer: 'https://music.163.com/', cookie: 'os=pc' };
   const r = await get(`https://music.163.com/api/search/get?s=${q}&type=1&limit=10`, { headers: h });
@@ -129,7 +130,7 @@ export async function krcText(b64) {
   for (let i = 0; i < b.length; i++) b[i] ^= KRC_KEY[i % 16];
   return new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('deflate'))).text();
 }
-async function kugou(want) {
+async function kugou(want, get = fetchJson) {
   const q = query(want);
   const r = await get(`http://mobilecdn.kugou.com/api/v3/search/song?keyword=${q}&page=1&pagesize=10`);
   const list = (r?.data?.info ?? []).map(s => ({
@@ -155,7 +156,7 @@ async function kugou(want) {
 }
 
 // ---- QQ Music: lrc (line). Its search gives no length, so the lyrics' own last line must fit inside the song.
-async function qq(want) {
+async function qq(want, get = fetchJson) {
   const h = { referer: 'https://y.qq.com/' };
   const q = query(want);
   const r = await get(`https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg?format=json&key=${q}`, { headers: h });
@@ -173,8 +174,11 @@ async function qq(want) {
 
 export const PROVIDERS = { netease, kugou, qq };
 
-// GET /lyrics/find?t=title&a=artist&d=length in ms -> [lyrics...] (empty when none matched)
+// GET /lyrics/find?t=title&a=artist&d=length in ms -> { found: [lyrics...], complete } - complete: every catalogue
+// answered (a partial result is kept only briefly, or one timeout would hide a catalogue's lyrics for a week)
 export async function find(want) {
-  const all = await Promise.all(Object.values(PROVIDERS).map(p => p(want).catch(() => [])));
-  return all.flat();
+  let complete = true;
+  const get = (u, i) => fetchJson(u, i, () => (complete = false));
+  const all = await Promise.all(Object.values(PROVIDERS).map(p => p(want, get).catch(() => ((complete = false), []))));
+  return { found: all.flat(), complete };
 }

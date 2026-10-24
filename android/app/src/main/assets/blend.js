@@ -6,7 +6,8 @@
 const Blend = (() => {
   const DONORS = ['NetEase', 'Kugou'],
     CJK = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}',
-    TOKEN = new RegExp(`[${CJK}]|[^\\s${CJK}]+`, 'gu');
+    // words, split after hyphens too (love-storiyan is two words elsewhere); CJK one character each
+    TOKEN = new RegExp(`[${CJK}]|[^\\s${CJK}-]+-?|-`, 'gu');
   const norm = s =>
     String(s)
       .toLowerCase()
@@ -14,6 +15,17 @@ const Blend = (() => {
       .replace(/[̀-ͯ]/g, '')
       .replace(/[^\p{L}\p{N}]/gu, '');
   const isCjk = s => new RegExp(`^[${CJK}]$`, 'u').test(s);
+  // a word in Latin letters (roman.js for Indic scripts), then its consonants: its first letter, then no vowels,
+  // y / h / w or doubles (bataaye, bataye -> "bt"), and no final nasal (hain / hai, tijoriyan / tijoriya)
+  const latin = s => norm(typeof Roman !== 'undefined' && Roman.isIndic(s) ? Roman.translit(s, false) : s);
+  const skeleton = k =>
+    (
+      (k[0] ?? '') +
+      k
+        .slice(1)
+        .replace(/[aeiouyhw]/g, '')
+        .replace(/(.)\1+/g, '$1')
+    ).replace(/(.)n$/, '$1');
 
   // The donor's words, syllables joined into words, with their times.
   function donorWords(d) {
@@ -57,12 +69,22 @@ const Blend = (() => {
       .map(l => ({ l, toks: (String(l.s ?? '').match(TOKEN) ?? []).map(s => ({ s, k: norm(s), cjk: isCjk(s) })) }))
       .filter(x => x.toks.length);
     const flat = lines.flatMap((x, li) => x.toks.map(t => ({ ...t, li })));
-    const at = lcs(
+    const share = a => [...a].filter(j => j >= 0).length / Math.max(1, flat.length);
+    let at = lcs(
       flat.map(t => t.k),
       dw.map(w => w.k),
     );
-    const matched = [...at].filter(j => j >= 0).length;
-    if (!flat.length || matched / flat.length < 0.6) return null;
+    // Hindi / Punjabi in Latin letters is spelled every which way (bataye / bataaye, koi / koyi), and one version can be
+    // in Devanagari, the other in Latin letters: failing exact words, the consonants of both in Latin letters
+    // (roman.js), held to a higher bar.
+    if (share(at) < 0.6) {
+      const loose = lcs(
+        flat.map(t => skeleton(latin(t.s))),
+        dw.map(w => skeleton(latin(w.s))),
+      );
+      if (share(loose) < 0.75) return null;
+      at = loose;
+    }
     flat.forEach((t, i) => at[i] >= 0 && Object.assign(t, { t: dw[at[i]].t, e: dw[at[i]].e }));
 
     // per line: matched words keep their times; the others fill the gaps around them
