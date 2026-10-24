@@ -76,7 +76,12 @@ pub fn lan_ip() -> Option<String> {
 fn origin_ok(o: Option<&str>) -> bool {
     matches!(
         o,
-        None | Some("null" | "file://" | "https://xpui.app.spotify.com")
+        None | Some(
+            "null"
+                | "file://"
+                | "https://xpui.app.spotify.com"
+                | "https://app.lyricdock.losthusky.qzz.io" // the web app on this PC (pc.js)
+        )
     )
 }
 fn origin(head: &str) -> Option<String> {
@@ -126,6 +131,14 @@ fn handle(mut s: TcpStream, subs: Subs) -> std::io::Result<()> {
     let org = origin(&head);
     if !origin_ok(org.as_deref()) {
         return reply(&mut s, "403 Forbidden", "", None);
+    }
+
+    // What plays on this PC (media.rs): the screens' "Apps on my PC" source.
+    if method == "GET"
+        && path == "/media/ws"
+        && head.to_ascii_lowercase().contains("upgrade: websocket")
+    {
+        return crate::media::ws(s);
     }
 
     // Subscriber: WebSocket, messages pushed as they are published, keepalive every 25s (a failed write = gone).
@@ -200,6 +213,19 @@ fn handle(mut s: TcpStream, subs: Subs) -> std::io::Result<()> {
     }
     match method {
         "OPTIONS" => reply(&mut s, "204 No Content", "", org.as_deref()),
+        "GET" if path.starts_with("/media/art/") => match crate::media::art() {
+            Some((b, ty)) => {
+                write!(s, "HTTP/1.1 200 OK\r\n{}Content-Type: {ty}\r\nCache-Control: max-age=86400\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", cors(org.as_deref()), b.len())?;
+                s.write_all(&b)
+            }
+            None => reply(&mut s, "404 Not Found", "", org.as_deref()),
+        },
+        "POST" if path == "/media/cmd" => {
+            crate::media::cmd(&String::from_utf8_lossy(
+                &buf[body_at..(body_at + len).min(buf.len())],
+            ));
+            reply(&mut s, "204 No Content", "", org.as_deref())
+        }
         "POST" | "PUT" if valid_topic(&topic) => {
             let body =
                 String::from_utf8_lossy(&buf[body_at..(body_at + len).min(buf.len())]).to_string();

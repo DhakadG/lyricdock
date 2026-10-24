@@ -974,10 +974,11 @@ const Settings = (() => {
         ['auto', 'Auto'],
         ['bridge', 'Desktop (Spicetify)'],
         ['web', 'Spotify account'],
+        ['pc', 'Apps on my PC (Helper)'],
         ...(app ? [['phone', 'Any app on this phone']] : []),
       ],
       help:
-        "Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify's Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise." +
+        "Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify's Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise. Apps on my PC: Apple Music, YouTube Music in a browser or any other player on the Windows PC running the LyricDock Helper (its relay on)." +
         (app
           ? ' Any app on this phone: YouTube Music, Apple Music, Spotify or anything else playing on this phone, the moment it changes song (needs Notification access below).'
           : ''),

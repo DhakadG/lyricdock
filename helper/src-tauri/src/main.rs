@@ -4,6 +4,7 @@
 // Same UI stack as Ethernet Guardian: Tauri 2 + plain HTML/CSS/JS in ../src.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod media;
 mod relay;
 
 use serde::Serialize;
