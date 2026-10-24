@@ -9,7 +9,7 @@
 const Listen = (() => {
   const n = Named(),
     SERVER = 'https://app.lyricdock.losthusky.qzz.io/lyrics/shazam',
-    SILENCE = 0.0035, // RMS below this is "nothing playing"
+    SILENCE = 0.002, // held loudness (ear.hear) below this is "nothing playing"
     TAP = `registerProcessor('ld-tap', class extends AudioWorkletProcessor {
       constructor() { super(); this.b = new Float32Array(2048); this.n = 0; }
       process(i) { const c = i[0]; if (c && c.length) { const a = c[0], b = c[1];
@@ -32,8 +32,38 @@ const Listen = (() => {
     audibleSince: 0,
     silentSince: 0,
     lastGap: 0,
+    level: 0,
+    heardAt: 0,
+    poll: 0,
     async start(kind) {
       this.stop();
+      // The phone app records natively (NativeEar.java): the page's own mic is opened as for a call, which takes
+      // Bluetooth earbuds' mic and cuts the music playing into them.
+      if (kind === 'mic' && !window.LYRICDOCK_WEB && typeof window.Dock?.earStart === 'function') {
+        if (!Dock.earStart(Settings.S.listenMic || 'phone'))
+          throw Object.assign(new Error('allow the microphone, then tap Listen again'), { name: 'NotAllowedError' });
+        let total = -1;
+        Object.assign(this, {
+          on: true,
+          kind: 'native',
+          lastWall: now(),
+          audibleSince: 0,
+          silentSince: now(),
+          lastGap: 0,
+          level: 0,
+        });
+        this.poll = setInterval(() => {
+          let l = null;
+          try {
+            l = JSON.parse(Dock.earLevel());
+          } catch (e) {}
+          if (!l || l.total === total) return;
+          total = l.total;
+          this.lastWall = now() - l.age;
+          this.hear(l.rms);
+        }, 100);
+        return;
+      }
       let stream;
       if (kind === 'tab') {
         // Chrome only shares sound with a picture: a tiny one, dropped from the graph
@@ -102,6 +132,8 @@ const Listen = (() => {
       });
     },
     stop() {
+      if (this.kind === 'native') Dock.earStop();
+      clearInterval(this.poll);
       this.stream?.getTracks().forEach(t => t.stop());
       this.nodes.forEach(x => {
         try {
@@ -121,14 +153,23 @@ const Listen = (() => {
       }
       this.total += f.length;
       this.lastWall = now();
-      if (Math.sqrt(sum / f.length) > SILENCE) {
+      this.hear(Math.sqrt(sum / f.length));
+    },
+    // Loudness, held at its peak and fading over ~0.7 s: music across a room comes in bursts (quiet between beats),
+    // which a block-by-block test read as silence again and again. Silence = 1.2 s under the bar.
+    hear(rms) {
+      const t = now(),
+        dt = this.heardAt ? t - this.heardAt : 0;
+      this.heardAt = t;
+      this.level = Math.max(rms, this.level * Math.exp(-dt / 700));
+      if (this.level > SILENCE) {
         if (!this.audibleSince) {
-          if (this.silentSince && now() - this.silentSince > 700) this.lastGap = now(); // a pause, seek or new song
-          this.audibleSince = now();
+          if (this.silentSince && t - this.silentSince > 1500) this.lastGap = t; // a pause, seek or new song
+          this.audibleSince = t;
         }
         this.silentSince = 0;
-      } else if (!this.silentSince) this.silentSince = now();
-      else if (now() - this.silentSince > 400) this.audibleSince = 0;
+      } else if (!this.silentSince) this.silentSince = t;
+      else if (t - this.silentSince > 1200) this.audibleSince = 0;
       tick();
     },
     audibleFor() {
@@ -139,6 +180,19 @@ const Listen = (() => {
     },
     // the last `sec` seconds as 16 kHz Int16 (quiet sound lifted, so there are enough peaks), and when they began
     clip(sec) {
+      if (this.kind === 'native') {
+        const [age, b64] = String(Dock.earClip(Math.round(sec * 1000))).split(','),
+          bin = atob(b64 || ''),
+          pcm = new Int16Array(bin.length >> 1);
+        let peak = 0;
+        for (let i = 0; i < pcm.length; i++) {
+          pcm[i] = ((bin.charCodeAt(i * 2) | (bin.charCodeAt(i * 2 + 1) << 8)) << 16) >> 16;
+          peak = Math.max(peak, Math.abs(pcm[i]));
+        }
+        const gain = peak > 0 && peak < 8192 ? 16384 / peak : 1; // quiet sound lifted, as below
+        if (gain > 1) for (let i = 0; i < pcm.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, pcm[i] * gain));
+        return { pcm, start: now() - (+age || 0) - (pcm.length / 16000) * 1000 };
+      }
       const k = Math.min(Math.floor(sec * this.rate), this.total, this.ring.length),
         ratio = this.rate / 16000,
         out = new Int16Array(Math.floor(k / ratio));
@@ -296,7 +350,7 @@ const Listen = (() => {
   async function keepAlive() {
     if (!want) return;
     if (ear.on && ear.ctx?.state === 'suspended') return void ear.ctx.resume().catch(() => {});
-    const live = ear.on && ear.stream?.getAudioTracks().some(t => t.readyState === 'live');
+    const live = ear.on && (ear.kind === 'native' || ear.stream?.getAudioTracks().some(t => t.readyState === 'live'));
     if (live && now() - ear.lastWall < 5000) return void (retries = 0);
     if (want === 'tab') return void (live || stop('Sharing stopped'));
     if (now() < retryAt) return;

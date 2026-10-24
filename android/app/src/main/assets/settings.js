@@ -1013,6 +1013,19 @@ const Settings = (() => {
       help: "Names the song with Shazam after a few seconds of music and starts the lyrics at the line being sung, then keeps listening: it checks the timing every few seconds, pauses with the music and names each next song, until Stop. Only fingerprints of the sound (about 2 KB each) leave this device, never the recording. Shazam's own apps' service, used without an agreement: it may stop working without notice.",
     },
     {
+      k: 'listenMic',
+      label: 'Microphone',
+      type: 'choice',
+      def: 'phone',
+      local: true,
+      when: () => app,
+      opts: [
+        ['phone', "The phone's own"],
+        ['headset', 'Wired / USB headset'],
+      ],
+      help: "The phone's own microphone keeps Bluetooth earbuds playing: using a Bluetooth headset's microphone switches them to call mode, which stops the music in them (from this phone, or from a computer they're also connected to) - so LyricDock never uses it. Wired / USB headset: its microphone, when one is plugged in.",
+    },
+    {
       k: 'listenFrom',
       label: 'Listen to',
       type: 'choice',

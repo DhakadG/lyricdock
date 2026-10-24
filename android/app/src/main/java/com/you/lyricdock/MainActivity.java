@@ -119,6 +119,31 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
                     "window.phoneMsg&&phoneMsg(JSON.parse(" + JSONObject.quote(json) + "))", null);
     }
 
+    // Listen's microphone (NativeEar.java): false = no permission yet (Android asks, the page tries again).
+    @JavascriptInterface
+    public boolean earStart(String which) {
+        if (NativeEar.start(this, which)) return true;
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[] {android.Manifest.permission.RECORD_AUDIO}, ChromeClient.MIC);
+        return false;
+    }
+
+    @JavascriptInterface
+    public void earStop() {
+        NativeEar.stop();
+    }
+
+    @JavascriptInterface
+    public String earLevel() {
+        return NativeEar.level();
+    }
+
+    @JavascriptInterface
+    public String earClip(int ms) {
+        return NativeEar.clip(ms);
+    }
+
     // Search -> play with Spotify running nowhere (spotify.js control): Spotify's app opened on the song, so it becomes
     // a device the Web API can play on; then the dock comes back (toFront). false = no Spotify app here.
     @JavascriptInterface
