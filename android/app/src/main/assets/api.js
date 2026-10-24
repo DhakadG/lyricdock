@@ -78,5 +78,31 @@ const Api = (() => {
     done(m.id, lyr);
   }
 
-  return { get, onResponse, enabled, lastStatus: null };
+  // NetEase / QQ Music / Kugou by name (web/src/cnlyrics.js on LyricDock's server): every version found, in the shape
+  // collect() takes (the first, with the rest as alts). Once per song; never rejects.
+  const found = new Map(); // title|artist|length -> Promise
+  function find(t) {
+    if (!(window.LYRICDOCK_WEB || window.Account?.user()) || !t?.title || !t?.artist) return Promise.resolve(null);
+    const q = new URLSearchParams({ t: t.title, a: t.artist, d: Math.round(t.dur || 0) }),
+      k = q.toString();
+    if (!found.has(k)) {
+      const c = new AbortController(),
+        stop = setTimeout(() => c.abort(), 12000);
+      found.set(
+        k,
+        fetch(SERVER + 'find?' + q, {
+          headers: { Accept: 'application/json', ...(window.Account?.headers() ?? {}) },
+          signal: c.signal,
+        })
+          .then(r => (r.ok ? r.json() : []))
+          .then(all => (Array.isArray(all) && all.length ? { ...all[0], alts: all.slice(1) } : null))
+          .catch(() => (found.delete(k), null)) // the network: ask again next time
+          .finally(() => clearTimeout(stop)),
+      );
+      if (found.size > 30) found.delete(found.keys().next().value);
+    }
+    return found.get(k);
+  }
+
+  return { get, find, onResponse, enabled, lastStatus: null };
 })();

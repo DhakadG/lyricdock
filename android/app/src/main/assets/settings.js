@@ -330,16 +330,22 @@ const Settings = (() => {
     {
       k: 'srcOrder',
       label: 'Lyrics sources',
-      desc: 'Source preference, priority, order, LRCLIB, Spotify, Apple Music, Spicy Lyrics',
+      desc: 'Source preference, priority, order, LRCLIB, Spotify, Apple Music, Spicy Lyrics, NetEase, Kugou, QQ Music',
       type: 'custom',
       render: () => window.sourceList?.(),
+      // Word-synced from anywhere first, then line-synced, then plain. NetEase / Kugou / QQ Music are found by name
+      // (web/src/cnlyrics.js), so they sit under the sources that know the exact track.
       def: [
         'Apple Music:word',
         'Spicy Lyrics:word',
+        'NetEase:word',
+        'Kugou:word',
         'Apple Music:line',
         'Spicy Lyrics:line',
         'Spotify:line',
         'LRCLIB:line',
+        'NetEase:line',
+        'QQ Music:line',
         'Apple Music:static',
         'Spicy Lyrics:static',
         'Spotify:static',
@@ -1953,6 +1959,15 @@ const Settings = (() => {
   const fix = o => {
     if (o.layout === 'tv') o.layout = 'split';
     else if (o.layout === 'compact') o.layout = 'lyrics';
+    // Lyrics sources added since this list was saved: each goes in under the last entry of its sync type (a saved
+    // list ranks unknown sources 0 = never shown).
+    if (Array.isArray(o.srcOrder))
+      for (const k of defaults.srcOrder)
+        if (!o.srcOrder.some(x => x.replace(/^-/, '') === k)) {
+          const kind = k.split(':')[1],
+            at = o.srcOrder.findLastIndex(x => x.endsWith(':' + kind));
+          o.srcOrder = at < 0 ? [...o.srcOrder, k] : [...o.srcOrder.slice(0, at + 1), k, ...o.srcOrder.slice(at + 1)];
+        }
     return o;
   };
   const S = fix({ ...defaults, ...saved });

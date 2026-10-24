@@ -548,9 +548,12 @@ function offerLyrics(id, lyr) {
   $('lines').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(first ? 450 : 320), easing: 'ease-out' });
 }
 
-// Fill the gap from the API while the desktop has nothing better than line-synced lyrics.
+// Fill the gap while the source has nothing as good as the top of Settings -> Lyrics sources: the Spicy API by Spotify ID,
+// and NetEase / QQ Music / Kugou by name, side by side. Each answer is offered as it lands; better ones replace worse.
 function topUp(id) {
-  if (Api.enabled() && Lyrics.rank(P.lyrics) < Lyrics.top()) Api.get(id).then(l => offerLyrics(id, l));
+  if (Lyrics.rank(P.lyrics) >= Lyrics.top()) return;
+  if (Api.enabled()) Api.get(id).then(l => offerLyrics(id, l));
+  if (P.cur?.id === id) Api.find(P.cur).then(l => offerLyrics(id, l));
 }
 
 async function onTrack(m) {
@@ -660,10 +663,11 @@ function onPreload(m) {
   const now = SRC[P.source].track?.id || P.skip?.target || P.id;
   if (!m.for || !now || m.for === now) window.afterPreload?.(m);
   // Warm the API cache for the next song too, and keep whichever is better for when it starts.
-  if (Api.enabled() && Lyrics.rank(m.lyrics) < Lyrics.top())
-    Api.get(m.id).then(l => {
-      m.lyrics = collect(m.id, l) ?? m.lyrics;
-    });
+  if (Lyrics.rank(m.lyrics) < Lyrics.top())
+    for (const ask of [Api.enabled() && Api.get(m.id), Api.find(m)])
+      ask?.then(l => {
+        m.lyrics = collect(m.id, l) ?? m.lyrics;
+      });
 }
 
 // ---- liked + audio quality (sent with every heartbeat)

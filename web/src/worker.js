@@ -4,6 +4,7 @@
 // check must still work (the page itself goes to sign-in when /turn answers 401, see rtc.js).
 import { session, signIn, appUser } from '../../auth/sso.js';
 import { icon } from '../../auth/brand.js';
+import { find, norm } from './cnlyrics.js';
 
 // Short-lived TURN credentials (Cloudflare Realtime) for rtc.js: signed-in users only, so nobody else relays through
 // our quota. Secrets: TURN_KEY_ID, TURN_KEY_TOKEN (Cloudflare dashboard -> Realtime -> TURN).
@@ -85,12 +86,45 @@ async function lyrics(req, env, ctx, id) {
   return json(body, r.status);
 }
 
+// /lyrics/find?t=&a=&d=: the song by name from NetEase, QQ Music and Kugou (cnlyrics.js), for the same signed-in users
+// and limit as above. Kept 7 days by song (a day when nothing matched).
+async function findLyrics(req, env, ctx) {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+  const out = (body, status = 200) =>
+    new Response(body, {
+      status,
+      headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store', ...CORS },
+    });
+  const q = new URL(req.url).searchParams,
+    want = { title: (q.get('t') || '').slice(0, 200), artist: (q.get('a') || '').slice(0, 200), dur: +q.get('d') || 0 };
+  if (!norm(want.title) || !norm(want.artist)) return out('{"error":"bad song"}', 400);
+  const me = await appUser(req);
+  if (!me) return out('{"error":"sign in"}', 401);
+  const key = new Request(
+    `https://lyrics.cache.invalid/find/${encodeURIComponent(`${norm(want.title)}|${norm(want.artist)}|${Math.round(want.dur / 2000)}`)}`,
+  );
+  const hit = await caches.default.match(key);
+  if (hit) return out(hit.body);
+  if (env.LYRICS_LIMIT && !(await env.LYRICS_LIMIT.limit({ key: me.email || me.sub })).success)
+    return out('{"error":"slow down"}', 429);
+  const found = await find(want),
+    body = JSON.stringify(found);
+  ctx.waitUntil(
+    caches.default.put(
+      key,
+      new Response(body, { headers: { 'cache-control': `max-age=${found.length ? 7 * 86400 : 86400}` } }),
+    ),
+  );
+  return out(body);
+}
+
 export default {
   async fetch(req, env, ctx) {
     const { pathname } = new URL(req.url);
     const ic = icon(pathname); // /favicon.ico etc. -> /icons/ (public)
     if (ic) return ic;
     if (pathname === '/turn') return turn(req, env);
+    if (pathname === '/lyrics/find') return findLyrics(req, env, ctx);
     if (pathname.startsWith('/lyrics/')) return lyrics(req, env, ctx, pathname.slice(8));
     if (
       pathname === '/manifest.webmanifest' ||
