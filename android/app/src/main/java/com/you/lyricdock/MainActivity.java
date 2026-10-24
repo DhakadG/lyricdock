@@ -104,6 +104,14 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
         signedIn(getIntent()); // started cold by the sign-in link
     }
 
+    ChromeClient chrome;
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        if (code == ChromeClient.MIC && chrome != null)
+            chrome.answered(res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED);
+    }
+
     // ---- "Any app on this phone" (PlayerWatch.java, phone.js). Called on the main thread.
     void phone(String json) {
         if (web != null)
@@ -227,6 +235,7 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
                 .setTextZoom(100); // ignore the system font-size zoom (layout is sized in vmin)
         web.setWebViewClient(
                 new PageClient()); // serves the music-video wrapper page; recovers a dead renderer
+        web.setWebChromeClient(chrome = new ChromeClient(this)); // the microphone, for listen.js
         web.setBackgroundColor(0xFF000000);
         web.addJavascriptInterface(
                 this,

@@ -66,6 +66,11 @@ const Match = (() => {
       seen.set(
         k,
         (async () => {
+          // An ISRC (Shazam gives one, listen.js) names the recording itself: its first hit is the one.
+          if (t.isrc) {
+            const hit = (await candidates(`isrc:${t.isrc}`))[0];
+            if (hit) return hit;
+          }
           for (const q of [`track:"${norm(t.title)}" artist:"${a1}"`, `${t.title} ${a1}`]) {
             const best = (await candidates(q))
               .map(c => [score(t, c), c])
@@ -103,34 +108,38 @@ function Named() {
     if (/^[A-Za-z0-9]{22}$/.test(t.id)) Api.get(t.id).then(give);
     else
       Match.find(t).then(c => {
+        if (!c && !t.dur && cur?.id === t.id) Lrclib.get(t).then(give); // no match and no length: LRCLIB as it is
         if (!c || cur?.id !== t.id) return;
-        if (c.art) {
-          sharp = { id: t.id, art: c.art };
-          cur = { ...cur, art: c.art };
-          out({ ...cur, lyrics: lyr });
-        }
+        // Spotify's cover, and its length where the source has none (Listen): the clock and LRCLIB need it
+        sharp = { id: t.id, art: c.art || cur.art, dur: cur.dur || c.dur };
+        cur = { ...cur, art: sharp.art, dur: sharp.dur };
+        out({ ...cur, lyrics: lyr });
         Api.get(c.id).then(give);
+        if (!t.dur) Lrclib.get(cur).then(give);
       });
-    Lrclib.get(t).then(give);
+    // Without a length LRCLIB can't tell same-named songs apart: then it waits for Spotify's (above)
+    if (t.dur) Lrclib.get(t).then(give);
   };
   return {
     msg(m) {
-      if (m.type !== 'track') return out(m);
+      if (m.type !== 'track') return out(cur?.dur && !m.dur ? { ...m, dur: cur.dur } : m);
       const same = cur?.id === m.id; // the same song again: its cover or length came in late, or the page reloaded
-      if (sharp?.id === m.id) m = { ...m, art: sharp.art };
+      if (sharp?.id === m.id) m = { ...m, art: sharp.art, dur: m.dur || sharp.dur };
       cur = m;
       if (!same) lyr = null;
       out({ ...m, lyrics: lyr });
       if (asked === m.id) return;
       // YouTube Music names the song a moment before its length. Without the length LRCLIB can't tell songs of the same
       // name apart ("Hypnotized" found somebody else's), so the lookup waits for it - up to 2 s, for players that never say.
-      if (m.dur) find(m);
+      // A song with an ISRC (Listen) never gets one from its source: Spotify's comes through Match at once.
+      if (m.dur || m.isrc) find(m);
       else if (!same) {
         clearTimeout(wait);
         wait = setTimeout(() => cur?.id === m.id && asked !== m.id && find(cur), 2000);
       }
     },
     app: () => cur?.appName || '',
+    dur: () => cur?.dur || 0,
     onMessage: f => (out = f),
   };
 }

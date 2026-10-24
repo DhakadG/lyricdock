@@ -770,6 +770,7 @@ const SRC = {
   web: { at: 0, playing: false },
   pc: { at: 0, playing: false },
   phone: { at: 0, playing: false },
+  listen: { at: 0, playing: false }, // listen.js: the song playing nearby, named by its sound (only when asked to)
 };
 P.source = 'bridge';
 function dock(m) {
@@ -779,6 +780,7 @@ Rtc.onMessage(m => route('bridge', m)); // same bridge, reached over WebRTC inst
 Web.onMessage(m => route('web', m));
 Phone.onMessage(m => route('phone', m));
 Pc.onMessage(m => route('pc', m));
+Listen.onMessage(m => route('listen', m));
 
 function route(src, m) {
   window.miniFeed?.(src, m); // an open miniplayer gets everything this copy hears (mini.js)
@@ -799,7 +801,8 @@ function route(src, m) {
 
 function decideSource() {
   const t = performance.now(),
-    ORDER = ['bridge', 'web', 'pc', 'phone'], // Auto: the first that plays, else the first Spotify source still heard
+    // Auto: the first that plays, else the first Spotify source still heard. Listen first: it only runs when asked to.
+    ORDER = ['listen', 'bridge', 'web', 'pc', 'phone'],
     live = k => t - SRC[k].at < (k === 'web' ? 7000 : 2500);
   const want =
     S.source !== 'auto'
@@ -814,6 +817,7 @@ function decideSource() {
         web: 'Following your Spotify account',
         pc: `Following ${Pc.app() || 'music on your PC'}`,
         phone: `Following ${Phone.app() || 'music on this phone'}`,
+        listen: 'Following the music around you',
       }[want] ?? 'Following Spotify on the computer',
     );
   const s = SRC[want];
@@ -1058,7 +1062,9 @@ const control = (c, arg) =>
         ? Phone.control(c, arg)
         : P.source === 'pc'
           ? Pc.control(c, arg)
-          : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
+          : P.source === 'listen'
+            ? c === 'toggle' && Listen.stop() // nothing to control: play / pause stops listening
+            : send({ type: 'cmd', cmd: c, ms: arg, v: arg });
 // Spotify refused a command (spotify.js): drop the optimistic state so its next answer puts the screen back.
 window.controlFailed = () => {
   P.skip = null;

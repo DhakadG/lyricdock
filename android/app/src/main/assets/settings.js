@@ -976,12 +976,40 @@ const Settings = (() => {
         ['web', 'Spotify account'],
         ['pc', 'Apps on my PC (Helper)'],
         ...(app ? [['phone', 'Any app on this phone']] : []),
+        ['listen', 'Listen (name it by sound)'],
       ],
       help:
         "Desktop: follow Spotify on the computer through the LyricDock extension (best lyrics, instant). Spotify account: follow whatever device your account plays on, straight from Spotify's Web API (needs the Client ID below). Auto: desktop while it plays, account otherwise. Apps on my PC: Apple Music, YouTube Music in a browser or any other player on the Windows PC running the LyricDock Helper (its relay on)." +
         (app
           ? ' Any app on this phone: YouTube Music, Apple Music, Spotify or anything else playing on this phone, the moment it changes song (needs Notification access below).'
           : ''),
+    },
+    // Listen (listen.js): the song playing nearby, named by its sound - like Shazam, which it asks.
+    {
+      label: 'Name the song playing near me',
+      type: 'action',
+      when: () => !!window.Listen?.available(),
+      text: () => (window.Listen?.listening() ? 'Stop' : 'Listen'),
+      run: () => {
+        if (Listen.listening()) return Listen.stop();
+        Settings.close();
+        Listen.listen(); // (in the tap itself: browsers only open the mic / a share from a tap)
+      },
+      info: () => (window.Listen?.listening() ? 'Listening - song after song, until Stop' : ''),
+      help: "Names the song with Shazam after a few seconds of music and starts the lyrics at the line being sung, then keeps listening: it checks the timing every few seconds, pauses with the music and names each next song, until Stop. Only fingerprints of the sound (about 2 KB each) leave this device, never the recording. Shazam's own apps' service, used without an agreement: it may stop working without notice.",
+    },
+    {
+      k: 'listenFrom',
+      label: 'Listen to',
+      type: 'choice',
+      def: 'mic',
+      local: true,
+      when: () => !!navigator.mediaDevices?.getDisplayMedia && !app,
+      opts: [
+        ['mic', 'The microphone'],
+        ['tab', 'A tab or the screen (its sound)'],
+      ],
+      help: 'A tab or the screen: the browser asks which to share - tick "Share tab audio" (or system audio). Nothing is recorded, only fingerprinted.',
     },
     {
       label: 'Music from other apps',

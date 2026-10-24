@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Listen: naming the song playing nearby by its sound (listen.js); asked the first time it's used -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- come back by itself after a self-update or a crash (Reopen.java): the overlay permission lets Android start the
          dock from the background; without it a full-screen notification reopens it -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />

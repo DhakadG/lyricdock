@@ -170,6 +170,68 @@ async function spotifySearch(req, env, ctx) {
   return out(body);
 }
 
+// /lyrics/shazam: recognition by sound (listen.js). The page makes the fingerprint (shazam.js) and posts it here; Shazam
+// answers no browser, so it goes on from here. Unofficial: Shazam's own apps' endpoint, no key - it can change or refuse
+// without notice. Only the song comes back, and where in it the sample started (offset, seconds).
+async function shazam(req, env) {
+  if (req.method === 'OPTIONS')
+    return new Response(null, {
+      headers: {
+        ...CORS,
+        'access-control-allow-methods': 'POST, OPTIONS',
+        'access-control-allow-headers': 'authorization, content-type',
+      },
+    });
+  const out = (body, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store', ...CORS },
+    });
+  if (req.method !== 'POST') return out({ error: 'post' }, 405);
+  const me = await appUser(req);
+  if (!me) return out({ error: 'sign in' }, 401);
+  const sig = await req.json().catch(() => null);
+  if (!/^data:audio\/vnd\.shazam\.sig;base64,[A-Za-z0-9+/=]{100,40000}$/.test(sig?.uri || '') || !(sig.samplems > 0))
+    return out({ error: 'bad signature' }, 400);
+  if (env.LYRICS_LIMIT && !(await env.LYRICS_LIMIT.limit({ key: me.email || me.sub })).success)
+    return out({ error: 'slow down' }, 429);
+  const now = Date.now();
+  const r = await fetch(
+    `https://amp.shazam.com/discovery/v5/en/US/android/-/tag/${crypto.randomUUID().toUpperCase()}/${crypto.randomUUID()}?sync=true&webv3=true&sampling=true&connected=&shazamapiversion=v3&sharehub=true&video=v3`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': 'Dalvik/2.1.0 (Linux; U; Android 13; Pixel 7 Build/TQ3A.230805.001)',
+        'content-language': 'en_US',
+      },
+      body: JSON.stringify({
+        geolocation: { altitude: 300, latitude: 45, longitude: 2 },
+        signature: { samplems: Math.round(sig.samplems), timestamp: now, uri: sig.uri },
+        timestamp: now,
+        timezone: 'Europe/Paris',
+      }),
+    },
+  ).catch(() => null);
+  if (!r) return out({ error: 'shazam unreachable' }, 502);
+  if (!r.ok) return out({ error: `shazam ${r.status}` }, 502);
+  const j = await r.json().catch(() => ({})),
+    t = j.track;
+  if (!t) return out({ found: false, retryms: j.retryms ?? null });
+  const meta = k => t.sections?.find(s => s.type === 'SONG')?.metadata?.find(m => m.title === k)?.text;
+  return out({
+    found: true,
+    key: t.key,
+    title: t.title,
+    artist: t.subtitle,
+    album: meta('Album') ?? '',
+    isrc: t.isrc ?? null,
+    art: t.images?.coverarthq || t.images?.coverart || null,
+    offset: j.matches?.[0]?.offset ?? 0,
+    skew: j.matches?.[0]?.timeskew ?? 0,
+  });
+}
+
 export default {
   async fetch(req, env, ctx) {
     const { pathname } = new URL(req.url);
@@ -178,6 +240,7 @@ export default {
     if (pathname === '/turn') return turn(req, env);
     if (pathname === '/lyrics/find') return findLyrics(req, env, ctx);
     if (pathname === '/lyrics/spotify') return spotifySearch(req, env, ctx);
+    if (pathname === '/lyrics/shazam') return shazam(req, env);
     if (pathname.startsWith('/lyrics/')) return lyrics(req, env, ctx, pathname.slice(8));
     if (
       pathname === '/manifest.webmanifest' ||
