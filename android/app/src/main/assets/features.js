@@ -183,7 +183,11 @@
       'background:rgba(0,0,0,.82);color:#fff;font:600 4vmin/1.3 system-ui;text-align:center;padding:6vmin;touch-action:none';
     layer.innerHTML = `<div>Tap anywhere the moment you hear each new line start</div>
       <div class="cal-res" style="font-size:6vmin">…</div><small style="opacity:.7;font-weight:400"></small>
-      <div><button class="btn cal-ok" disabled>Use it</button> <button class="btn cal-x">Cancel</button></div>`;
+      <div style="display:flex;gap:3vmin"><button class="cal-ok" disabled>Use it</button><button class="cal-x">Cancel</button></div>`;
+    for (const b of layer.querySelectorAll('button'))
+      b.style.cssText =
+        'font:600 3.6vmin system-ui;padding:2vmin 5vmin;border-radius:99px;border:0;color:#000;background:#fff';
+    layer.querySelector('.cal-x').style.cssText += ';background:rgba(255,255,255,.18);color:#fff';
     document.body.append(layer);
     const res = layer.querySelector('.cal-res'),
       note = layer.querySelector('small'),

@@ -135,9 +135,23 @@ const Blend = (() => {
   }
 
   // From the versions a song has: the best-ranked text that isn't a donor's, with the best-ranked donor timing.
-  function of(have, rank) {
-    if (have.some(h => h.kind === 'word' && !DONORS.includes(h.source) && h.source !== 'Blend')) return null; // real word sync
+  // script (Settings -> Romanization: Hindi / Punjabi script): when the best version is in Latin letters but another is
+  // in an Indic script, that one's words with the best word timing (Apple Music's romanized Kesariya + LRCLIB's
+  // Devanagari) - marked .script, which app.js then prefers.
+  const indic = l =>
+    typeof Roman !== 'undefined' && l.lines.some(x => Roman.isIndic(x.s ?? (x.w ?? []).map(w => w.s).join('')));
+  function of(have, rank, script) {
     const by = list => list.sort((a, b) => rank(b) - rank(a))[0];
+    if (script) {
+      const best = by(have.filter(h => h.source !== 'Blend'));
+      if (best && !indic(best)) {
+        const base = by(have.filter(h => ['line', 'static'].includes(h.kind) && indic(h))),
+          donor = by(have.filter(h => h.kind === 'word' && h.source !== 'Blend'));
+        const b = base && donor && blend(base, donor);
+        if (b) return { ...b, script: true };
+      }
+    }
+    if (have.some(h => h.kind === 'word' && !DONORS.includes(h.source) && h.source !== 'Blend')) return null; // real word sync
     const donor = by(have.filter(h => h.kind === 'word' && DONORS.includes(h.source))),
       base = by(
         have.filter(h => ['line', 'static'].includes(h.kind) && !DONORS.includes(h.source) && h.source !== 'Blend'),

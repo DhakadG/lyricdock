@@ -518,11 +518,29 @@ const pool = new Map(); // id -> [lyrics]
 // A version picked by hand with the source pill (features.js) holds for that song: a better-ranked one arriving later,
 // or a new order, doesn't take it away.
 const picked = new Map(); // id -> 'Source:kind'
+// Hindi / Punjabi script chosen (Settings -> Romanization): a blend in an Indic script beats a better-ranked version in
+// Latin letters, which that setting can't convert (blend.js .script).
+const scriptMode = () => S.roman === 'deva' || S.roman === 'guru';
 const choose = id => {
   const have = pool.get(id) ?? [],
     k = picked.get(id);
-  return (k && have.find(h => `${h.source}:${h.kind}` === k)) || Lyrics.best(have);
+  return (
+    (k && have.find(h => `${h.source}:${h.kind}` === k)) ||
+    (scriptMode() && have.find(h => h.script)) ||
+    Lyrics.best(have)
+  );
 };
+// the best text with a catalogue's word timing (blend.js), made again as better versions come in
+function reblend(have) {
+  const b = Blend.of(
+      have.filter(h => h.source !== 'Blend'),
+      Lyrics.rank,
+      scriptMode(),
+    ),
+    old = have.findIndex(h => h.source === 'Blend');
+  if (old >= 0) have.splice(old, 1);
+  if (b) have.push(b);
+}
 function collect(id, l) {
   if (!l) return null;
   const one = x => (x?.spicy ? Lyrics.fromSpicy(x.spicy) : x);
@@ -530,14 +548,7 @@ function collect(id, l) {
   const flat = x => (x ? [one(x), ...(x.alts ?? []).flatMap(flat)] : []);
   for (const x of flat(l))
     if (x?.lines?.length && !have.some(h => h.source === x.source && h.kind === x.kind)) have.push(x);
-  // the best text with a catalogue's word timing (blend.js), made again as better versions come in
-  const b = Blend.of(
-      have.filter(h => h.source !== 'Blend'),
-      Lyrics.rank,
-    ),
-    old = have.findIndex(h => h.source === 'Blend');
-  if (old >= 0) have.splice(old, 1);
-  if (b) have.push(b);
+  reblend(have);
   pool.delete(id);
   pool.set(id, have);
   // Oldest first, but never the song on screen: preloads of the next songs (and a few quick skips) used to push it out,
@@ -551,8 +562,9 @@ function collect(id, l) {
   return choose(id) ?? { kind: 'none', lines: [] };
 }
 Settings.onChange(k => {
-  // a new order (or a source switched off): re-pick for the song on screen
-  if ((k !== 'srcOrder' && k !== '*') || !P.id || !pool.has(P.id)) return;
+  // a new order (or a source switched off), or a script to read in: re-pick for the song on screen
+  if (!['srcOrder', 'roman', '*'].includes(k) || !P.id || !pool.has(P.id)) return;
+  if (k !== 'srcOrder') reblend(pool.get(P.id));
   const b = choose(P.id) ?? { kind: 'none', lines: [] };
   if (b !== P.lyrics) {
     P.lyrics = b;
@@ -563,7 +575,8 @@ Settings.onChange(k => {
 // Show lyrics for the playing song, but only if they beat what is on screen (Settings -> Lyrics sources).
 function offerLyrics(id, lyr) {
   lyr = collect(id, lyr);
-  if (!lyr || id !== P.id || (P.lyrics && Lyrics.rank(lyr) <= Lyrics.rank(P.lyrics))) return;
+  if (!lyr || id !== P.id || lyr === P.lyrics) return;
+  if (P.lyrics && Lyrics.rank(lyr) <= Lyrics.rank(P.lyrics) && !(lyr.script && scriptMode())) return;
   const first = !P.lyrics;
   P.lyrics = lyr;
   window.lyricStore?.put(id, lyr);

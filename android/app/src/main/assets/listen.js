@@ -66,10 +66,12 @@ const Listen = (() => {
         mute = ctx.createGain();
       mute.gain.value = 0; // keeps the graph pulling without playing it back
       let tap;
-      if (ctx.audioWorklet) {
-        const url = URL.createObjectURL(new Blob([TAP], { type: 'text/javascript' }));
-        await ctx.audioWorklet.addModule(url);
-        URL.revokeObjectURL(url);
+      // (a data: URL: the phone app's file:// page can't load a worklet from a blob: one)
+      const worklet = await ctx.audioWorklet?.addModule('data:text/javascript;base64,' + btoa(TAP)).then(
+        () => true,
+        () => false,
+      );
+      if (worklet) {
         tap = new AudioWorkletNode(ctx, 'ld-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2 });
         tap.port.onmessage = e => this.push(e.data);
       } else {
@@ -261,6 +263,13 @@ const Listen = (() => {
       pos();
       return;
     }
+    // While following a song, another one has to be named twice in a row: Shazam can name a remix on one check and
+    // the original on the next (same chorus), which restarted the song each time.
+    if (song && song.maybe !== r.key) {
+      song.maybe = r.key;
+      nextAt = now() + 3000;
+      return;
+    }
     song = { key: r.key };
     clock.set(est);
     clock.play();
@@ -314,6 +323,11 @@ const Listen = (() => {
       return false;
     }
     want = kind;
+    // a source picked by hand would keep the screen: tapping Listen is a choice too, undone by Stop
+    if (!['auto', 'listen'].includes(Settings.S.source)) {
+      before = Settings.S.source;
+      Settings.set('source', 'listen', false);
+    }
     song = null;
     fails = retries = 0;
     nextAt = 0;
@@ -323,9 +337,12 @@ const Listen = (() => {
     return true;
   }
 
+  let before = null; // the source picked by hand before Listen took the screen
   function stop(msg) {
     want = '';
     song = null;
+    if (before && Settings.S.source === 'listen') Settings.set('source', before, false);
+    before = null;
     ear.stop();
     clearInterval(beat);
     clock.pause();

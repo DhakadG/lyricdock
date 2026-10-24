@@ -21,6 +21,13 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
         </intent>
+        <!-- music players (PlayerWatch): their names ("YouTube Music", not the package) for "Following ..." -->
+        <intent>
+            <action android:name="android.media.browse.MediaBrowserService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MEDIA_BUTTON" />
+        </intent>
     </queries>
 
     <application
