@@ -9,7 +9,9 @@ const Settings = (() => {
   // sub-headings) and debugging aids in Developer. `local`: this device's hardware or network, never synced (sync.js).
   const mot = s => s.motionArt || s.bg === 'motion' || s.bg === 'motionblur';
   const flipUp = s => s.clockStyle === 'flip' || ['clock', 'clocksplit'].includes(s.layout);
-  const SCHEMA = [
+  // The rows are defined in RAW (in the order they were added); PLAN below lays them out: which section each sits in,
+  // in what order, under which heading. A row is named by its key, or by its label when it has none (actions).
+  const RAW = [
     { group: 'Layout', icon: 'layout', cat: 'View', desc: 'Where the cover, song and lyrics sit.' },
     { type: 'custom', render: () => window.layoutGrid?.() }, // the layout picker: a sketch of every layout (features.js)
     {
@@ -1932,6 +1934,131 @@ const Settings = (() => {
       help: 'The last connection events on this phone (connected, lost, reconnected), newest first.',
     },
   ];
+
+  // Sections, in the rail's order: where the music comes from first, then how it looks, the device, the account and
+  // system, and the fine-tuning last (Advanced, Developer). '## X' starts a heading inside a section. A header's own
+  // icon / description come from RAW unless given here.
+  const PLAN = [
+    {
+      group: 'Music',
+      icon: 'source',
+      cat: 'Music',
+      desc: 'Where the music comes from - Spotify, another app, the music around you - and where lyrics come from.',
+      rows: [
+        'source',
+        '## Listen',
+        'Name the song playing near me',
+        'listenMic',
+        'listenFrom',
+        '## Other apps',
+        'Music from other apps',
+        '## Spotify',
+        'Spotify account',
+        'spClientId',
+        '## Lyrics sources',
+        'srcOrder',
+      ],
+    },
+    { group: 'Layout', rows: ['layout', 'artSide', 'progress', 'orientation'] },
+    { group: 'Now playing' }, // (as defined)
+    {
+      group: 'Lyrics',
+      desc: 'How the lyrics look, the script they are written in, their timing and what shows with them.',
+      rows: [
+        'font',
+        'size',
+        'weight',
+        'align',
+        'lineColor',
+        'lineOpacity',
+        'duetColors',
+        '## Script',
+        'roman',
+        '## Sync',
+        'offset',
+        'outDelay',
+        '## What shows',
+        'countdown',
+        'dots',
+        'credits',
+        'hideExplicit',
+      ],
+    },
+    { group: 'Animations' },
+    { group: 'Background' },
+    { group: 'Controls' },
+    {
+      group: 'Screen',
+      rows: [
+        'awake',
+        'sleepAfter',
+        'bright',
+        'brightDay',
+        'brightNight',
+        'night',
+        'nightFrom',
+        'nightTo',
+        '## Status bar',
+        'timeStyle',
+        'battery',
+        'battStyle',
+        'statPos',
+        '## Notification & lock screen',
+        'mediaNotif',
+        'lockLyric',
+        'lockShow',
+        'notices',
+      ],
+    },
+    { group: 'Clock' },
+    { group: 'Account', desc: 'Your LyricDock sign-in, and what follows you to your other screens.' },
+    { group: 'Connection' },
+    { group: 'Updates' },
+    { group: 'Miniplayer' },
+    { group: 'Storage' },
+    { group: 'Presets' },
+    { group: 'Advanced', cat: 'Advanced' },
+    { group: 'Developer', cat: 'Advanced' },
+  ];
+  function arrange(raw, plan) {
+    const id = x => x.k || x.label,
+      byId = new Map(),
+      groups = new Map(),
+      order = new Map(); // group -> its rows as defined
+    let g = null;
+    for (const x of raw) {
+      if (x.group) {
+        groups.set((g = x.group), x);
+        order.set(g, []);
+      } else {
+        order.get(g).push(x);
+        if (x.type !== 'heading' && id(x)) byId.set(id(x), x);
+      }
+    }
+    const used = new Set(),
+      out = [];
+    for (const p of plan) {
+      const { rows, ...head } = p;
+      out.push({ ...groups.get(p.group), ...head });
+      // (a row with neither key nor label - the layout picker - stays at the top of its own section)
+      const list = rows
+        ? [
+            ...(order.get(p.group) ?? []).filter(x => !id(x) && x.type !== 'heading'),
+            ...rows.map(r => (r.startsWith('## ') ? { type: 'heading', label: r.slice(3) } : byId.get(r))),
+          ]
+        : (order.get(p.group) ?? []).filter(x => x.type === 'heading' || !id(x) || !used.has(id(x)));
+      for (const x of list) {
+        if (!x) continue;
+        if (x.type !== 'heading') used.add(id(x));
+        out.push(x);
+      }
+    }
+    // A row PLAN misses still shows (never lost to a reorganisation): at the end of Advanced's own section list.
+    const left = [...byId.values()].filter(x => !used.has(id(x)));
+    if (left.length) out.push({ group: 'More', icon: 'sliders', cat: 'Advanced', desc: 'Not yet sorted.' }, ...left);
+    return out;
+  }
+  const SCHEMA = arrange(RAW, PLAN);
 
   // Built-in presets (the shipped default config is 'Default'); applied on top of the defaults.
   const BUILTIN = {

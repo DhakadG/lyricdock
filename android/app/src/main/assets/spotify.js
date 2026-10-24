@@ -341,7 +341,7 @@ const Web = (() => {
             : `Spotify refused that (${r.status}${e.message ? `: ${e.message}` : ''})`;
   };
   async function control(cmd, arg, retried) {
-    if (!loggedIn()) return window.notice?.('Not signed in to Spotify - Settings → Account');
+    if (!loggedIn()) return window.notice?.('Not signed in to Spotify - Settings → Music');
     let r = null;
     // toggle / shuffle / like flip the known state before the request: two quick taps used to both read the last poll
     // and send the same request twice (pause, pause). A failure or the next poll puts the real state back.
@@ -567,7 +567,7 @@ const Web = (() => {
       }))
       .sort((a, b) => b.live - a.live);
   async function list(which, arg) {
-    if (!loggedIn()) return { items: [], error: 'Sign in to your Spotify account first (Settings → Account).' };
+    if (!loggedIn()) return { items: [], error: 'Sign in to your Spotify account first (Settings → Music).' };
     if (which === 'friends')
       return { items: [], error: 'Friend activity is only available through Spotify on your computer (desktop mode).' };
     if (which === 'devices') return { items: deviceRows((await api('GET', '/me/player/devices'))?.json?.devices) };

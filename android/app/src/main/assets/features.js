@@ -865,7 +865,7 @@
         ...msg,
         items: [],
         error:
-          "Spotify isn't reachable: open Spotify on your computer (with the LyricDock extension), or sign in to your Spotify account in Settings → Account.",
+          "Spotify isn't reachable: open Spotify on your computer (with the LyricDock extension), or sign in to your Spotify account in Settings → Music.",
       });
     if (spWeb()) Web.list(v.which, v.uri || v.q).then(r => showList({ ...msg, ...r }));
     else send({ type: 'list', ...msg });
@@ -1591,24 +1591,10 @@
     clock: ['theme', 'secs', 'h24', 'rotate', 'full', 'layout', 'tune'],
   };
   // Keys are Settings schema keys; a row only shows while its own "when" holds.
-  const LYR = ['roman', 'size', 'align', 'weight', 'lineGap', 'lineOpacity', 'blurLines', 'glow', 'scroll'];
-  const STATUS = ['timeStyle', 'battery', 'battStyle', 'statPos'];
-  const CLK = [
-    'clockTheme',
-    'clockSeconds',
-    'clock24',
-    'clockLayout',
-    'clockAnim',
-    'clockIntro',
-    'clockCards',
-    'clockScale',
-    'clockDigitGap',
-    'clockGroupGap',
-    'clockDim',
-    'clockSound',
-    'clockVolume',
-    'clockHaptic',
-  ];
+  // The few that matter while looking at the screen; the rest live in Settings (Lyrics, Animations, Advanced).
+  const LYR = ['size', 'roman', 'align', 'offset'];
+  const STATUS = ['timeStyle', 'battery'];
+  const CLK = ['clockTheme', 'clockSeconds', 'clock24', 'clockLayout', 'clockSound']; // (the rest: Settings -> Clock / Advanced)
   // Every layout starts with where the music comes from: Spotify here or on the computer, another app, the music
   // around you (Listen) - one tap from the screen, not deep in Settings.
   const QUICK = Object.fromEntries(
