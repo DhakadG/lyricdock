@@ -23,7 +23,7 @@ struct Now {
     track: String, // the last track message, for a screen that connects later
     art: Option<Vec<u8>>,
     stale: Option<Vec<u8>>, // the previous song's cover
-    art_n: u32,
+    since: Instant,         // when this song was first seen
     app: String,
 }
 static NOW: Mutex<Option<Now>> = Mutex::new(None);
@@ -202,12 +202,15 @@ fn read(s: &Session, beat: bool) -> windows::core::Result<()> {
         let fresh = now.as_ref().map(|n| n.key != key).unwrap_or(true);
         let need_art = fresh || now.as_ref().map(|n| n.art.is_none()).unwrap_or(true);
         // A player names the song a moment before its cover (and its length): the same song again, now with them.
-        // Browsers hand over the previous song's cover first: one identical to it waits for the real one.
+        // Browsers hand over the previous song's cover first: one identical to it waits for the real one - for 3 s, since
+        // the next song from the same album really has the same cover.
         let stale = now.as_ref().and_then(|n| {
             if fresh {
                 n.art.clone()
-            } else {
+            } else if n.since.elapsed() < Duration::from_secs(3) {
                 n.stale.clone()
+            } else {
+                None
             }
         });
         let art = if need_art {
@@ -227,15 +230,15 @@ fn read(s: &Session, beat: bool) -> windows::core::Result<()> {
                 track: String::new(),
                 art: None,
                 stale: None,
-                art_n: 0,
+                since: Instant::now(),
                 app: String::new(),
             });
             if fresh {
                 n.stale = n.art.take();
+                n.since = Instant::now();
             }
             if art.is_some() {
                 n.art = art;
-                n.art_n += 1;
             }
             n.key = key.clone();
             n.app = app_name(&id);
@@ -250,7 +253,9 @@ fn read(s: &Session, beat: bool) -> windows::core::Result<()> {
                 "id": format!("pc{:x}", hash(&key)),
                 "title": title, "artist": artist, "a1": a1, "album": album,
                 "dur": dur.max(0),
-                "art": n.art.as_ref().map(|_| format!("/media/art/{}", n.art_n)),
+                // named by its content: a new cover is a new address for the screens' image caches, across helper
+                // restarts too (a per-run number showed an old song's cover)
+                "art": n.art.as_ref().map(|b| format!("/media/art/{:x}", hash_bytes(b))),
                 "app": id, "appName": n.app,
             })
             .to_string();
@@ -280,7 +285,10 @@ fn com() {
 }
 
 fn hash(s: &str) -> u64 {
-    s.bytes().fold(0xcbf29ce484222325u64, |h, b| {
+    hash_bytes(s.as_bytes())
+}
+fn hash_bytes(b: &[u8]) -> u64 {
+    b.iter().fold(0xcbf29ce484222325u64, |h, &b| {
         (h ^ b as u64).wrapping_mul(0x100000001b3)
     })
 }
