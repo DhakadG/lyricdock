@@ -347,7 +347,7 @@ body.mini.wide #mb{left:calc(var(--aw) + var(--g) * 2)}body.mini.wide #mNav{grid
   const dpip = 'documentPictureInPicture' in window;
   const vpip = !dpip && !!document.pictureInPictureEnabled && 'captureStream' in HTMLCanvasElement.prototype;
   const state = () => {
-    const p = pos() + S.offset,
+    const p = pos() - delay(), // (app.js: the sync offset plus this output's delay)
       L = Lyrics.lineAt(p);
     return { p, L, title: $('title').textContent, artist: $('artist').textContent, art: P.art, playing: P.playing };
   };

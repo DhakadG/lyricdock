@@ -119,6 +119,24 @@ public class MainActivity extends Activity implements Runnable, View.OnApplyWind
                     "window.phoneMsg&&phoneMsg(JSON.parse(" + JSONObject.quote(json) + "))", null);
     }
 
+    // Where this phone's sound comes out (app.js: a lyrics delay is kept per output - Bluetooth runs late):
+    // "bt:<name>", "wired" or "speaker".
+    @JavascriptInterface
+    public String audioRoute() {
+        android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+        String wired = null;
+        for (android.media.AudioDeviceInfo d : am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)) {
+            int t = d.getType();
+            if (t == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                    || (Build.VERSION.SDK_INT >= 31 && t == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET))
+                return "bt:" + d.getProductName();
+            if (t == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                    || t == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET
+                    || t == android.media.AudioDeviceInfo.TYPE_USB_HEADSET) wired = "wired";
+        }
+        return wired != null ? wired : "speaker";
+    }
+
     @JavascriptInterface
     public boolean phoneAccess() {
         return PlayerWatch.allowed(this);

@@ -52,8 +52,25 @@ function pos() {
   const err = m - (K.v + dt);
   return (K.v = Math.abs(err) > 500 ? m : K.v + dt + err * (1 - Math.exp(-dt / 300)));
 }
-// Lyrics use the position plus the user's sync offset; the progress bar and time labels use the real position.
-const now = () => pos() + S.offset;
+// Lyrics run late by the user's sync offset plus the delay kept for where the sound comes out (Settings -> Sync:
+// Bluetooth and some speakers play a little behind the player's position); the progress bar uses the real position.
+// The output: Spotify's device for the account source, this phone's Bluetooth / wired / speaker, the PC's player.
+P.out = '';
+const outKey = () =>
+  P.source === 'web'
+    ? `Spotify: ${SRC.web.pos?.device || 'device'}`
+    : P.source === 'phone'
+      ? (r => (r.startsWith('bt:') ? `Bluetooth: ${r.slice(3)}` : r === 'wired' ? 'Headphones' : 'Phone speaker'))(
+          String(window.Dock?.audioRoute?.() || 'speaker'),
+        )
+      : P.source === 'pc'
+        ? `PC: ${Pc.app() || 'player'}`
+        : P.source === 'listen'
+          ? 'Listening'
+          : 'Spotify on the computer';
+setInterval(() => (P.out = outKey()), 1000); // (a native call: not every frame)
+const delay = () => S.offset + ((P.out && S.outDelay?.[P.out]) || 0);
+const now = () => pos() - delay();
 // To the desktop bridge over whichever link is up: the adb WebSocket (native) and/or the WebRTC channel (rtc.js).
 // The miniplayer (web/public/mini.js) is a second copy of this page: what it would send goes through the main copy.
 const send = o => {
@@ -1569,7 +1586,7 @@ const linkLog = (window.linkLog = []);
     if (linkLog.length > 50) linkLog.shift();
   }
   const real = pos(),
-    p = real + S.offset;
+    p = real - delay();
   songEnd(real);
   fillCheck(real);
   if (((real / 1000) | 0) !== lastSec && !document.body.classList.contains('tl-drag')) {

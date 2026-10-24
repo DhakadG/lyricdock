@@ -317,14 +317,25 @@ const Settings = (() => {
     {
       k: 'offset',
       label: 'Sync offset',
-      desc: 'Positive shows lyrics later, negative earlier',
+      desc: 'Positive shows lyrics later, negative earlier - on every output',
       type: 'range',
       min: -1000,
       max: 1000,
       step: 10,
       def: 0,
       unit: 'ms',
-      help: 'Nudge if lyrics run early or late (e.g. Bluetooth speaker delay: try +150 to +300 ms).',
+      help: 'For lyrics that run early or late everywhere. A speaker or headphones that play behind (Bluetooth: often +150 to +300 ms) get their own delay below, kept for that output only.',
+    },
+    // Per output (app.js outKey: Spotify's device, the phone's Bluetooth / headphones / speaker, the PC's player):
+    // { name: ms }, set by the lyrics pill's sync buttons or by tapping along (features.js delayList).
+    {
+      k: 'outDelay',
+      label: 'Delay per output',
+      desc: 'Bluetooth, speakers, calibrate, tap along, latency',
+      type: 'custom',
+      def: {},
+      local: true,
+      render: () => window.delayList?.(),
     },
     // Lyrics sources (Better Lyrics' provider list): drag to reorder, switch off to never use. Ranked by Lyrics.rank.
     {
@@ -1988,6 +1999,12 @@ const Settings = (() => {
   const fix = o => {
     if (o.layout === 'tv') o.layout = 'split';
     else if (o.layout === 'compact') o.layout = 'lyrics';
+    // The sync offset ran the wrong way (positive showed lyrics earlier, though it said later): flipped once, so the
+    // timing anyone set stays as it was.
+    if (!o.offsetV2) {
+      o.offset = -(+o.offset || 0) || 0;
+      o.offsetV2 = true;
+    }
     // Lyrics sources added since this list was saved: each goes in under the last entry of its sync type (a saved
     // list ranks unknown sources 0 = never shown).
     if (Array.isArray(o.srcOrder))

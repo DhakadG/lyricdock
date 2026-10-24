@@ -120,6 +120,107 @@
     }
     return [...have].sort((a, b) => Lyrics.rank(b) - Lyrics.rank(a));
   };
+  // The pill's sync buttons set the delay for where the sound comes out now (app.js P.out), not one for everything.
+  const outMs = () => (P.out && S.outDelay?.[P.out]) || 0;
+  const setOut = ms => {
+    if (!P.out) return;
+    const d = { ...(S.outDelay || {}) };
+    ms = Math.max(-2000, Math.min(3000, Math.round(ms / 10) * 10));
+    if (ms) d[P.out] = ms;
+    else delete d[P.out];
+    Settings.set('outDelay', d, false);
+  };
+  window.setOutDelay = setOut;
+
+  // ---- Settings -> Sync: the delay kept for each output, and finding it by tapping along (after Spicy Lyrics Mobile's
+  // TapCalibration). Each tap is where the player says it was when the line (or word) was heard, so how far the taps sit
+  // from the lyrics' own times is how far the sound runs behind: the delay. Taps are matched to the nearest start after
+  // taking off the delay already set; the first two (finding the rhythm) and taps far from any start don't count; the
+  // median of the rest is the answer, and their spread says whether to trust it.
+  const ms2s = v => `${v > 0 ? '+' : ''}${(v / 1000).toFixed(2)} s`;
+  window.delayList = () => {
+    const box = document.createElement('div');
+    box.className = 'src-list';
+    const rows = Object.entries(S.outDelay || {});
+    box.innerHTML = `<div class="src-head"><b>Delay per output</b><small>Now playing on: ${esc(P.out || '-')} (${ms2s(outMs())}). The lyrics pill's sync buttons change this one.</small></div>`;
+    for (const [k, v] of rows) {
+      const r = document.createElement('div');
+      r.className = 'src-row';
+      r.innerHTML = `<b></b><i class="src-sync s-l">${ms2s(v)}</i><button class="btn" aria-label="Forget">✕</button>`;
+      r.querySelector('b').textContent = k;
+      r.querySelector('button').onclick = () => {
+        const d = { ...S.outDelay };
+        delete d[k];
+        Settings.set('outDelay', d);
+      };
+      box.append(r);
+    }
+    const go = document.createElement('button');
+    go.className = 'btn';
+    go.textContent = 'Calibrate by tapping along';
+    go.onclick = () => {
+      Settings.close();
+      calibrate();
+    };
+    box.append(go);
+    return box;
+  };
+
+  function calibrate() {
+    const kind = P.lyrics?.kind;
+    if (!['word', 'line'].includes(kind) || !P.playing)
+      return notice('Play a song with synced lyrics first, then calibrate', 4000);
+    // line starts only: words sit 0.3-0.5 s apart, so a tap 250 ms late is nearer the next word and the delay vanishes
+    const starts = P.lyrics.lines
+      .map(l => l.t)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    const out = P.out,
+      taps = [],
+      layer = document.createElement('div');
+    layer.style.cssText =
+      'position:fixed;inset:0;z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vmin;' +
+      'background:rgba(0,0,0,.82);color:#fff;font:600 4vmin/1.3 system-ui;text-align:center;padding:6vmin;touch-action:none';
+    layer.innerHTML = `<div>Tap anywhere the moment you hear each new line start</div>
+      <div class="cal-res" style="font-size:6vmin">…</div><small style="opacity:.7;font-weight:400"></small>
+      <div><button class="btn cal-ok" disabled>Use it</button> <button class="btn cal-x">Cancel</button></div>`;
+    document.body.append(layer);
+    const res = layer.querySelector('.cal-res'),
+      note = layer.querySelector('small'),
+      ok = layer.querySelector('.cal-ok');
+    let answer = null;
+    const nearest = x => starts.reduce((b, s) => (Math.abs(s - x) < Math.abs(b - x) ? s : b), Infinity);
+    const median = a => [...a].sort((x, y) => x - y)[a.length >> 1];
+    layer.onpointerdown = e => {
+      if (e.target.closest('button')) return;
+      taps.push(pos()); // the player's position when it was heard: no delay taken off
+      const cur = delay(),
+        d = taps
+          .slice(2)
+          .map(t => [t, nearest(t - cur)])
+          .filter(([t, s]) => Math.abs(t - cur - s) < 1000)
+          .map(([t, s]) => t - s);
+      if (d.length < 6) {
+        res.textContent = `${taps.length} tap${taps.length === 1 ? '' : 's'}…`;
+        note.textContent = 'keep going';
+        return;
+      }
+      const m = median(d),
+        spread = median(d.map(x => Math.abs(x - m)));
+      answer = spread < 220 ? m : null;
+      res.textContent = `≈ ${ms2s(m)}`;
+      note.textContent =
+        answer == null ? 'taps too uneven - keep tapping in rhythm' : `from ${d.length} taps, ±${spread | 0} ms`;
+      ok.disabled = answer == null;
+    };
+    layer.querySelector('.cal-x').onclick = () => layer.remove();
+    ok.onclick = () => {
+      if (P.out === out) setOut(answer - S.offset); // what's left after the offset everything gets
+      notice(`Lyrics delay on ${out}: ${ms2s(answer - S.offset)}`, 4000);
+      layer.remove();
+    };
+  }
+  window.calibrate = calibrate;
   let pillSig = '';
   function pill() {
     const v = versions(),
@@ -127,7 +228,7 @@
       src = v.length > 1 && i >= 0,
       off = ['word', 'line'].includes(P.lyrics?.kind);
     const r = $('lyrics').getBoundingClientRect(),
-      sig = `${src}|${off}|${S.offset}|${P.id}|${i}|${v.length}|${r.left | 0}|${r.width | 0}|${r.bottom | 0}`;
+      sig = `${src}|${off}|${outMs()}|${P.out}|${P.id}|${i}|${v.length}|${r.left | 0}|${r.width | 0}|${r.bottom | 0}`;
     if (sig === pillSig) return;
     pillSig = sig;
     pillEl.classList.toggle('has', src || off);
@@ -139,8 +240,10 @@
       span.innerHTML = `<i class="src-sync s-${sy[1]}">${sy[0]}</i><b></b><small>${i + 1}/${v.length}</small>`;
       span.querySelector('b').textContent = P.lyrics.source || 'Lyrics';
     }
-    const o = S.offset / 1000;
-    pillEl.querySelector('.pp-val').textContent = `${o > 0 ? '+' : ''}${o.toFixed(1)}s`;
+    const o = outMs() / 1000,
+      val = pillEl.querySelector('.pp-val');
+    val.textContent = `${o > 0 ? '+' : ''}${o.toFixed(1)}s`;
+    val.title = `Lyrics delay on ${P.out || 'this output'} (tap for 0)`;
     pillEl.style.left = `${r.left + r.width / 2}px`;
     pillEl.style.top = `${r.bottom}px`;
   }
@@ -155,9 +258,8 @@
     e.stopPropagation();
     window.showUi?.(true); // keep the controls (and the pill) up while using it
     if (b.dataset.o !== undefined) {
-      const step = +b.dataset.o,
-        v = step ? Math.max(-1000, Math.min(1000, S.offset + step)) : 0; // the setting's own range
-      if (v !== S.offset) Settings.set('offset', v, false);
+      const step = +b.dataset.o;
+      setOut(step ? outMs() + step : 0);
       return pill();
     }
     const v = versions(),
